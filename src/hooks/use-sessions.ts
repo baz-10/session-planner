@@ -1,0 +1,334 @@
+'use client';
+
+import { useCallback, useState } from 'react';
+import { useAuth } from '@/contexts/auth-context';
+import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import type {
+  Session,
+  SessionActivity,
+  CreateSessionInput,
+  CreateActivityInput,
+  DrillCategory,
+} from '@/types/database';
+
+interface SessionWithActivities extends Session {
+  activities: (SessionActivity & { category?: DrillCategory | null })[];
+}
+
+export function useSessions() {
+  const { user, currentTeam } = useAuth();
+  const supabase = getBrowserSupabaseClient();
+  const [isLoading, setIsLoading] = useState(false);
+
+  /**
+   * Get all sessions for the current team
+   */
+  const getSessions = useCallback(async () => {
+    if (!currentTeam) return [];
+
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('team_id', currentTeam.id)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching sessions:', error);
+      return [];
+    }
+
+    return data as Session[];
+  }, [supabase, currentTeam]);
+
+  /**
+   * Get a single session with all activities
+   */
+  const getSession = useCallback(
+    async (sessionId: string): Promise<SessionWithActivities | null> => {
+      const { data: session, error } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (error || !session) {
+        console.error('Error fetching session:', error);
+        return null;
+      }
+
+      const { data: activities, error: activitiesError } = await supabase
+        .from('session_activities')
+        .select(`
+          *,
+          category:drill_categories(*)
+        `)
+        .eq('session_id', sessionId)
+        .order('sort_order', { ascending: true });
+
+      if (activitiesError) {
+        console.error('Error fetching activities:', activitiesError);
+        return { ...session, activities: [] } as SessionWithActivities;
+      }
+
+      return {
+        ...session,
+        activities: activities || [],
+      } as SessionWithActivities;
+    },
+    [supabase]
+  );
+
+  /**
+   * Create a new session
+   */
+  const createSession = useCallback(
+    async (input: CreateSessionInput): Promise<{ success: boolean; session?: Session; error?: string }> => {
+      if (!user || !currentTeam) {
+        return { success: false, error: 'Not authenticated or no team selected' };
+      }
+
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('sessions')
+        .insert({
+          team_id: currentTeam.id,
+          name: input.name,
+          date: input.date || null,
+          start_time: input.start_time || null,
+          duration: input.duration || null,
+          location: input.location || null,
+          defensive_emphasis: input.defensive_emphasis || null,
+          offensive_emphasis: input.offensive_emphasis || null,
+          quote: input.quote || null,
+          announcements: input.announcements || null,
+          is_template: input.is_template || false,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      setIsLoading(false);
+
+      if (error || !data) {
+        console.error('Error creating session:', error);
+        return { success: false, error: 'Failed to create session' };
+      }
+
+      return { success: true, session: data as Session };
+    },
+    [user, currentTeam, supabase]
+  );
+
+  /**
+   * Update a session
+   */
+  const updateSession = useCallback(
+    async (
+      sessionId: string,
+      updates: Partial<Session>
+    ): Promise<{ success: boolean; error?: string }> => {
+      setIsLoading(true);
+      const { error } = await supabase
+        .from('sessions')
+        .update(updates)
+        .eq('id', sessionId);
+
+      setIsLoading(false);
+
+      if (error) {
+        console.error('Error updating session:', error);
+        return { success: false, error: 'Failed to update session' };
+      }
+
+      return { success: true };
+    },
+    [supabase]
+  );
+
+  /**
+   * Delete a session
+   */
+  const deleteSession = useCallback(
+    async (sessionId: string): Promise<{ success: boolean; error?: string }> => {
+      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
+
+      if (error) {
+        console.error('Error deleting session:', error);
+        return { success: false, error: 'Failed to delete session' };
+      }
+
+      return { success: true };
+    },
+    [supabase]
+  );
+
+  /**
+   * Duplicate a session
+   */
+  const duplicateSession = useCallback(
+    async (sessionId: string, newName?: string): Promise<{ success: boolean; session?: Session; error?: string }> => {
+      const session = await getSession(sessionId);
+      if (!session) {
+        return { success: false, error: 'Session not found' };
+      }
+
+      // Create the new session
+      const result = await createSession({
+        team_id: session.team_id,
+        name: newName || `${session.name} (Copy)`,
+        date: session.date || undefined,
+        start_time: session.start_time || undefined,
+        duration: session.duration || undefined,
+        location: session.location || undefined,
+        defensive_emphasis: session.defensive_emphasis || undefined,
+        offensive_emphasis: session.offensive_emphasis || undefined,
+        quote: session.quote || undefined,
+        announcements: session.announcements || undefined,
+        is_template: session.is_template,
+      });
+
+      if (!result.success || !result.session) {
+        return result;
+      }
+
+      // Copy all activities
+      if (session.activities.length > 0) {
+        const activitiesToInsert = session.activities.map((activity) => ({
+          session_id: result.session!.id,
+          drill_id: activity.drill_id,
+          sort_order: activity.sort_order,
+          name: activity.name,
+          duration: activity.duration,
+          category_id: activity.category_id,
+          notes: activity.notes,
+          groups: activity.groups,
+        }));
+
+        await supabase.from('session_activities').insert(activitiesToInsert);
+      }
+
+      return result;
+    },
+    [getSession, createSession, supabase]
+  );
+
+  /**
+   * Add an activity to a session
+   */
+  const addActivity = useCallback(
+    async (input: CreateActivityInput): Promise<{ success: boolean; activity?: SessionActivity; error?: string }> => {
+      const { data, error } = await supabase
+        .from('session_activities')
+        .insert({
+          session_id: input.session_id,
+          drill_id: input.drill_id || null,
+          sort_order: input.sort_order,
+          name: input.name,
+          duration: input.duration,
+          category_id: input.category_id || null,
+          notes: input.notes || null,
+          groups: input.groups || [],
+        })
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('Error adding activity:', error);
+        return { success: false, error: 'Failed to add activity' };
+      }
+
+      return { success: true, activity: data as SessionActivity };
+    },
+    [supabase]
+  );
+
+  /**
+   * Update an activity
+   */
+  const updateActivity = useCallback(
+    async (
+      activityId: string,
+      updates: Partial<SessionActivity>
+    ): Promise<{ success: boolean; error?: string }> => {
+      const { error } = await supabase
+        .from('session_activities')
+        .update(updates)
+        .eq('id', activityId);
+
+      if (error) {
+        console.error('Error updating activity:', error);
+        return { success: false, error: 'Failed to update activity' };
+      }
+
+      return { success: true };
+    },
+    [supabase]
+  );
+
+  /**
+   * Delete an activity
+   */
+  const deleteActivity = useCallback(
+    async (activityId: string): Promise<{ success: boolean; error?: string }> => {
+      const { error } = await supabase.from('session_activities').delete().eq('id', activityId);
+
+      if (error) {
+        console.error('Error deleting activity:', error);
+        return { success: false, error: 'Failed to delete activity' };
+      }
+
+      return { success: true };
+    },
+    [supabase]
+  );
+
+  /**
+   * Reorder activities (update sort_order for all activities)
+   */
+  const reorderActivities = useCallback(
+    async (
+      sessionId: string,
+      activityIds: string[]
+    ): Promise<{ success: boolean; error?: string }> => {
+      // Update each activity with its new sort_order
+      const updates = activityIds.map((id, index) => ({
+        id,
+        sort_order: index,
+      }));
+
+      // Use a transaction-like approach by updating all in parallel
+      const promises = updates.map(({ id, sort_order }) =>
+        supabase
+          .from('session_activities')
+          .update({ sort_order })
+          .eq('id', id)
+          .eq('session_id', sessionId)
+      );
+
+      const results = await Promise.all(promises);
+      const hasError = results.some((r) => r.error);
+
+      if (hasError) {
+        console.error('Error reordering activities');
+        return { success: false, error: 'Failed to reorder activities' };
+      }
+
+      return { success: true };
+    },
+    [supabase]
+  );
+
+  return {
+    isLoading,
+    getSessions,
+    getSession,
+    createSession,
+    updateSession,
+    deleteSession,
+    duplicateSession,
+    addActivity,
+    updateActivity,
+    deleteActivity,
+    reorderActivities,
+  };
+}
