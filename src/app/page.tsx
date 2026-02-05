@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/auth-context';
+import { createBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 
 // Feature data
 const features = [
@@ -76,16 +76,24 @@ const testimonials = [
 ];
 
 export default function HomePage() {
-  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
 
-  // Redirect authenticated users to dashboard
+  // Check for authenticated user and redirect (non-blocking)
   useEffect(() => {
-    if (!isLoading && user) {
-      router.push('/dashboard');
-    }
-  }, [user, isLoading, router]);
+    const checkAuth = async () => {
+      try {
+        const supabase = createBrowserSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          router.push('/dashboard');
+        }
+      } catch {
+        // Ignore auth errors on landing page - just show the content
+      }
+    };
+    checkAuth();
+  }, [router]);
 
   // Handle scroll for navbar
   useEffect(() => {
@@ -93,17 +101,6 @@ export default function HomePage() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-navy flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-          <p className="text-white/60 font-display">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
