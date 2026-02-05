@@ -149,7 +149,8 @@
   }
 
   .badge-navy {
-    @apply badge bg-navy/10 text-navy;
+    @apply badge text-navy;
+    background-color: rgba(30, 58, 95, 0.1);
   }
 
   .badge-success {
@@ -308,4 +309,23 @@
   .stagger-3 { animation-delay: 150ms; }
   .stagger-4 { animation-delay: 200ms; }
   .stagger-5 { animation-delay: 250ms; }
+
+  /* Safe area insets for iPhone notch/home indicator */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  .safe-area-inset {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Touch-friendly tap targets */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }

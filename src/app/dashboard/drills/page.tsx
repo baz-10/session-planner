@@ -1,16 +1,30 @@
-import { redirect } from 'next/navigation';
-import { getServerUser } from '@/lib/auth/supabase-server';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { DrillLibrary } from '@/components/drills/drill-library';
 
-export const metadata = {
-  title: 'Drill Library - Session Planner',
-};
+export default function DrillsPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
 
-export default async function DrillsPage() {
-  const user = await getServerUser();
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (!user) {
-    redirect('/login');
+    return null;
   }
 
   return (

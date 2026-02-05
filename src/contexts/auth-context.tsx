@@ -10,7 +10,7 @@ import {
 } from 'react';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
-import type { Profile, TeamMember, Team, Player, ParentPlayerLink } from '@/types/database';
+import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization, OrganizationMember, OrgRole } from '@/types/database';
 
 interface AuthState {
   user: User | null;
@@ -26,6 +26,10 @@ interface TeamMembership extends TeamMember {
 
 interface LinkedPlayer extends Player {
   link: ParentPlayerLink;
+}
+
+interface OrganizationMembership extends OrganizationMember {
+  organization: Organization;
 }
 
 interface AuthContextValue extends AuthState {
@@ -51,6 +55,13 @@ interface AuthContextValue extends AuthState {
   // Parent-player links (for parent role)
   linkedPlayers: LinkedPlayer[];
   refreshLinkedPlayers: () => Promise<void>;
+
+  // Organization memberships
+  organizationMemberships: OrganizationMembership[];
+  currentOrganization: Organization | null;
+  currentOrganizationRole: OrgRole | null;
+  setCurrentOrganization: (org: Organization | null) => void;
+  refreshOrganizationMemberships: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -67,8 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [teamMemberships, setTeamMemberships] = useState<TeamMembership[]>([]);
   const [currentTeam, setCurrentTeam] = useState<Team | null>(null);
   const [linkedPlayers, setLinkedPlayers] = useState<LinkedPlayer[]>([]);
+  const [organizationMemberships, setOrganizationMemberships] = useState<OrganizationMembership[]>([]);
+  const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
 
   const supabase = getBrowserSupabaseClient();
+
+  // Get the user's role in the current organization
+  const currentOrganizationRole = organizationMemberships.find(
+    (m) => m.organization.id === currentOrganization?.id
+  )?.role || null;
 
   // Fetch user profile
   const fetchProfile = useCallback(async (userId: string) => {
@@ -155,6 +173,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLinkedPlayers(players);
   }, [supabase, state.user]);
 
+  // Fetch organization memberships
+  const refreshOrganizationMemberships = useCallback(async () => {
+    if (!state.user) {
+      setOrganizationMemberships([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select(`
+        *,
+        organization:organizations(*)
+      `)
+      .eq('user_id', state.user.id);
+
+    if (error) {
+      console.error('Error fetching organization memberships:', error);
+      return;
+    }
+
+    const memberships = (data || []).map((item: OrganizationMember & { organization: Organization }) => ({
+      ...item,
+      organization: item.organization as Organization,
+    })) as OrganizationMembership[];
+
+    setOrganizationMemberships(memberships);
+
+    // Set current organization to first one if not set
+    if (!currentOrganization && memberships.length > 0) {
+      setCurrentOrganization(memberships[0].organization);
+    }
+  }, [supabase, state.user, currentOrganization]);
+
   // Refresh profile
   const refreshProfile = useCallback(async () => {
     if (!state.user) return;
@@ -205,6 +256,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTeamMemberships([]);
           setCurrentTeam(null);
           setLinkedPlayers([]);
+          setOrganizationMemberships([]);
+          setCurrentOrganization(null);
         }
       }
     );
@@ -219,8 +272,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (state.user && state.isInitialized) {
       refreshTeamMemberships();
       refreshLinkedPlayers();
+      refreshOrganizationMemberships();
     }
-  }, [state.user, state.isInitialized, refreshTeamMemberships, refreshLinkedPlayers]);
+  }, [state.user, state.isInitialized, refreshTeamMemberships, refreshLinkedPlayers, refreshOrganizationMemberships]);
 
   // Auth actions
   const signUp = async (email: string, password: string, metadata?: Record<string, unknown>) => {
@@ -315,6 +369,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshTeamMemberships,
     linkedPlayers,
     refreshLinkedPlayers,
+    organizationMemberships,
+    currentOrganization,
+    currentOrganizationRole,
+    setCurrentOrganization,
+    refreshOrganizationMemberships,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

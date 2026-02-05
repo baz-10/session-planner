@@ -56,5 +56,3 @@ enable_confirmations = false
 [realtime]
 # Enables realtime for the entire project.
 enabled = true
-# IP address bind for realtime. Defaults to 0.0.0.0 for all network interfaces.
-ip_address = "0.0.0.0"

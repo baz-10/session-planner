@@ -1,17 +1,31 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getServerUser } from '@/lib/auth/supabase-server';
+import { useAuth } from '@/contexts/auth-context';
 import { SessionsList } from '@/components/sessions/sessions-list';
 
-export const metadata = {
-  title: 'Sessions - Session Planner',
-};
+export default function SessionsPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
 
-export default async function SessionsPage() {
-  const user = await getServerUser();
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (!user) {
-    redirect('/login');
+    return null;
   }
 
   return (

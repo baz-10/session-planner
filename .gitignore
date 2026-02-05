@@ -40,3 +40,4 @@ coverage/
 
 # Playwright
 .playwright-mcp/
+.vercel

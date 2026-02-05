@@ -1,24 +1,32 @@
-import { redirect } from 'next/navigation';
-import { getServerUser, getServerProfile } from '@/lib/auth/supabase-server';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { OnboardingFlow } from '@/components/auth/onboarding-flow';
 
-export const metadata = {
-  title: 'Welcome - Session Planner',
-  description: 'Complete your Session Planner profile setup',
-};
+export default function OnboardingPage() {
+  const { user, profile, isLoading } = useAuth();
+  const router = useRouter();
 
-export default async function OnboardingPage() {
-  const user = await getServerUser();
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/login');
+    } else if (!isLoading && profile?.onboarding_completed) {
+      router.push('/dashboard');
+    }
+  }, [user, profile, isLoading, router]);
 
-  if (!user) {
-    redirect('/login');
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
-  const profile = await getServerProfile();
-
-  // If onboarding is already complete, redirect to dashboard
-  if (profile?.onboarding_completed) {
-    redirect('/dashboard');
+  if (!user || profile?.onboarding_completed) {
+    return null;
   }
 
   return (

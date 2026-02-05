@@ -1,7 +1,13 @@
-'use client';
+import { EventDetailClient } from './event-detail-client';
 
-import { useRouter } from 'next/navigation';
-import { EventDetail } from '@/components/events';
+// Required for static export - allows dynamic routes to be generated at runtime
+export async function generateStaticParams() {
+  // Return at least one placeholder param for static generation
+  return [{ id: 'placeholder' }];
+}
+
+// Allow additional dynamic params at runtime
+export const dynamicParams = true;
 
 interface EventPageProps {
   params: {
@@ -10,14 +16,5 @@ interface EventPageProps {
 }
 
 export default function EventPage({ params }: EventPageProps) {
-  const router = useRouter();
-
-  return (
-    <div className="max-w-4xl mx-auto py-6 px-4">
-      <EventDetail
-        eventId={params.id}
-        onBack={() => router.push('/dashboard/events')}
-      />
-    </div>
-  );
+  return <EventDetailClient eventId={params.id} />;
 }

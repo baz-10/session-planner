@@ -1,13 +1,27 @@
-import Link from 'next/link';
-import { getServerUser } from '@/lib/auth/supabase-server';
-import { redirect } from 'next/navigation';
+'use client';
 
-export default async function HomePage() {
-  const user = await getServerUser();
+import Link from 'next/link';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
+
+export default function HomePage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
 
   // Redirect authenticated users to dashboard
-  if (user) {
-    redirect('/dashboard');
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary to-primary-light flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </div>
+    );
   }
 
   return (

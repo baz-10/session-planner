@@ -164,21 +164,22 @@ export function useTeam() {
    * Get team members
    */
   const getTeamMembers = useCallback(
-    async (teamId: string) => {
+    async (teamId: string): Promise<{ success: boolean; members?: any[]; error?: string }> => {
       const { data, error } = await supabase
         .from('team_members')
         .select(`
           *,
           profile:profiles(*)
         `)
-        .eq('team_id', teamId);
+        .eq('team_id', teamId)
+        .order('role', { ascending: true });
 
       if (error) {
         console.error('Error fetching team members:', error);
-        return [];
+        return { success: false, error: 'Failed to load team members' };
       }
 
-      return data || [];
+      return { success: true, members: data || [] };
     },
     [supabase]
   );

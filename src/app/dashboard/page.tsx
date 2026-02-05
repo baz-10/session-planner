@@ -1,23 +1,32 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getServerUser, getServerProfile } from '@/lib/auth/supabase-server';
+import { useAuth } from '@/contexts/auth-context';
 
-export const metadata = {
-  title: 'Dashboard - Session Planner',
-};
+export default function DashboardPage() {
+  const { user, profile, isLoading } = useAuth();
+  const router = useRouter();
 
-export default async function DashboardPage() {
-  const user = await getServerUser();
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/login');
+    } else if (!isLoading && user && profile && !profile.onboarding_completed) {
+      router.push('/onboarding');
+    }
+  }, [user, profile, isLoading, router]);
 
-  if (!user) {
-    redirect('/login');
+  if (isLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
-  const profile = await getServerProfile();
-
-  // Redirect to onboarding if not complete
-  if (!profile?.onboarding_completed) {
-    redirect('/onboarding');
+  if (!user || !profile) {
+    return null;
   }
 
   return (
