@@ -22,30 +22,58 @@ export function LoginForm() {
     setError('');
     setIsSubmitting(true);
 
-    const { error } = await signIn(email, password);
+    try {
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
+        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+      );
 
-    if (error) {
-      setError(error.message);
+      const signInPromise = signIn(email, password);
+      const { error } = await Promise.race([signInPromise, timeoutPromise]);
+
+      if (error) {
+        setError(error.message);
+        setIsSubmitting(false);
+        return;
+      }
+
+      router.push(redirectTo);
+    } catch (err: unknown) {
+      const errorMessage = err && typeof err === 'object' && 'error' in err
+        ? (err as { error: { message: string } }).error.message
+        : 'Connection failed. Please try again.';
+      setError(errorMessage);
       setIsSubmitting(false);
-      return;
     }
-
-    router.push(redirectTo);
   };
 
   const handleGoogleSignIn = async () => {
     setError('');
-    const { error } = await signInWithGoogle();
-    if (error) {
-      setError(error.message);
+    try {
+      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
+        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+      );
+      const { error } = await Promise.race([signInWithGoogle(), timeoutPromise]);
+      if (error) {
+        setError(error.message);
+      }
+    } catch {
+      setError('Connection failed. Please try again.');
     }
   };
 
   const handleAppleSignIn = async () => {
     setError('');
-    const { error } = await signInWithApple();
-    if (error) {
-      setError(error.message);
+    try {
+      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
+        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+      );
+      const { error } = await Promise.race([signInWithApple(), timeoutPromise]);
+      if (error) {
+        setError(error.message);
+      }
+    } catch {
+      setError('Connection failed. Please try again.');
     }
   };
 
