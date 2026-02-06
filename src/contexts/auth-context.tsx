@@ -216,21 +216,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
+    let mounted = true;
+
     const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        // Add timeout to prevent infinite loading if Supabase is unreachable
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Auth timeout')), 5000)
+        );
 
-      let profile = null;
-      if (session?.user) {
-        profile = await fetchProfile(session.user.id);
+        const sessionPromise = supabase.auth.getSession();
+        const result = await Promise.race([sessionPromise, timeoutPromise]) as { data: { session: Session | null } };
+
+        if (!mounted) return;
+
+        const session = result.data.session;
+        let profile = null;
+        if (session?.user) {
+          profile = await fetchProfile(session.user.id);
+        }
+
+        setState({
+          user: session?.user ?? null,
+          session,
+          profile,
+          isLoading: false,
+          isInitialized: true,
+        });
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        // On timeout or error, still set initialized so app doesn't hang
+        if (mounted) {
+          setState({
+            user: null,
+            session: null,
+            profile: null,
+            isLoading: false,
+            isInitialized: true,
+          });
+        }
       }
-
-      setState({
-        user: session?.user ?? null,
-        session,
-        profile,
-        isLoading: false,
-        isInitialized: true,
-      });
     };
 
     initializeAuth();
@@ -263,6 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, [supabase, fetchProfile]);
