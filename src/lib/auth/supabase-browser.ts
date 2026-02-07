@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -15,16 +15,21 @@ if (typeof window !== 'undefined') {
 
 /**
  * Create a Supabase client for Client Components.
- * This client uses cookies for session management.
+ * Uses localStorage for session persistence (works with static exports).
  * Note: Using `any` type to avoid strict type inference issues with Supabase queries.
- * In production, consider using `supabase gen types typescript` for proper type safety.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createBrowserSupabaseClient(): any {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase environment variables are not configured');
   }
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      storageKey: 'session-planner-auth',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
+  });
 }
 
 // Singleton instance for client-side usage
