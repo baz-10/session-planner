@@ -24,8 +24,9 @@ export function LoginForm() {
 
     try {
       // Add timeout to prevent infinite loading
+      // Using 20s to account for Supabase free tier cold starts
       const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
-        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 20000)
       );
 
       const signInPromise = signIn(email, password);
