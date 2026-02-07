@@ -220,33 +220,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        // Add timeout to prevent infinite loading if Supabase is unreachable
-        // Using 20s timeout to account for Supabase free tier cold starts
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Auth timeout')), 20000)
-        );
-
-        const sessionPromise = supabase.auth.getSession();
-        const result = await Promise.race([sessionPromise, timeoutPromise]) as { data: { session: Session | null } };
+        console.log('[Auth] Starting session check...');
+        const { data, error } = await supabase.auth.getSession();
+        console.log('[Auth] Session result:', { hasSession: !!data?.session, error });
 
         if (!mounted) return;
 
-        const session = result.data.session;
+        if (error) {
+          console.error('[Auth] Session error:', error);
+          setState({
+            user: null,
+            session: null,
+            profile: null,
+            isLoading: false,
+            isInitialized: true,
+          });
+          return;
+        }
+
+        const session = data?.session;
         let profile = null;
         if (session?.user) {
+          console.log('[Auth] Fetching profile for user:', session.user.id);
           profile = await fetchProfile(session.user.id);
         }
 
         setState({
           user: session?.user ?? null,
-          session,
+          session: session ?? null,
           profile,
           isLoading: false,
           isInitialized: true,
         });
+        console.log('[Auth] Initialization complete');
       } catch (error) {
-        console.error('Auth initialization error:', error);
-        // On timeout or error, still set initialized so app doesn't hang
+        console.error('[Auth] Initialization error:', error);
         if (mounted) {
           setState({
             user: null,

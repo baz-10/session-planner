@@ -23,11 +23,14 @@ export function createBrowserSupabaseClient(): any {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase environment variables are not configured');
   }
+  console.log('[Supabase] Creating client for:', supabaseUrl);
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       storageKey: 'session-planner-auth',
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
   });
 }
