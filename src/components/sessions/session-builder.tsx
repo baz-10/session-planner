@@ -343,60 +343,87 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       return;
     }
 
-    setIsSaving(true);
-
-    if (session.id) {
-      // Update existing session
-      await updateSession(session.id, {
-        name: session.name,
-        date: session.date,
-        start_time: session.start_time,
-        duration: session.duration,
-        location: session.location,
-        defensive_emphasis: session.defensive_emphasis,
-        offensive_emphasis: session.offensive_emphasis,
-        quote: session.quote,
-        announcements: session.announcements,
-      });
-    } else {
-      // Create new session
-      const result = await createSession({
-        team_id: currentTeam?.id || '',
-        name: session.name,
-        date: session.date || undefined,
-        start_time: session.start_time || undefined,
-        duration: session.duration || undefined,
-        location: session.location || undefined,
-        defensive_emphasis: session.defensive_emphasis || undefined,
-        offensive_emphasis: session.offensive_emphasis || undefined,
-        quote: session.quote || undefined,
-        announcements: session.announcements || undefined,
-      });
-
-      if (result.success && result.session) {
-        const newSessionId = result.session.id;
-
-        // Add all activities to the new session
-        for (const activity of session.activities || []) {
-          await addActivity({
-            session_id: newSessionId,
-            drill_id: activity.drill_id || undefined,
-            sort_order: activity.sort_order,
-            name: activity.name,
-            duration: activity.duration,
-            category_id: activity.category_id || undefined,
-            notes: activity.notes || undefined,
-          });
-        }
-
-        // Update URL to reflect new session ID
-        router.replace(`/dashboard/sessions/${newSessionId}`);
-        setSession((prev) => ({ ...prev, id: newSessionId }));
-      }
+    if (!currentTeam?.id) {
+      alert('No team selected. Please select a team first.');
+      return;
     }
 
-    setHasUnsavedChanges(false);
-    setIsSaving(false);
+    setIsSaving(true);
+
+    try {
+      if (session.id) {
+        // Update existing session
+        const updateResult = await updateSession(session.id, {
+          name: session.name,
+          date: session.date,
+          start_time: session.start_time,
+          duration: session.duration,
+          location: session.location,
+          defensive_emphasis: session.defensive_emphasis,
+          offensive_emphasis: session.offensive_emphasis,
+          quote: session.quote,
+          announcements: session.announcements,
+        });
+
+        if (!updateResult.success) {
+          alert(`Failed to save: ${updateResult.error || 'Unknown error'}`);
+          setIsSaving(false);
+          return;
+        }
+      } else {
+        // Create new session
+        const result = await createSession({
+          team_id: currentTeam.id,
+          name: session.name,
+          date: session.date || undefined,
+          start_time: session.start_time || undefined,
+          duration: session.duration || undefined,
+          location: session.location || undefined,
+          defensive_emphasis: session.defensive_emphasis || undefined,
+          offensive_emphasis: session.offensive_emphasis || undefined,
+          quote: session.quote || undefined,
+          announcements: session.announcements || undefined,
+        });
+
+        if (!result.success) {
+          alert(`Failed to create session: ${result.error || 'Unknown error'}. You may need to be a coach or admin to create sessions.`);
+          setIsSaving(false);
+          return;
+        }
+
+        if (result.session) {
+          const newSessionId = result.session.id;
+
+          // Add all activities to the new session
+          for (const activity of session.activities || []) {
+            const activityResult = await addActivity({
+              session_id: newSessionId,
+              drill_id: activity.drill_id || undefined,
+              sort_order: activity.sort_order,
+              name: activity.name,
+              duration: activity.duration,
+              category_id: activity.category_id || undefined,
+              notes: activity.notes || undefined,
+            });
+
+            if (!activityResult.success) {
+              console.error('Failed to add activity:', activityResult.error);
+            }
+          }
+
+          // Update URL to reflect new session ID
+          router.replace(`/dashboard/sessions/${newSessionId}`);
+          setSession((prev) => ({ ...prev, id: newSessionId }));
+        }
+      }
+
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('An unexpected error occurred while saving. Check the console for details.');
+    } finally {
+      setIsSaving(false);
+    }
   }, [session, currentTeam, createSession, updateSession, addActivity, router]);
 
   // Save as new (duplicate)
