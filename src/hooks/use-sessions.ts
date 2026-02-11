@@ -83,38 +83,61 @@ export function useSessions() {
    */
   const createSession = useCallback(
     async (input: CreateSessionInput): Promise<{ success: boolean; session?: Session; error?: string }> => {
+      console.log('[createSession] Starting...', { hasUser: !!user, hasTeam: !!currentTeam, teamId: currentTeam?.id });
+
       if (!user || !currentTeam) {
+        console.log('[createSession] Missing user or team');
         return { success: false, error: 'Not authenticated or no team selected' };
       }
 
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('sessions')
-        .insert({
-          team_id: currentTeam.id,
-          name: input.name,
-          date: input.date || null,
-          start_time: input.start_time || null,
-          duration: input.duration || null,
-          location: input.location || null,
-          defensive_emphasis: input.defensive_emphasis || null,
-          offensive_emphasis: input.offensive_emphasis || null,
-          quote: input.quote || null,
-          announcements: input.announcements || null,
-          is_template: input.is_template || false,
-          created_by: user.id,
-        })
-        .select()
-        .single();
 
-      setIsLoading(false);
+      try {
+        console.log('[createSession] Inserting session for team:', currentTeam.id);
 
-      if (error || !data) {
-        console.error('Error creating session:', error);
-        return { success: false, error: 'Failed to create session' };
+        // Add timeout to prevent infinite hanging
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Database operation timed out after 30 seconds')), 30000)
+        );
+
+        const insertPromise = supabase
+          .from('sessions')
+          .insert({
+            team_id: currentTeam.id,
+            name: input.name,
+            date: input.date || null,
+            start_time: input.start_time || null,
+            duration: input.duration || null,
+            location: input.location || null,
+            defensive_emphasis: input.defensive_emphasis || null,
+            offensive_emphasis: input.offensive_emphasis || null,
+            quote: input.quote || null,
+            announcements: input.announcements || null,
+            is_template: input.is_template || false,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
+
+        setIsLoading(false);
+        console.log('[createSession] Result:', { success: !error, error, hasData: !!data });
+
+        if (error || !data) {
+          console.error('[createSession] Error:', error);
+          const errorMessage = error?.message || error?.code || 'Failed to create session';
+          return { success: false, error: errorMessage };
+        }
+
+        console.log('[createSession] Success! Session ID:', data.id);
+        return { success: true, session: data as Session };
+      } catch (err) {
+        setIsLoading(false);
+        console.error('[createSession] Exception:', err);
+        const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+        return { success: false, error: errorMessage };
       }
-
-      return { success: true, session: data as Session };
     },
     [user, currentTeam, supabase]
   );

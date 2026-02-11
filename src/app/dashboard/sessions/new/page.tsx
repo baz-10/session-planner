@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { SessionBuilder } from '@/components/sessions/session-builder';
 
 export default function NewSessionPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, currentTeam, teamMemberships } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -15,6 +15,17 @@ export default function NewSessionPage() {
       router.push('/login');
     }
   }, [user, isLoading, router]);
+
+  // Log auth state for debugging
+  useEffect(() => {
+    console.log('[NewSessionPage] Auth state:', {
+      isLoading,
+      hasUser: !!user,
+      hasCurrentTeam: !!currentTeam,
+      teamId: currentTeam?.id,
+      numTeamMemberships: teamMemberships?.length || 0,
+    });
+  }, [isLoading, user, currentTeam, teamMemberships]);
 
   if (isLoading) {
     return (
@@ -26,6 +37,23 @@ export default function NewSessionPage() {
 
   if (!user) {
     return null;
+  }
+
+  // Show message if no team is selected
+  if (!currentTeam) {
+    return (
+      <div className="p-8">
+        <div className="card p-8 text-center">
+          <h2 className="text-xl font-semibold text-navy mb-2">No Team Selected</h2>
+          <p className="text-text-secondary mb-4">
+            You need to be part of a team to create sessions.
+          </p>
+          <Link href="/dashboard/team" className="btn-primary">
+            Go to Team Settings
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
