@@ -2,18 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { formatDuration } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
 
 export function SessionsList() {
+  const { currentTeam, isLoading: authLoading } = useAuth();
   const { getSessions, deleteSession, duplicateSession } = useSessions();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Reload sessions when currentTeam changes
   useEffect(() => {
-    loadSessions();
-  }, []);
+    if (currentTeam) {
+      console.log('[SessionsList] Loading sessions for team:', currentTeam.id);
+      loadSessions();
+    } else if (!authLoading) {
+      // No team and auth is done loading - show empty state
+      console.log('[SessionsList] No team available, showing empty state');
+      setIsLoading(false);
+    }
+  }, [currentTeam, authLoading]);
 
   const loadSessions = async () => {
     setIsLoading(true);
@@ -50,10 +60,30 @@ export function SessionsList() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Show message if no team is available
+  if (!currentTeam) {
+    return (
+      <div className="card p-12 text-center">
+        <div className="empty-state-icon mx-auto mb-4">
+          <svg className="w-16 h-16 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-navy mb-2">No Team Available</h2>
+        <p className="text-text-secondary mb-6 max-w-sm mx-auto">
+          Join or create a team to view and create practice sessions.
+        </p>
+        <Link href="/dashboard/team" className="btn-accent">
+          Go to Team Settings
+        </Link>
       </div>
     );
   }

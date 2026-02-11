@@ -137,27 +137,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, state.user, currentTeam]);
 
-  // Fetch linked players (for parents)
+  // Fetch linked players (for parents) and set their team context
   const refreshLinkedPlayers = useCallback(async () => {
     if (!state.user) {
       setLinkedPlayers([]);
       return;
     }
 
+    console.log('[Auth] Fetching linked players for parent...');
+
+    // For parents, fetch player links with their team data
     const { data, error } = await supabase
       .from('parent_player_links')
       .select(`
         *,
-        player:players(*)
+        player:players(
+          *,
+          team:teams(*)
+        )
       `)
       .eq('parent_user_id', state.user.id);
 
     if (error) {
-      console.error('Error fetching linked players:', error);
+      console.error('[Auth] Error fetching linked players:', error);
       return;
     }
 
-    const players = (data || []).map((item: ParentPlayerLink & { player: Player }) => ({
+    console.log('[Auth] Linked players result:', data?.length || 0, 'players found');
+
+    const players = (data || []).map((item: ParentPlayerLink & { player: Player & { team?: Team } }) => ({
       ...item.player,
       link: {
         id: item.id,
@@ -171,7 +179,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })) as LinkedPlayer[];
 
     setLinkedPlayers(players);
-  }, [supabase, state.user]);
+
+    // If user is a parent (no team memberships) and has linked players,
+    // set their current team from the first linked player's team
+    if (!currentTeam && teamMemberships.length === 0 && data && data.length > 0) {
+      const firstPlayerWithTeam = data.find((item: { player: Player & { team?: Team } }) => item.player?.team);
+      if (firstPlayerWithTeam?.player?.team) {
+        console.log('[Auth] Setting parent team from linked player:', firstPlayerWithTeam.player.team.name);
+        setCurrentTeam(firstPlayerWithTeam.player.team as Team);
+      }
+    }
+  }, [supabase, state.user, currentTeam, teamMemberships.length]);
 
   // Fetch organization memberships
   const refreshOrganizationMemberships = useCallback(async () => {
