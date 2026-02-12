@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
+import Link from 'next/link';
 
 export default function TeamSettingsPage() {
   const { currentTeam, teamMemberships } = useAuth();
-  const { getTeamMembers } = useTeam();
+  const { getTeamMembers, createTeam, joinTeamByCode } = useTeam();
 
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -15,6 +16,16 @@ export default function TeamSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'player' | 'parent'>('player');
   const [inviteSent, setInviteSent] = useState(false);
+
+  // Create/Join team state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamSport, setNewTeamSport] = useState('basketball');
+  const [joinCode, setJoinCode] = useState('');
+  const [joinRole, setJoinRole] = useState<'player' | 'coach'>('coach');
+  const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get current user's role in this team
   const currentMembership = teamMemberships.find(m => m.team.id === currentTeam?.id);
@@ -112,18 +123,209 @@ export default function TeamSettingsPage() {
     inviteTimerRef.current = setTimeout(() => setInviteSent(false), 3000);
   };
 
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamName.trim()) {
+      setFormError('Please enter a team name');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError('');
+
+    const result = await createTeam({
+      name: newTeamName.trim(),
+      sport: newTeamSport,
+    });
+
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setFormError(result.error || 'Failed to create team');
+      return;
+    }
+
+    // Team created successfully - page will re-render with currentTeam
+    setShowCreateForm(false);
+    setNewTeamName('');
+  };
+
+  const handleJoinTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (joinCode.length !== 6) {
+      setFormError('Please enter a valid 6-character team code');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError('');
+
+    const result = await joinTeamByCode(joinCode.toUpperCase(), joinRole);
+
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setFormError(result.error || 'Failed to join team');
+      return;
+    }
+
+    // Joined successfully - page will re-render with currentTeam
+    setShowJoinForm(false);
+    setJoinCode('');
+  };
+
   if (!currentTeam) {
     return (
-      <div className="p-6 md:p-8">
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-semibold text-navy mb-2">No Team Selected</h3>
-          <p className="text-text-secondary">Create or join a team to manage settings.</p>
+      <div className="p-6 md:p-8 max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-navy mb-2">Team Setup</h1>
+          <p className="text-text-secondary">Create a new team or join an existing one</p>
         </div>
+
+        {formError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {formError}
+          </div>
+        )}
+
+        {!showCreateForm && !showJoinForm && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Create Team Option */}
+            <button
+              onClick={() => { setShowCreateForm(true); setFormError(''); }}
+              className="card p-6 text-left hover:shadow-md hover:border-teal transition-all"
+            >
+              <div className="w-12 h-12 bg-teal-glow rounded-xl flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-navy mb-2">Create a New Team</h3>
+              <p className="text-text-secondary text-sm">Start fresh with your own team and invite players</p>
+            </button>
+
+            {/* Join Team Option */}
+            <button
+              onClick={() => { setShowJoinForm(true); setFormError(''); }}
+              className="card p-6 text-left hover:shadow-md hover:border-teal transition-all"
+            >
+              <div className="w-12 h-12 bg-navy/10 rounded-xl flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-navy mb-2">Join Existing Team</h3>
+              <p className="text-text-secondary text-sm">Enter a team code to join an existing team</p>
+            </button>
+          </div>
+        )}
+
+        {/* Create Team Form */}
+        {showCreateForm && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold text-navy mb-4">Create Your Team</h3>
+            <form onSubmit={handleCreateTeam} className="space-y-4">
+              <div className="form-group">
+                <label htmlFor="teamName" className="label">Team Name</label>
+                <input
+                  id="teamName"
+                  type="text"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="input"
+                  placeholder="e.g., Westside Warriors U14"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="sport" className="label">Sport</label>
+                <select
+                  id="sport"
+                  value={newTeamSport}
+                  onChange={(e) => setNewTeamSport(e.target.value)}
+                  className="input"
+                >
+                  <option value="basketball">Basketball</option>
+                  <option value="soccer">Soccer</option>
+                  <option value="football">Football</option>
+                  <option value="baseball">Baseball</option>
+                  <option value="softball">Softball</option>
+                  <option value="volleyball">Volleyball</option>
+                  <option value="hockey">Hockey</option>
+                  <option value="lacrosse">Lacrosse</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-accent flex-1"
+                >
+                  {isSubmitting ? 'Creating...' : 'Create Team'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Join Team Form */}
+        {showJoinForm && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold text-navy mb-4">Join a Team</h3>
+            <form onSubmit={handleJoinTeam} className="space-y-4">
+              <div className="form-group">
+                <label htmlFor="teamCode" className="label">Team Code</label>
+                <input
+                  id="teamCode"
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  className="input text-center text-2xl tracking-widest font-mono"
+                  placeholder="ABC123"
+                  maxLength={6}
+                  required
+                />
+                <p className="text-xs text-text-muted mt-1">Ask your coach for the 6-character team code</p>
+              </div>
+              <div className="form-group">
+                <label htmlFor="role" className="label">Join as</label>
+                <select
+                  id="role"
+                  value={joinRole}
+                  onChange={(e) => setJoinRole(e.target.value as 'player' | 'coach')}
+                  className="input"
+                >
+                  <option value="coach">Coach</option>
+                  <option value="player">Player</option>
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowJoinForm(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || joinCode.length !== 6}
+                  className="btn-accent flex-1"
+                >
+                  {isSubmitting ? 'Joining...' : 'Join Team'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     );
   }
