@@ -7,6 +7,7 @@ import Link from 'next/link';
 
 export default function TeamSettingsPage() {
   const { currentTeam, teamMemberships } = useAuth();
+  console.log('🟢 TeamSettingsPage render:', { currentTeam: currentTeam?.name, memberships: teamMemberships.length });
   const { getTeamMembers, createTeam, joinTeamByCode } = useTeam();
 
   const [copied, setCopied] = useState(false);

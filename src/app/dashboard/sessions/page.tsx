@@ -7,8 +7,10 @@ import { useAuth } from '@/contexts/auth-context';
 import { SessionsList } from '@/components/sessions/sessions-list';
 
 export default function SessionsPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, currentTeam, teamMemberships } = useAuth();
   const router = useRouter();
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canCreateSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -38,12 +40,18 @@ export default function SessionsPage() {
             Create and manage your training sessions
           </p>
         </div>
-        <Link href="/dashboard/sessions/new" className="btn-accent">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          New Session
-        </Link>
+        {canCreateSessions ? (
+          <Link href="/dashboard/sessions/new" className="btn-accent">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            New Session
+          </Link>
+        ) : (
+          <span className="text-sm text-text-muted">
+            Coach/Admin role required to create sessions
+          </span>
+        )}
       </div>
 
       <SessionsList />

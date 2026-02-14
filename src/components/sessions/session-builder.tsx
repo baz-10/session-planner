@@ -386,7 +386,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         });
 
         if (!result.success) {
-          alert(`Failed to create session: ${result.error || 'Unknown error'}. You may need to be a coach or admin to create sessions.`);
+          alert(`Failed to create session: ${result.error || 'Unknown error'}`);
           setIsSaving(false);
           return;
         }

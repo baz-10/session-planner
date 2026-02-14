@@ -9,6 +9,7 @@ import type {
   CreateSessionInput,
   CreateActivityInput,
   DrillCategory,
+  TeamRole,
 } from '@/types/database';
 
 interface SessionWithActivities extends Session {
@@ -83,17 +84,43 @@ export function useSessions() {
    */
   const createSession = useCallback(
     async (input: CreateSessionInput): Promise<{ success: boolean; session?: Session; error?: string }> => {
-      console.log('[createSession] Starting...', { hasUser: !!user, hasTeam: !!currentTeam, teamId: currentTeam?.id });
+      const targetTeamId = input.team_id || currentTeam?.id;
+      console.log('[createSession] Starting...', {
+        hasUser: !!user,
+        hasCurrentTeam: !!currentTeam,
+        currentTeamId: currentTeam?.id,
+        targetTeamId,
+      });
 
-      if (!user || !currentTeam) {
-        console.log('[createSession] Missing user or team');
+      if (!user || !targetTeamId) {
+        console.log('[createSession] Missing user or target team');
         return { success: false, error: 'Not authenticated or no team selected' };
       }
 
       setIsLoading(true);
 
       try {
-        console.log('[createSession] Inserting session for team:', currentTeam.id);
+        const { data: membershipData, error: membershipError } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('team_id', targetTeamId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (membershipError) {
+          setIsLoading(false);
+          console.error('[createSession] Failed to verify membership:', membershipError);
+          return { success: false, error: 'Unable to verify your team permissions. Please try again.' };
+        }
+
+        const membership = membershipData as { role: TeamRole } | null;
+        const canManageSessions = membership?.role === 'admin' || membership?.role === 'coach';
+        if (!canManageSessions) {
+          setIsLoading(false);
+          return { success: false, error: 'Only coaches or admins can create session plans for this team.' };
+        }
+
+        console.log('[createSession] Inserting session for team:', targetTeamId);
 
         // Add timeout to prevent infinite hanging
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -103,7 +130,7 @@ export function useSessions() {
         const insertPromise = supabase
           .from('sessions')
           .insert({
-            team_id: currentTeam.id,
+            team_id: targetTeamId,
             name: input.name,
             date: input.date || null,
             start_time: input.start_time || null,
@@ -126,7 +153,10 @@ export function useSessions() {
 
         if (error || !data) {
           console.error('[createSession] Error:', error);
-          const errorMessage = error?.message || error?.code || 'Failed to create session';
+          const isRlsError = error?.code === '42501' || error?.message?.toLowerCase().includes('row-level security');
+          const errorMessage = isRlsError
+            ? 'Only coaches or admins can create session plans for this team.'
+            : error?.message || error?.code || 'Failed to create session';
           return { success: false, error: errorMessage };
         }
 

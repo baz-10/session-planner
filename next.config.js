@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // Removed 'output: export' to enable dynamic routes on Vercel
+  // Static export doesn't support dynamic [id] routes properly
   trailingSlash: true,
   images: {
     unoptimized: true,

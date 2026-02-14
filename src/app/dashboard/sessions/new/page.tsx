@@ -7,8 +7,13 @@ import { useAuth } from '@/contexts/auth-context';
 import { SessionBuilder } from '@/components/sessions/session-builder';
 
 export default function NewSessionPage() {
-  const { user, isLoading, currentTeam, teamMemberships } = useAuth();
+  const { user, isLoading, currentTeam, teamMemberships, setCurrentTeam } = useAuth();
   const router = useRouter();
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canCreateInCurrentTeam = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const coachOrAdminMemberships = teamMemberships.filter(
+    (membership) => membership.role === 'coach' || membership.role === 'admin'
+  );
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -51,6 +56,48 @@ export default function NewSessionPage() {
           <Link href="/dashboard/team" className="btn-primary">
             Go to Team Settings
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canCreateInCurrentTeam) {
+    return (
+      <div className="p-8">
+        <div className="card p-8">
+          <h2 className="text-xl font-semibold text-navy mb-2">Coach or Admin Access Required</h2>
+          <p className="text-text-secondary mb-4">
+            You are currently on <span className="font-medium">{currentTeam.name}</span>{' '}
+            {currentMembership ? `as a ${currentMembership.role}` : 'without an active team membership'}.
+            Only coaches and admins can create session plans.
+          </p>
+
+          {coachOrAdminMemberships.length > 0 && (
+            <div className="mb-4">
+              <p className="text-sm text-text-secondary mb-3">Switch to a team where you are a coach or admin:</p>
+              <div className="flex flex-wrap gap-2">
+                {coachOrAdminMemberships.map((membership) => (
+                  <button
+                    key={membership.team.id}
+                    type="button"
+                    onClick={() => setCurrentTeam(membership.team)}
+                    className="btn-primary"
+                  >
+                    {membership.team.name} ({membership.role})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/team" className="btn-primary">
+              Go to Team Settings
+            </Link>
+            <Link href="/dashboard/sessions" className="btn-ghost">
+              Back to Sessions
+            </Link>
+          </div>
         </div>
       </div>
     );

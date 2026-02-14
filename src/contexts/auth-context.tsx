@@ -67,6 +67,8 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  console.log('🔵 AuthProvider MOUNTED');
+
   const [state, setState] = useState<AuthState>({
     user: null,
     session: null,
@@ -107,9 +109,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch team memberships
   const refreshTeamMemberships = useCallback(async () => {
     if (!state.user) {
+      console.log('[Auth] refreshTeamMemberships: No user, skipping');
       setTeamMemberships([]);
       return;
     }
+
+    console.log('[Auth] refreshTeamMemberships: Fetching for user', state.user.id);
+
+    // Debug: Check what auth.uid() returns from Supabase's perspective
+    const { data: debugAuth, error: debugError } = await supabase.rpc('debug_auth');
+    console.log('[Auth] debug_auth result:', debugAuth, debugError);
 
     const { data, error } = await supabase
       .from('team_members')
@@ -119,8 +128,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `)
       .eq('user_id', state.user.id);
 
+    console.log('[Auth] team_members query result:', { data, error, count: data?.length });
+
     if (error) {
-      console.error('Error fetching team memberships:', error);
+      console.error('[Auth] Error fetching team memberships:', error);
       return;
     }
 
@@ -129,11 +140,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       team: item.team as Team,
     })) as TeamMembership[];
 
+    console.log('[Auth] Setting teamMemberships:', memberships.length, 'teams');
     setTeamMemberships(memberships);
 
-    // Set current team to first one if not set
-    if (!currentTeam && memberships.length > 0) {
-      setCurrentTeam(memberships[0].team);
+    const hasCurrentTeamMembership = currentTeam
+      ? memberships.some((membership) => membership.team.id === currentTeam.id)
+      : false;
+
+    const preferredMembership =
+      memberships.find((membership) => membership.role === 'admin' || membership.role === 'coach') ??
+      memberships[0];
+
+    // Prefer a coach/admin team by default, and recover if currentTeam isn't one of the user's memberships.
+    if ((!currentTeam || !hasCurrentTeamMembership) && preferredMembership?.team) {
+      console.log('[Auth] Setting currentTeam to:', preferredMembership.team.name);
+      setCurrentTeam(preferredMembership.team);
     }
   }, [supabase, state.user, currentTeam]);
 
@@ -234,13 +255,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
+    console.log('🔴 AUTH USEEFFECT RUNNING');
     let mounted = true;
 
     const initializeAuth = async () => {
       try {
-        console.log('[Auth] Starting session check...');
-        const { data, error } = await supabase.auth.getSession();
-        console.log('[Auth] Session result:', { hasSession: !!data?.session, error });
+        console.log('🟡 [Auth] Starting session check...');
+
+        // Add timeout to detect hanging getSession
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('getSession timeout after 10s')), 10000)
+        );
+
+        const sessionPromise = supabase.auth.getSession();
+
+        const { data, error } = await Promise.race([sessionPromise, timeoutPromise]) as Awaited<typeof sessionPromise>;
+        console.log('🟡 [Auth] Session result:', { hasSession: !!data?.session, userId: data?.session?.user?.id, error });
 
         if (!mounted) return;
 
@@ -270,9 +300,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isLoading: false,
           isInitialized: true,
         });
-        console.log('[Auth] Initialization complete');
+        console.log('🟡 [Auth] Initialization complete, user:', session?.user?.id);
       } catch (error) {
-        console.error('[Auth] Initialization error:', error);
+        console.error('🔴 [Auth] Initialization error:', error);
         if (mounted) {
           setState({
             user: null,

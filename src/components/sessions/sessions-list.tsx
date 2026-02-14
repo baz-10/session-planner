@@ -8,10 +8,12 @@ import { formatDuration } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
 
 export function SessionsList() {
-  const { currentTeam, isLoading: authLoading } = useAuth();
+  const { currentTeam, teamMemberships, isLoading: authLoading } = useAuth();
   const { getSessions, deleteSession, duplicateSession } = useSessions();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canCreateSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   // Reload sessions when currentTeam changes
   useEffect(() => {
@@ -100,9 +102,15 @@ export function SessionsList() {
         <p className="text-text-secondary mb-6 max-w-sm mx-auto">
           Create your first practice plan to start organizing your sessions with timed activities.
         </p>
-        <Link href="/dashboard/sessions/new" className="btn-accent">
-          Create Your First Plan
-        </Link>
+        {canCreateSessions ? (
+          <Link href="/dashboard/sessions/new" className="btn-accent">
+            Create Your First Plan
+          </Link>
+        ) : (
+          <p className="text-sm text-text-muted">
+            Coach/Admin role required to create plans for this team.
+          </p>
+        )}
       </div>
     );
   }
