@@ -24,6 +24,14 @@ interface DrillWithCategory extends Drill {
   category?: DrillCategory | null;
 }
 
+const normalizeActivitySortOrder = (
+  activities: ActivityWithCategory[]
+): ActivityWithCategory[] =>
+  activities.map((activity, index) => ({
+    ...activity,
+    sort_order: index,
+  }));
+
 interface SessionBuilderProps {
   sessionId?: string;
   isNew?: boolean;
@@ -118,10 +126,13 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const handleActivityDelete = useCallback(
     async (activityId: string) => {
       // Update local state
-      setSession((prev) => ({
-        ...prev,
-        activities: prev.activities?.filter((a) => a.id !== activityId),
-      }));
+      setSession((prev) => {
+        const remainingActivities = (prev.activities || []).filter((a) => a.id !== activityId);
+        return {
+          ...prev,
+          activities: normalizeActivitySortOrder(remainingActivities),
+        };
+      });
 
       // If session is saved, delete from database
       if (session.id) {
@@ -137,9 +148,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     async (activityIds: string[]) => {
       // Update local state
       const activities = session.activities || [];
-      const reorderedActivities = activityIds
-        .map((id) => activities.find((a) => a.id === id))
-        .filter(Boolean) as ActivityWithCategory[];
+      const reorderedActivities = normalizeActivitySortOrder(
+        activityIds
+          .map((id) => activities.find((a) => a.id === id))
+          .filter(Boolean) as ActivityWithCategory[]
+      );
 
       setSession((prev) => ({
         ...prev,
@@ -351,6 +364,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setIsSaving(true);
 
     try {
+      let didPersistAllChanges = true;
+
       if (session.id) {
         // Update existing session
         const updateResult = await updateSession(session.id, {
@@ -393,9 +408,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         if (result.session) {
           const newSessionId = result.session.id;
+          const normalizedActivities = normalizeActivitySortOrder(
+            (session.activities || []) as ActivityWithCategory[]
+          );
 
           // Add all activities to the new session
-          for (const activity of session.activities || []) {
+          for (const activity of normalizedActivities) {
             const activityResult = await addActivity({
               session_id: newSessionId,
               drill_id: activity.drill_id || undefined,
@@ -407,6 +425,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             });
 
             if (!activityResult.success) {
+              didPersistAllChanges = false;
               console.error('Failed to add activity:', activityResult.error);
             }
           }
@@ -417,7 +436,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }
       }
 
-      setHasUnsavedChanges(false);
+      if (!didPersistAllChanges) {
+        alert('Session was saved, but one or more activities failed to save. Please review and save again.');
+      }
+      setHasUnsavedChanges(!didPersistAllChanges);
     } catch (error) {
       console.error('Save error:', error);
       alert('An unexpected error occurred while saving. Check the console for details.');

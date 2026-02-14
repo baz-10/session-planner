@@ -24,11 +24,23 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   const [defaultDuration, setDefaultDuration] = useState(drill?.default_duration?.toString() || '10');
   const [description, setDescription] = useState(drill?.description || '');
   const [notes, setNotes] = useState(drill?.notes || '');
+  const [tagsInput, setTagsInput] = useState((drill?.tags || []).join(', '));
   const [media, setMedia] = useState<DrillMedia[]>(drill?.media || []);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState('');
 
   const isEditing = !!drill;
+
+  useEffect(() => {
+    setName(drill?.name || '');
+    setCategoryId(drill?.category_id || '');
+    setDefaultDuration(drill?.default_duration?.toString() || '10');
+    setDescription(drill?.description || '');
+    setNotes(drill?.notes || '');
+    setTagsInput((drill?.tags || []).join(', '));
+    setMedia(drill?.media || []);
+    setError('');
+  }, [drill]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,12 +57,22 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
       return;
     }
 
+    const tags = Array.from(
+      new Set(
+        tagsInput
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      )
+    );
+
     const drillData = {
       name: name.trim(),
       category_id: categoryId || undefined,
       default_duration: duration,
       description: description.trim() || undefined,
       notes: notes.trim() || undefined,
+      tags,
     };
 
     let result;
@@ -201,6 +223,23 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Private notes for coaches..."
             />
+          </div>
+
+          {/* Labels */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Labels
+            </label>
+            <input
+              type="text"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., warmup, shooting, half-court"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Separate labels with commas to improve search and filtering.
+            </p>
           </div>
 
           {/* Media (only for existing drills) */}

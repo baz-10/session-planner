@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -55,8 +55,8 @@ export function ActivityTable({
 }: ActivityTableProps) {
   const [localActivities, setLocalActivities] = useState(activities);
 
-  // Update local state when activities prop changes
-  useMemo(() => {
+  // Keep local drag state synced to upstream activity updates
+  useEffect(() => {
     setLocalActivities(activities);
   }, [activities]);
 

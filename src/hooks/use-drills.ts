@@ -348,7 +348,8 @@ export function useDrills() {
    */
   const searchDrills = useCallback(
     async (query: string): Promise<DrillWithDetails[]> => {
-      if (!currentTeam || !query.trim()) return [];
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!currentTeam || !normalizedQuery) return [];
 
       const { data, error } = await supabase
         .from('drills')
@@ -358,16 +359,30 @@ export function useDrills() {
           media:drill_media(*)
         `)
         .eq('team_id', currentTeam.id)
-        .ilike('name', `%${query}%`)
         .order('name', { ascending: true })
-        .limit(20);
+        .limit(200);
 
       if (error) {
         console.error('Error searching drills:', error);
         return [];
       }
 
-      return data as DrillWithDetails[];
+      const drills = (data || []) as DrillWithDetails[];
+
+      const filteredDrills = drills.filter((drill) => {
+        const searchableText = [
+          drill.name || '',
+          drill.description || '',
+          drill.notes || '',
+          (drill.tags || []).join(' '),
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return searchableText.includes(normalizedQuery);
+      });
+
+      return filteredDrills.slice(0, 20);
     },
     [supabase, currentTeam]
   );

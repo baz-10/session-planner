@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDrills } from '@/hooks/use-drills';
 import type { Drill, DrillCategory } from '@/types/database';
 
@@ -31,6 +31,7 @@ export function DrillSelectorModal({
   const [drills, setDrills] = useState<DrillWithCategory[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedTag, setSelectedTag] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'library' | 'custom'>('library');
   const [selectedDrills, setSelectedDrills] = useState<Map<string, DrillWithCategory>>(new Map());
@@ -40,27 +41,21 @@ export function DrillSelectorModal({
   const [customDuration, setCustomDuration] = useState('10');
   const [customCategoryId, setCustomCategoryId] = useState('');
 
-  // Reset selections when modal opens/closes or mode changes
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedDrills(new Map());
-      loadDrills();
-    }
-  }, [isOpen, mode]);
-
-  // Load drills when category changes
-  useEffect(() => {
-    if (isOpen) {
-      loadDrills();
-    }
-  }, [selectedCategoryId]);
-
-  const loadDrills = async () => {
+  const loadDrills = useCallback(async () => {
     setIsLoading(true);
     const data = await getDrills(selectedCategoryId || undefined);
     setDrills(data);
     setIsLoading(false);
-  };
+  }, [getDrills, selectedCategoryId]);
+
+  // Reset selections when modal opens/closes or mode changes
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedDrills(new Map());
+      setSelectedTag('');
+      loadDrills();
+    }
+  }, [isOpen, mode, loadDrills]);
 
   // Handle search
   useEffect(() => {
@@ -82,7 +77,23 @@ export function DrillSelectorModal({
     } else {
       loadDrills();
     }
-  }, [searchQuery, isOpen]);
+  }, [searchQuery, selectedCategoryId, isOpen, loadDrills, searchDrills]);
+
+  const availableTags = useMemo(() => {
+    const tags = drills.flatMap((drill) => drill.tags || []);
+    return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
+  }, [drills]);
+
+  const filteredDrills = useMemo(() => {
+    if (!selectedTag) return drills;
+    return drills.filter((drill) => (drill.tags || []).includes(selectedTag));
+  }, [drills, selectedTag]);
+
+  useEffect(() => {
+    if (selectedTag && !availableTags.includes(selectedTag)) {
+      setSelectedTag('');
+    }
+  }, [availableTags, selectedTag]);
 
   const handleAddCustom = () => {
     if (!customName.trim()) return;
@@ -127,9 +138,9 @@ export function DrillSelectorModal({
 
   const selectAll = useCallback(() => {
     const newMap = new Map<string, DrillWithCategory>();
-    drills.forEach(drill => newMap.set(drill.id, drill));
+    filteredDrills.forEach((drill) => newMap.set(drill.id, drill));
     setSelectedDrills(newMap);
-  }, [drills]);
+  }, [filteredDrills]);
 
   const clearSelection = useCallback(() => {
     setSelectedDrills(new Map());
@@ -220,10 +231,22 @@ export function DrillSelectorModal({
                     </option>
                   ))}
                 </select>
+                <select
+                  value={selectedTag}
+                  onChange={(e) => setSelectedTag(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">All Labels</option>
+                  {availableTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Multi-select actions */}
-              {isMultiMode && drills.length > 0 && (
+              {isMultiMode && filteredDrills.length > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex gap-2">
                     <button
@@ -245,7 +268,7 @@ export function DrillSelectorModal({
                     )}
                   </div>
                   <span className="text-gray-500">
-                    {drills.length} drill{drills.length !== 1 ? 's' : ''} available
+                    {filteredDrills.length} drill{filteredDrills.length !== 1 ? 's' : ''} available
                   </span>
                 </div>
               )}
@@ -255,15 +278,15 @@ export function DrillSelectorModal({
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
-              ) : drills.length === 0 ? (
+              ) : filteredDrills.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchQuery
-                    ? 'No drills found matching your search'
+                  {searchQuery || selectedTag
+                    ? 'No drills found matching your filters'
                     : 'No drills in your library yet'}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {drills.map((drill) => {
+                  {filteredDrills.map((drill) => {
                     const isSelected = selectedDrills.has(drill.id);
                     return (
                       <button
@@ -305,6 +328,18 @@ export function DrillSelectorModal({
                                 )}
                                 <span>{drill.default_duration} min</span>
                               </div>
+                              {drill.tags && drill.tags.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {drill.tags.map((tag) => (
+                                    <span
+                                      key={`${drill.id}-${tag}`}
+                                      className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {!isMultiMode && (
