@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 
+const PASSWORD_SIGN_IN_TIMEOUT_MS = 60000;
+const OAUTH_TIMEOUT_MS = 20000;
+const SLOW_REQUEST_HINT_MS = 8000;
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -15,66 +19,99 @@ export function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [statusHint, setStatusHint] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setStatusHint('');
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setError('You appear to be offline. Check your connection and try again.');
+      return;
+    }
+
     setIsSubmitting(true);
+    const startedAt = Date.now();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let slowHintId: ReturnType<typeof setTimeout> | null = null;
 
     try {
-      // Add timeout to prevent infinite loading
-      // Using 20s to account for Supabase free tier cold starts
-      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
-        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 20000)
-      );
+      // Surface a helpful hint while we wait for potentially cold auth infrastructure.
+      slowHintId = setTimeout(() => {
+        setStatusHint('Still connecting... this can take up to a minute if services are waking up.');
+      }, SLOW_REQUEST_HINT_MS);
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            new Error(
+              'Sign-in is taking longer than expected. Please retry, and if it keeps happening check VPN/ad-blocker settings.'
+            )
+          );
+        }, PASSWORD_SIGN_IN_TIMEOUT_MS);
+      });
 
       const signInPromise = signIn(email, password);
       const { error } = await Promise.race([signInPromise, timeoutPromise]);
 
       if (error) {
         setError(error.message);
-        setIsSubmitting(false);
         return;
       }
 
+      const elapsedMs = Date.now() - startedAt;
+      console.info(`[Login] Password sign-in succeeded in ${elapsedMs}ms`);
       router.push(redirectTo);
     } catch (err: unknown) {
-      const errorMessage = err && typeof err === 'object' && 'error' in err
-        ? (err as { error: { message: string } }).error.message
-        : 'Connection failed. Please try again.';
+      const elapsedMs = Date.now() - startedAt;
+      console.error(`[Login] Password sign-in failed after ${elapsedMs}ms`, err);
+
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : err && typeof err === 'object' && 'error' in err
+            ? (err as { error: { message: string } }).error.message
+            : 'Connection failed. Please try again.';
       setError(errorMessage);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (slowHintId) clearTimeout(slowHintId);
+      setStatusHint('');
       setIsSubmitting(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     setError('');
+    setStatusHint('');
     try {
-      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
-        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
       );
       const { error } = await Promise.race([signInWithGoogle(), timeoutPromise]);
       if (error) {
         setError(error.message);
       }
-    } catch {
-      setError('Connection failed. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
     }
   };
 
   const handleAppleSignIn = async () => {
     setError('');
+    setStatusHint('');
     try {
-      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) =>
-        setTimeout(() => reject({ error: { message: 'Connection timed out. Please try again.' } }), 10000)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
       );
       const { error } = await Promise.race([signInWithApple(), timeoutPromise]);
       if (error) {
         setError(error.message);
       }
-    } catch {
-      setError('Connection failed. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
     }
   };
 
@@ -154,6 +191,11 @@ export function LoginForm() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
               {error}
+            </div>
+          )}
+          {!error && statusHint && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-fade-in">
+              {statusHint}
             </div>
           )}
 

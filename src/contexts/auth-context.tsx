@@ -12,6 +12,8 @@ import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization, OrganizationMember, OrgRole } from '@/types/database';
 
+const AUTH_INIT_TIMEOUT_MS = 30000;
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -262,9 +264,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         console.log('🟡 [Auth] Starting session check...');
 
-        // Add timeout to detect hanging getSession
+        // Protect against indefinite hangs, while allowing enough time for cold starts.
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('getSession timeout after 10s')), 10000)
+          setTimeout(() => reject(new Error(`getSession timeout after ${AUTH_INIT_TIMEOUT_MS / 1000}s`)), AUTH_INIT_TIMEOUT_MS)
         );
 
         const sessionPromise = supabase.auth.getSession();
