@@ -9,8 +9,10 @@ import { SessionMetadataForm } from './session-metadata-form';
 import { ActivityTable } from './activity-table';
 import { TimeAllocationChart } from './time-allocation-chart';
 import { DrillSelectorModal } from './drill-selector-modal';
+import { SessionAutopilotPanel } from './session-autopilot-panel';
 import { printSessionPlan } from '@/lib/utils/pdf-export';
 import type { Session, SessionActivity, DrillCategory, Drill } from '@/types/database';
+import type { SessionAutopilotVariant } from '@/lib/ai/session-autopilot-types';
 
 interface ActivityWithCategory extends SessionActivity {
   category?: DrillCategory | null;
@@ -349,6 +351,102 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setIsDrillModalOpen(true);
   }, []);
 
+  // Apply an autopilot-generated variant (replace existing activities)
+  const handleApplyAutopilotVariant = useCallback(
+    async (variant: SessionAutopilotVariant) => {
+      const existingActivities = session.activities || [];
+      if (existingActivities.length > 0) {
+        const shouldReplace = confirm(
+          `Apply ${variant.label}? This will replace ${existingActivities.length} existing activities in this plan.`
+        );
+        if (!shouldReplace) {
+          return;
+        }
+      }
+
+      if (session.id) {
+        // Persisted session: replace activities in the database.
+        let didPersistAllChanges = true;
+
+        for (const existing of existingActivities) {
+          const deleteResult = await deleteActivity(existing.id);
+          if (!deleteResult.success) {
+            didPersistAllChanges = false;
+          }
+        }
+
+        const persistedActivities: ActivityWithCategory[] = [];
+        for (let index = 0; index < variant.activities.length; index += 1) {
+          const generated = variant.activities[index];
+          const insertResult = await addActivity({
+            session_id: session.id,
+            drill_id: generated.drillId,
+            sort_order: index,
+            name: generated.name,
+            duration: generated.duration,
+            category_id: generated.categoryId,
+            notes: generated.notes,
+          });
+
+          if (insertResult.success && insertResult.activity) {
+            const insertedActivity = insertResult.activity;
+            persistedActivities.push({
+              ...insertedActivity,
+              category:
+                categories.find((category) => category.id === insertedActivity.category_id) ||
+                null,
+            });
+          } else {
+            didPersistAllChanges = false;
+          }
+        }
+
+        setSession((prev) => ({
+          ...prev,
+          activities: normalizeActivitySortOrder(persistedActivities),
+        }));
+
+        if (!didPersistAllChanges) {
+          alert(
+            'Autopilot plan was partially applied. Some activity inserts failed. Please review and save again.'
+          );
+          setHasUnsavedChanges(true);
+        }
+        return;
+      }
+
+      // Unsaved session: replace in local state.
+      const generatedActivities: ActivityWithCategory[] = variant.activities.map((generated, index) => ({
+        id: `temp-${Date.now()}-${index}`,
+        session_id: '',
+        drill_id: generated.drillId || null,
+        name: generated.name,
+        duration: generated.duration,
+        category_id: generated.categoryId || null,
+        notes: generated.notes || null,
+        sort_order: index,
+        groups: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        category:
+          categories.find((category) => category.id === generated.categoryId) ||
+          categories.find(
+            (category) =>
+              generated.categoryName &&
+              category.name.toLowerCase() === generated.categoryName.toLowerCase()
+          ) ||
+          null,
+      }));
+
+      setSession((prev) => ({
+        ...prev,
+        activities: normalizeActivitySortOrder(generatedActivities),
+      }));
+      setHasUnsavedChanges(true);
+    },
+    [session.activities, session.id, categories, deleteActivity, addActivity]
+  );
+
   // Save session
   const handleSave = useCallback(async () => {
     if (!session.name?.trim()) {
@@ -531,6 +629,23 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           />
         </div>
       </div>
+
+      {/* Activity Table */}
+      <SessionAutopilotPanel
+        teamId={currentTeam?.id}
+        sessionContext={{
+          sessionName: session.name,
+          durationMinutes: session.duration || undefined,
+          offensiveEmphasis: session.offensive_emphasis,
+          defensiveEmphasis: session.defensive_emphasis,
+          existingActivities: (session.activities || []).map((activity) => ({
+            name: activity.name,
+            duration: activity.duration,
+          })),
+        }}
+        disabled={isSaving}
+        onApplyVariant={handleApplyAutopilotVariant}
+      />
 
       {/* Activity Table */}
       <ActivityTable

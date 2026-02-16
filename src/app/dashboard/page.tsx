@@ -68,7 +68,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-navy mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Link href="/dashboard/sessions/new" className="card card-hover p-6 group">
             <div className="w-12 h-12 bg-teal-glow rounded-lg flex items-center justify-center mb-4 group-hover:bg-teal group-hover:text-white transition-colors">
               <svg className="w-6 h-6 text-teal group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -97,6 +97,16 @@ export default function DashboardPage() {
             </div>
             <h3 className="font-semibold text-navy mb-1">Team Chat</h3>
             <p className="text-sm text-text-secondary">Message players and parents</p>
+          </Link>
+
+          <Link href="/dashboard/billing" className="card card-hover p-6 group">
+            <div className="w-12 h-12 bg-navy/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-navy transition-colors">
+              <svg className="w-6 h-6 text-navy group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h5M6 5h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" />
+              </svg>
+            </div>
+            <h3 className="font-semibold text-navy mb-1">Billing</h3>
+            <p className="text-sm text-text-secondary">Create invoices and collect team dues</p>
           </Link>
         </div>
       </div>

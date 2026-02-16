@@ -9,3 +9,4 @@ export { useDrills } from './use-drills';
 export { usePosts } from './use-posts';
 export { useChat } from './use-chat';
 export { useEvents } from './use-events';
+export { useBilling } from './use-billing';

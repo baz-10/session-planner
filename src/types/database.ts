@@ -19,6 +19,10 @@ export type ChatType = 'team' | 'coaches' | 'direct' | 'group';
 export type MessageType = 'text' | 'image' | 'file' | 'system';
 export type AttachmentType = 'image' | 'video' | 'document' | 'audio';
 export type RelationshipType = 'parent' | 'guardian' | 'other';
+export type InvoiceStatus = 'draft' | 'open' | 'partially_paid' | 'paid' | 'void';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'expired';
+export type BillingInstallmentStatus = 'scheduled' | 'paid' | 'overdue' | 'void';
+export type BillingReminderType = 'upcoming' | 'overdue';
 
 // ============================================================================
 // BASE TYPES
@@ -253,6 +257,86 @@ export interface AttendanceRecord {
 }
 
 // ============================================================================
+// BILLING TYPES
+// ============================================================================
+
+export interface BillingInvoice {
+  id: string;
+  team_id: string;
+  title: string;
+  description: string | null;
+  amount_cents: number;
+  currency: string;
+  due_date: string | null;
+  status: InvoiceStatus;
+  allow_partial: boolean;
+  installment_plan_count: number;
+  installment_frequency_days: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingInvoiceRecipient {
+  id: string;
+  invoice_id: string;
+  user_id: string;
+  amount_override_cents: number | null;
+  created_at: string;
+}
+
+export interface BillingPayment {
+  id: string;
+  invoice_id: string;
+  user_id: string;
+  amount_cents: number;
+  status: PaymentStatus;
+  provider: string;
+  provider_checkout_session_id: string | null;
+  provider_payment_intent_id: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingInstallment {
+  id: string;
+  invoice_id: string;
+  installment_number: number;
+  due_date: string;
+  created_at: string;
+}
+
+export interface BillingRecipientInstallment {
+  id: string;
+  invoice_id: string;
+  installment_id: string;
+  user_id: string;
+  due_date: string;
+  amount_cents: number;
+  status: BillingInstallmentStatus;
+  paid_payment_id: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingReminder {
+  id: string;
+  team_id: string;
+  invoice_id: string;
+  recipient_installment_id: string | null;
+  user_id: string;
+  reminder_type: BillingReminderType;
+  message: string;
+  sent_by: string | null;
+  sent_at: string;
+  sent_on: string;
+  is_read: boolean;
+  read_at: string | null;
+}
+
+// ============================================================================
 // POST TYPES
 // ============================================================================
 
@@ -478,6 +562,20 @@ export interface CreateMessageInput {
   metadata?: MessageMetadata;
 }
 
+export interface CreateBillingInvoiceInput {
+  team_id: string;
+  title: string;
+  description?: string;
+  amount_cents: number;
+  currency?: string;
+  due_date?: string;
+  allow_partial?: boolean;
+  installment_count?: number;
+  installment_frequency_days?: number;
+  first_installment_due_date?: string;
+  recipient_user_ids: string[];
+}
+
 // ============================================================================
 // SUPABASE DATABASE TYPE (for client type safety)
 // ============================================================================
@@ -560,6 +658,36 @@ export interface Database {
         Insert: Omit<AttendanceRecord, 'id' | 'recorded_at'>;
         Update: Partial<Omit<AttendanceRecord, 'id'>>;
       };
+      billing_invoices: {
+        Row: BillingInvoice;
+        Insert: Omit<BillingInvoice, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<BillingInvoice, 'id' | 'created_at'>>;
+      };
+      billing_invoice_recipients: {
+        Row: BillingInvoiceRecipient;
+        Insert: Omit<BillingInvoiceRecipient, 'id' | 'created_at'>;
+        Update: Partial<Omit<BillingInvoiceRecipient, 'id' | 'created_at'>>;
+      };
+      billing_payments: {
+        Row: BillingPayment;
+        Insert: Omit<BillingPayment, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<BillingPayment, 'id' | 'created_at'>>;
+      };
+      billing_installments: {
+        Row: BillingInstallment;
+        Insert: Omit<BillingInstallment, 'id' | 'created_at'>;
+        Update: Partial<Omit<BillingInstallment, 'id' | 'created_at'>>;
+      };
+      billing_recipient_installments: {
+        Row: BillingRecipientInstallment;
+        Insert: Omit<BillingRecipientInstallment, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<BillingRecipientInstallment, 'id' | 'created_at'>>;
+      };
+      billing_reminders: {
+        Row: BillingReminder;
+        Insert: Omit<BillingReminder, 'id' | 'sent_at' | 'sent_on'>;
+        Update: Partial<Omit<BillingReminder, 'id' | 'sent_at' | 'sent_on'>>;
+      };
       posts: {
         Row: Post;
         Insert: Omit<Post, 'id' | 'created_at' | 'updated_at'>;
@@ -622,6 +750,10 @@ export interface Database {
         Args: { other_user_id: string };
         Returns: string;
       };
+      refresh_invoice_status: {
+        Args: { invoice_uuid: string };
+        Returns: void;
+      };
     };
     Enums: {
       org_role: OrgRole;
@@ -634,6 +766,10 @@ export interface Database {
       message_type: MessageType;
       attachment_type: AttachmentType;
       relationship_type: RelationshipType;
+      invoice_status: InvoiceStatus;
+      payment_status: PaymentStatus;
+      billing_installment_status: BillingInstallmentStatus;
+      billing_reminder_type: BillingReminderType;
     };
   };
 }
