@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import type { TeamRole } from '@/types/database';
@@ -29,8 +29,17 @@ const userTypeInfo: Record<UserType, { label: string; description: string; icon:
   },
 };
 
+function sanitizeRedirectTarget(value: string | null, fallback: string): string {
+  if (!value || !value.startsWith('/')) {
+    return fallback;
+  }
+  return value;
+}
+
 export function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/onboarding');
   const { signUp, signInWithGoogle, signInWithApple, isLoading } = useAuth();
 
   const [step, setStep] = useState<'type' | 'details'>('type');
@@ -63,11 +72,11 @@ export function SignupForm() {
 
     setIsSubmitting(true);
 
-    const { error } = await signUp(email, password, {
+    const { error, session } = await signUp(email, password, {
       full_name: fullName,
       user_type: userType,
       default_role: userType ? userTypeInfo[userType].role : 'player',
-    });
+    }, redirectTo);
 
     if (error) {
       setError(error.message);
@@ -75,7 +84,19 @@ export function SignupForm() {
       return;
     }
 
-    router.push('/onboarding');
+    if (!session) {
+      const message = encodeURIComponent(
+        'Account created. Please check your email to confirm your account, then sign in.'
+      );
+      const nextLoginHref =
+        redirectTo === '/onboarding'
+          ? `/login?message=${message}`
+          : `/login?message=${message}&redirect=${encodeURIComponent(redirectTo)}`;
+      router.push(nextLoginHref);
+      return;
+    }
+
+    router.push(redirectTo);
   };
 
   const handleSocialSignUp = async (provider: 'google' | 'apple') => {
@@ -86,7 +107,9 @@ export function SignupForm() {
 
     setError('');
     const { error } =
-      provider === 'google' ? await signInWithGoogle() : await signInWithApple();
+      provider === 'google'
+        ? await signInWithGoogle(redirectTo)
+        : await signInWithApple(redirectTo);
     if (error) {
       setError(error.message);
     }
@@ -102,6 +125,11 @@ export function SignupForm() {
       </div>
     );
   }
+
+  const loginHref =
+    redirectTo === '/onboarding'
+      ? '/login'
+      : `/login?redirect=${encodeURIComponent(redirectTo)}`;
 
   return (
     <div className="min-h-screen flex">
@@ -207,7 +235,7 @@ export function SignupForm() {
 
               <p className="mt-8 text-center text-text-secondary">
                 Already have an account?{' '}
-                <Link href="/login" className="text-teal font-semibold hover:text-teal-dark transition-colors">
+                <Link href={loginHref} className="text-teal font-semibold hover:text-teal-dark transition-colors">
                   Sign in
                 </Link>
               </p>
@@ -344,7 +372,7 @@ export function SignupForm() {
 
               <p className="mt-8 text-center text-text-secondary">
                 Already have an account?{' '}
-                <Link href="/login" className="text-teal font-semibold hover:text-teal-dark transition-colors">
+                <Link href={loginHref} className="text-teal font-semibold hover:text-teal-dark transition-colors">
                   Sign in
                 </Link>
               </p>

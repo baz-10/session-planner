@@ -36,10 +36,15 @@ interface OrganizationMembership extends OrganizationMember {
 
 interface AuthContextValue extends AuthState {
   // Auth actions
-  signUp: (email: string, password: string, metadata?: Record<string, unknown>) => Promise<{ error: AuthError | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    metadata?: Record<string, unknown>,
+    redirectTo?: string
+  ) => Promise<{ error: AuthError | null; session: Session | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signInWithGoogle: () => Promise<{ error: AuthError | null }>;
-  signInWithApple: () => Promise<{ error: AuthError | null }>;
+  signInWithGoogle: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
+  signInWithApple: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   updatePassword: (password: string) => Promise<{ error: AuthError | null }>;
@@ -321,18 +326,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: string, session: Session | null) => {
-        let profile = null;
-        if (session?.user) {
-          profile = await fetchProfile(session.user.id);
-        }
+      (event: string, session: Session | null) => {
+        const nextUser = session?.user ?? null;
 
+        // Keep auth callback synchronous to avoid auth lock contention/deadlocks.
         setState((prev) => ({
           ...prev,
-          user: session?.user ?? null,
+          user: nextUser,
           session,
-          profile,
+          profile: nextUser && prev.user?.id === nextUser.id ? prev.profile : null,
           isLoading: false,
+          isInitialized: true,
         }));
 
         // Clear team data on sign out
@@ -342,6 +346,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLinkedPlayers([]);
           setOrganizationMemberships([]);
           setCurrentOrganization(null);
+          return;
+        }
+
+        // Defer profile loading until after the auth callback returns.
+        if (nextUser) {
+          setTimeout(() => {
+            void (async () => {
+              const profile = await fetchProfile(nextUser.id);
+              if (!mounted) return;
+
+              setState((prev) => {
+                if (prev.user?.id !== nextUser.id) {
+                  return prev;
+                }
+
+                return {
+                  ...prev,
+                  profile,
+                };
+              });
+            })();
+          }, 0);
         }
       }
     );
@@ -362,16 +388,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.user, state.isInitialized, refreshTeamMemberships, refreshLinkedPlayers, refreshOrganizationMemberships]);
 
   // Auth actions
-  const signUp = async (email: string, password: string, metadata?: Record<string, unknown>) => {
-    const { error } = await supabase.auth.signUp({
+  const buildCallbackUrl = (redirectTo?: string) => {
+    const callbackUrl = new URL('/callback', window.location.origin);
+    if (redirectTo && redirectTo.startsWith('/')) {
+      callbackUrl.searchParams.set('next', redirectTo);
+    }
+    return callbackUrl.toString();
+  };
+
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata?: Record<string, unknown>,
+    redirectTo?: string
+  ) => {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: metadata,
-        emailRedirectTo: `${window.location.origin}/callback`,
+        emailRedirectTo: buildCallbackUrl(redirectTo),
       },
     });
-    return { error };
+    return { error, session: data.session };
   };
 
   const signIn = async (email: string, password: string) => {
@@ -382,21 +421,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (redirectTo?: string) => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/callback`,
+        redirectTo: buildCallbackUrl(redirectTo),
       },
     });
     return { error };
   };
 
-  const signInWithApple = async () => {
+  const signInWithApple = async (redirectTo?: string) => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',
       options: {
-        redirectTo: `${window.location.origin}/callback`,
+        redirectTo: buildCallbackUrl(redirectTo),
       },
     });
     return { error };

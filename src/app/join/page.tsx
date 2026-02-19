@@ -11,6 +11,7 @@ function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get('code');
+  const joinRedirectTarget = codeFromUrl ? `/join?code=${codeFromUrl}` : '/join';
 
   const { user, isLoading: authLoading } = useAuth();
   const { joinTeamByCode } = useTeam();
@@ -88,13 +89,13 @@ function JoinPageContent() {
 
             <div className="space-y-3">
               <Link
-                href={`/login?redirect=/join${codeFromUrl ? `?code=${codeFromUrl}` : ''}`}
+                href={`/login?redirect=${encodeURIComponent(joinRedirectTarget)}`}
                 className="btn-primary w-full py-3 justify-center"
               >
                 Sign In
               </Link>
               <Link
-                href={`/signup?redirect=/join${codeFromUrl ? `?code=${codeFromUrl}` : ''}`}
+                href={`/signup?redirect=${encodeURIComponent(joinRedirectTarget)}`}
                 className="btn-secondary w-full py-3 justify-center"
               >
                 Create Account

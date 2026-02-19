@@ -64,7 +64,7 @@ export function SessionMetadataForm({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Announcements</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Session Notes</label>
             <textarea
               value={announcements}
               onChange={(e) => {
@@ -72,9 +72,9 @@ export function SessionMetadataForm({
                 handleChange('announcements', e.target.value || null);
               }}
               disabled={disabled}
-              rows={2}
+              rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 resize-none"
-              placeholder="Team announcements..."
+              placeholder="General notes, talking points, and reminders..."
             />
           </div>
 

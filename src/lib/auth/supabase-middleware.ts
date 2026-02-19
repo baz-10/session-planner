@@ -47,6 +47,7 @@ export async function updateSession(request: NextRequest) {
     '/',
     '/login',
     '/signup',
+    '/join',
     '/callback',
     '/auth/callback',
     '/forgot-password',
@@ -63,7 +64,8 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublicRoute && !request.nextUrl.pathname.startsWith('/_next')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname);
+    const redirectTarget = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    url.searchParams.set('redirect', redirectTarget);
     return NextResponse.redirect(url);
   }
 

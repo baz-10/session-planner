@@ -9,10 +9,18 @@ const PASSWORD_SIGN_IN_TIMEOUT_MS = 60000;
 const OAUTH_TIMEOUT_MS = 20000;
 const SLOW_REQUEST_HINT_MS = 8000;
 
+function sanitizeRedirectTarget(value: string | null, fallback: string): string {
+  if (!value || !value.startsWith('/')) {
+    return fallback;
+  }
+  return value;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/dashboard';
+  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/dashboard');
+  const infoMessage = searchParams.get('message') || '';
 
   const { signIn, signInWithGoogle, signInWithApple, isLoading } = useAuth();
 
@@ -90,7 +98,7 @@ export function LoginForm() {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
       );
-      const { error } = await Promise.race([signInWithGoogle(), timeoutPromise]);
+      const { error } = await Promise.race([signInWithGoogle(redirectTo), timeoutPromise]);
       if (error) {
         setError(error.message);
       }
@@ -106,7 +114,7 @@ export function LoginForm() {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
       );
-      const { error } = await Promise.race([signInWithApple(), timeoutPromise]);
+      const { error } = await Promise.race([signInWithApple(redirectTo), timeoutPromise]);
       if (error) {
         setError(error.message);
       }
@@ -125,6 +133,11 @@ export function LoginForm() {
       </div>
     );
   }
+
+  const signupHref =
+    redirectTo === '/dashboard'
+      ? '/signup'
+      : `/signup?redirect=${encodeURIComponent(redirectTo)}`;
 
   return (
     <div className="min-h-screen flex">
@@ -191,6 +204,11 @@ export function LoginForm() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
               {error}
+            </div>
+          )}
+          {!error && infoMessage && (
+            <div className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in">
+              {infoMessage}
             </div>
           )}
           {!error && statusHint && (
@@ -287,7 +305,7 @@ export function LoginForm() {
 
           <p className="mt-8 text-center text-text-secondary">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-teal font-semibold hover:text-teal-dark transition-colors">
+            <Link href={signupHref} className="text-teal font-semibold hover:text-teal-dark transition-colors">
               Sign up
             </Link>
           </p>

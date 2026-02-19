@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { getVisibleLabelTags, toCategoryTag } from '@/lib/utils/drill-tags';
 import type {
   Drill,
   DrillCategory,
@@ -20,6 +21,16 @@ export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
+
+  const toDrillErrorMessage = (error: { code?: string; message?: string } | null, fallback: string) => {
+    if (!error) return fallback;
+
+    if (error.code === '42501' || error.message?.toLowerCase().includes('row-level security')) {
+      return 'You do not have permission to manage categories for the selected team. Try switching to the correct team.';
+    }
+
+    return error.message || fallback;
+  };
 
   /**
    * Get all drills for the current team
@@ -39,14 +50,38 @@ export function useDrills() {
         .order('name', { ascending: true });
 
       if (categoryId) {
-        query = query.eq('category_id', categoryId);
+        query = query.or(`category_id.eq.${categoryId},tags.cs.{${toCategoryTag(categoryId)}}`);
       }
 
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching drills:', error);
-        return [];
+        console.error('Error fetching drills with relations:', error);
+
+        // Fallback: relation metadata can occasionally go stale after schema changes.
+        // Fetch base drills so the library still loads instead of showing empty.
+        let fallbackQuery = supabase
+          .from('drills')
+          .select('*')
+          .eq('team_id', currentTeam.id)
+          .order('name', { ascending: true });
+
+        if (categoryId) {
+          fallbackQuery = fallbackQuery.or(`category_id.eq.${categoryId},tags.cs.{${toCategoryTag(categoryId)}}`);
+        }
+
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+
+        if (fallbackError) {
+          console.error('Error fetching drills (fallback):', fallbackError);
+          return [];
+        }
+
+        return (fallbackData || []).map((drill) => ({
+          ...drill,
+          category: null,
+          media: [],
+        })) as DrillWithDetails[];
       }
 
       return data as DrillWithDetails[];
@@ -273,12 +308,20 @@ export function useDrills() {
       }
 
       // Get the next sort order
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('drill_categories')
         .select('sort_order')
         .eq('team_id', currentTeam.id)
         .order('sort_order', { ascending: false })
         .limit(1);
+
+      if (existingError) {
+        console.error('Error loading category sort order:', existingError);
+        return {
+          success: false,
+          error: toDrillErrorMessage(existingError, 'Failed to create category'),
+        };
+      }
 
       const nextOrder = existing && existing.length > 0 ? existing[0].sort_order + 1 : 0;
 
@@ -295,7 +338,10 @@ export function useDrills() {
 
       if (error || !data) {
         console.error('Error creating category:', error);
-        return { success: false, error: 'Failed to create category' };
+        return {
+          success: false,
+          error: toDrillErrorMessage(error, 'Failed to create category'),
+        };
       }
 
       return { success: true, category: data as DrillCategory };
@@ -363,8 +409,38 @@ export function useDrills() {
         .limit(200);
 
       if (error) {
-        console.error('Error searching drills:', error);
-        return [];
+        console.error('Error searching drills with relations:', error);
+
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('drills')
+          .select('*')
+          .eq('team_id', currentTeam.id)
+          .order('name', { ascending: true })
+          .limit(200);
+
+        if (fallbackError) {
+          console.error('Error searching drills (fallback):', fallbackError);
+          return [];
+        }
+
+        const fallbackDrills = (fallbackData || []).map((drill) => ({
+          ...drill,
+          category: null,
+          media: [],
+        })) as DrillWithDetails[];
+
+        return fallbackDrills.filter((drill) => {
+          const searchableText = [
+            drill.name || '',
+            drill.description || '',
+            drill.notes || '',
+            getVisibleLabelTags(drill.tags).join(' '),
+          ]
+            .join(' ')
+            .toLowerCase();
+
+          return searchableText.includes(normalizedQuery);
+        }).slice(0, 20);
       }
 
       const drills = (data || []) as DrillWithDetails[];
@@ -374,7 +450,7 @@ export function useDrills() {
           drill.name || '',
           drill.description || '',
           drill.notes || '',
-          (drill.tags || []).join(' '),
+          getVisibleLabelTags(drill.tags).join(' '),
         ]
           .join(' ')
           .toLowerCase();
