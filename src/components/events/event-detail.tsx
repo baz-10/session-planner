@@ -8,7 +8,15 @@ import { useSessions } from '@/hooks/use-sessions';
 import { EventForm } from './event-form';
 import { RsvpPanel } from './rsvp-panel';
 import { AttendanceTracker } from './attendance-tracker';
-import type { Event, Rsvp, Session, Player, Profile, AttendanceRecord } from '@/types/database';
+import type {
+  Event,
+  Rsvp,
+  Session,
+  Player,
+  Profile,
+  AttendanceRecord,
+  AttendanceRiskSnapshot,
+} from '@/types/database';
 
 interface RsvpWithDetails extends Rsvp {
   user?: Profile | null;
@@ -24,6 +32,7 @@ interface EventWithDetails extends Event {
   rsvps: RsvpWithDetails[];
   session?: Session | null;
   attendance_records?: AttendanceRecordWithDetails[];
+  attendance_risk?: AttendanceRiskSnapshot;
 }
 
 interface EventDetailProps {
@@ -38,8 +47,20 @@ const EVENT_TYPE_ICONS: Record<string, string> = {
   other: '📅',
 };
 
+const RISK_CLASSES: Record<string, string> = {
+  high: 'bg-red-50 text-red-700 border-red-200',
+  medium: 'bg-amber-50 text-amber-700 border-amber-200',
+  low: 'bg-green-50 text-green-700 border-green-200',
+};
+
+const SCENARIO_LABELS: Record<string, string> = {
+  full: 'Full Team',
+  short: 'Short Bench',
+  low: 'Low Attendance',
+};
+
 export function EventDetail({ eventId, onBack }: EventDetailProps) {
-  const { user, teamMemberships, currentTeam } = useAuth();
+  const { teamMemberships, currentTeam } = useAuth();
   const teamMembership = teamMemberships.find(m => m.team.id === currentTeam?.id);
   const { getEvent, deleteEvent, getRsvpCounts } = useEvents();
   const { getSession } = useSessions();
@@ -72,8 +93,23 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this event?')) return;
-    const result = await deleteEvent(eventId);
+    if (!event) return;
+
+    let deleteSeries = false;
+
+    if (event.recurrence_series_id) {
+      deleteSeries = confirm(
+        'Delete the entire recurring series? Click OK for full series, Cancel for one occurrence.'
+      );
+
+      if (!deleteSeries && !confirm('Delete only this event occurrence?')) {
+        return;
+      }
+    } else if (!confirm('Are you sure you want to delete this event?')) {
+      return;
+    }
+
+    const result = await deleteEvent(eventId, { deleteSeries });
     if (result.success) {
       onBack();
     }
@@ -138,8 +174,32 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{event.title}</h1>
             <p className="text-gray-500 capitalize">{event.type}</p>
+            {event.recurrence_series_id && (
+              <p className="text-xs text-indigo-600 mt-1">Recurring schedule event</p>
+            )}
           </div>
         </div>
+
+        {!isEventPast && event.attendance_risk && (
+          <div
+            className={`mb-4 rounded-lg border px-4 py-3 ${
+              RISK_CLASSES[event.attendance_risk.level] || RISK_CLASSES.low
+            }`}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm font-semibold">
+                Attendance Risk: {event.attendance_risk.score} ({event.attendance_risk.level})
+              </p>
+              <p className="text-sm">
+                Suggested plan: {SCENARIO_LABELS[event.attendance_risk.recommended_scenario]}
+              </p>
+            </div>
+            <p className="text-xs mt-1">
+              Projected attendance {event.attendance_risk.projected_attendance}% (baseline{' '}
+              {event.attendance_risk.historical_baseline}%).
+            </p>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
@@ -288,6 +348,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
                       <tr>
                         <th className="px-4 py-2 text-left">#</th>
                         <th className="px-4 py-2 text-left">Activity</th>
+                        <th className="px-4 py-2 text-left">Linked Play</th>
                         <th className="px-4 py-2 text-center">Duration</th>
                         <th className="px-4 py-2 text-left">Notes</th>
                       </tr>
@@ -297,6 +358,31 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
                         <tr key={activity.id}>
                           <td className="px-4 py-2 text-gray-500">{index + 1}</td>
                           <td className="px-4 py-2 font-medium">{activity.name}</td>
+                          <td className="px-4 py-2">
+                            {activity.linked_play_id ? (
+                              <div className="flex items-center gap-2">
+                                {activity.linked_play_thumbnail_data_url ? (
+                                  <img
+                                    src={activity.linked_play_thumbnail_data_url}
+                                    alt={activity.linked_play_name_snapshot || 'Linked play'}
+                                    className="h-8 w-12 rounded border border-gray-200 object-cover"
+                                  />
+                                ) : (
+                                  <span className="inline-block h-8 w-12 rounded border border-gray-200 bg-gray-100" />
+                                )}
+                                <div className="text-xs">
+                                  <div className="font-medium text-gray-800">
+                                    {activity.linked_play_name_snapshot || 'Linked Play'}
+                                  </div>
+                                  {activity.linked_play_version_snapshot && (
+                                    <div className="text-gray-500">v{activity.linked_play_version_snapshot}</div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-2 text-center">{activity.duration} min</td>
                           <td className="px-4 py-2 text-gray-500">{activity.notes || '-'}</td>
                         </tr>

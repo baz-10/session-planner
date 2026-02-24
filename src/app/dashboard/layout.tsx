@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
+import { useBranding } from '@/hooks/use-branding';
 import { useState } from 'react';
 
 interface NavItem {
@@ -37,6 +38,20 @@ const navItems: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
+  {
+    name: 'Plays',
+    href: '/dashboard/plays',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 6h16M6 6v12m12-12v12M8 18h8M9 11l2-2m0 0l2 2m-2-2v6"
+        />
       </svg>
     ),
   },
@@ -118,6 +133,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const { user, profile, signOut, teamMemberships, currentTeam, organizationMemberships } = useAuth();
+  const { displayName, logoUrl } = useBranding();
 
   // Check if user belongs to an organization
   const hasOrganization = organizationMemberships.length > 0;
@@ -135,8 +151,10 @@ export default function DashboardLayout({
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Bottom nav items for mobile (subset of main nav)
-  const bottomNavItems = navItems.slice(0, 5);
+  // Bottom nav items for mobile (keep concise)
+  const bottomNavItems = navItems.filter((item) =>
+    ['Dashboard', 'Sessions', 'Drills', 'Events', 'Attendance'].includes(item.name)
+  );
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
@@ -144,11 +162,15 @@ export default function DashboardLayout({
       <header className="md:hidden bg-white border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-navy rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
+            {logoUrl ? (
+              <img src={logoUrl} alt={displayName} className="w-full h-full rounded-lg object-cover" />
+            ) : (
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            )}
           </div>
-          <span className="text-base font-bold text-navy">Session Planner</span>
+          <span className="text-base font-bold text-navy">{displayName}</span>
         </Link>
         <button
           onClick={() => setSidebarOpen(true)}
@@ -179,11 +201,15 @@ export default function DashboardLayout({
         <div className="p-6 border-b border-border flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
             <div className="w-10 h-10 bg-navy rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+              {logoUrl ? (
+                <img src={logoUrl} alt={displayName} className="w-full h-full rounded-lg object-cover" />
+              ) : (
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              )}
             </div>
-            <span className="text-lg font-bold text-navy">Session Planner</span>
+            <span className="text-lg font-bold text-navy">{displayName}</span>
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}

@@ -16,6 +16,15 @@ interface SessionWithActivities extends Session {
   activities: (SessionActivity & { category?: DrillCategory | null })[];
 }
 
+function isLegacySessionActivityColumnError(error: { message?: string | null } | null): boolean {
+  if (!error?.message) return false;
+  const message = error.message.toLowerCase();
+  return (
+    (message.includes('additional_category_ids') && message.includes('column')) ||
+    (message.includes('linked_play_') && message.includes('column'))
+  );
+}
+
 export function useSessions() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -67,8 +76,25 @@ export function useSessions() {
         .order('sort_order', { ascending: true });
 
       if (activitiesError) {
-        console.error('Error fetching activities:', activitiesError);
-        return { ...session, activities: [] } as SessionWithActivities;
+        console.error('Error fetching activities with category join:', activitiesError);
+
+        // Fallback: if relation metadata is stale/missing, fetch activities without the category join
+        // so plans still load instead of appearing empty.
+        const { data: fallbackActivities, error: fallbackError } = await supabase
+          .from('session_activities')
+          .select('*')
+          .eq('session_id', sessionId)
+          .order('sort_order', { ascending: true });
+
+        if (fallbackError) {
+          console.error('Error fetching activities (fallback):', fallbackError);
+          return { ...session, activities: [] } as SessionWithActivities;
+        }
+
+        return {
+          ...session,
+          activities: fallbackActivities || [],
+        } as SessionWithActivities;
       }
 
       return {
@@ -253,11 +279,33 @@ export function useSessions() {
           name: activity.name,
           duration: activity.duration,
           category_id: activity.category_id,
+          additional_category_ids: activity.additional_category_ids || [],
           notes: activity.notes,
           groups: activity.groups,
+          linked_play_id: activity.linked_play_id || null,
+          linked_play_name_snapshot: activity.linked_play_name_snapshot || null,
+          linked_play_version_snapshot: activity.linked_play_version_snapshot || null,
+          linked_play_snapshot: activity.linked_play_snapshot || null,
+          linked_play_thumbnail_data_url: activity.linked_play_thumbnail_data_url || null,
         }));
 
-        await supabase.from('session_activities').insert(activitiesToInsert);
+        const { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
+        if (insertError && isLegacySessionActivityColumnError(insertError)) {
+          const legacyActivitiesToInsert = activitiesToInsert.map((activity) => {
+            // Remove columns unavailable in legacy schemas.
+            const {
+              additional_category_ids: _ignoredAdditionalCategoryIds,
+              linked_play_id: _ignoredLinkedPlayId,
+              linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
+              linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
+              linked_play_snapshot: _ignoredLinkedPlaySnapshot,
+              linked_play_thumbnail_data_url: _ignoredLinkedPlayThumbnailDataUrl,
+              ...legacyActivity
+            } = activity;
+            return legacyActivity;
+          });
+          await supabase.from('session_activities').insert(legacyActivitiesToInsert);
+        }
       }
 
       return result;
@@ -270,24 +318,52 @@ export function useSessions() {
    */
   const addActivity = useCallback(
     async (input: CreateActivityInput): Promise<{ success: boolean; activity?: SessionActivity; error?: string }> => {
-      const { data, error } = await supabase
+      const additionalCategoryIds = input.additional_category_ids || [];
+      const payload = {
+        session_id: input.session_id,
+        drill_id: input.drill_id || null,
+        sort_order: input.sort_order,
+        name: input.name,
+        duration: input.duration,
+        category_id: input.category_id || null,
+        additional_category_ids: additionalCategoryIds,
+        notes: input.notes || null,
+        groups: input.groups || [],
+        linked_play_id: input.linked_play_id || null,
+        linked_play_name_snapshot: input.linked_play_name_snapshot || null,
+        linked_play_version_snapshot: input.linked_play_version_snapshot || null,
+        linked_play_snapshot: input.linked_play_snapshot || null,
+        linked_play_thumbnail_data_url: input.linked_play_thumbnail_data_url || null,
+      };
+
+      let { data, error } = await supabase
         .from('session_activities')
-        .insert({
-          session_id: input.session_id,
-          drill_id: input.drill_id || null,
-          sort_order: input.sort_order,
-          name: input.name,
-          duration: input.duration,
-          category_id: input.category_id || null,
-          notes: input.notes || null,
-          groups: input.groups || [],
-        })
+        .insert(payload)
         .select()
         .single();
 
+      if (error && isLegacySessionActivityColumnError(error)) {
+        const {
+          additional_category_ids: _ignoredAdditionalCategoryIds,
+          linked_play_id: _ignoredLinkedPlayId,
+          linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
+          linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
+          linked_play_snapshot: _ignoredLinkedPlaySnapshot,
+          linked_play_thumbnail_data_url: _ignoredLinkedPlayThumbnailDataUrl,
+          ...legacyPayload
+        } = payload;
+        const retryResult = await supabase
+          .from('session_activities')
+          .insert(legacyPayload)
+          .select()
+          .single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
       if (error || !data) {
         console.error('Error adding activity:', error);
-        return { success: false, error: 'Failed to add activity' };
+        return { success: false, error: error?.message || 'Failed to add activity' };
       }
 
       return { success: true, activity: data as SessionActivity };
@@ -303,10 +379,27 @@ export function useSessions() {
       activityId: string,
       updates: Partial<SessionActivity>
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      let { error } = await supabase
         .from('session_activities')
         .update(updates)
         .eq('id', activityId);
+
+      if (error && isLegacySessionActivityColumnError(error)) {
+        const {
+          additional_category_ids: _ignoredAdditionalCategoryIds,
+          linked_play_id: _ignoredLinkedPlayId,
+          linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
+          linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
+          linked_play_snapshot: _ignoredLinkedPlaySnapshot,
+          linked_play_thumbnail_data_url: _ignoredLinkedPlayThumbnailDataUrl,
+          ...legacyUpdates
+        } = updates;
+        const retryResult = await supabase
+          .from('session_activities')
+          .update(legacyUpdates)
+          .eq('id', activityId);
+        error = retryResult.error;
+      }
 
       if (error) {
         console.error('Error updating activity:', error);

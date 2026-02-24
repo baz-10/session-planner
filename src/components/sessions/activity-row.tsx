@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatTime12Hour, type ActivityTiming } from '@/lib/utils/time';
@@ -15,8 +15,18 @@ interface ActivityRowProps {
   index: number;
   timing?: ActivityTiming;
   categories: DrillCategory[];
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onUpdate: (updates: Partial<SessionActivity>) => void;
   onDelete: () => void;
+  onAttachPlay?: () => void;
+  onClearPlay?: () => void;
+  onRefreshPlaySnapshot?: () => void;
+  onViewLinkedPlay?: () => void;
+  linkedPlayIsStale?: boolean;
+  canManagePlayLinks?: boolean;
   disabled?: boolean;
 }
 
@@ -25,14 +35,24 @@ export function ActivityRow({
   index,
   timing,
   categories,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onUpdate,
   onDelete,
+  onAttachPlay,
+  onClearPlay,
+  onRefreshPlaySnapshot,
+  onViewLinkedPlay,
+  linkedPlayIsStale = false,
+  canManagePlayLinks = false,
   disabled = false,
 }: ActivityRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(activity.name);
   const [editDuration, setEditDuration] = useState(activity.duration.toString());
-  const [editNotes, setEditNotes] = useState(activity.notes || '');
+  const [inlineNotes, setInlineNotes] = useState(activity.notes || '');
 
   const {
     attributes,
@@ -53,7 +73,6 @@ export function ActivityRow({
     onUpdate({
       name: editName,
       duration: parseInt(editDuration) || activity.duration,
-      notes: editNotes || null,
     });
     setIsEditing(false);
   };
@@ -61,12 +80,34 @@ export function ActivityRow({
   const handleCancel = () => {
     setEditName(activity.name);
     setEditDuration(activity.duration.toString());
-    setEditNotes(activity.notes || '');
     setIsEditing(false);
   };
 
   const handleCategoryChange = (categoryId: string) => {
-    onUpdate({ category_id: categoryId || null });
+    const nextCategoryId = categoryId || null;
+    const nextAdditionalCategoryIds = (activity.additional_category_ids || []).filter(
+      (existingCategoryId) => existingCategoryId && existingCategoryId !== nextCategoryId
+    );
+    onUpdate({
+      category_id: nextCategoryId,
+      additional_category_ids: nextAdditionalCategoryIds,
+    });
+  };
+
+  const toggleAdditionalCategory = (categoryId: string) => {
+    const currentIds = new Set(
+      (activity.additional_category_ids || []).filter(
+        (existingCategoryId) => existingCategoryId && existingCategoryId !== activity.category_id
+      )
+    );
+
+    if (currentIds.has(categoryId)) {
+      currentIds.delete(categoryId);
+    } else {
+      currentIds.add(categoryId);
+    }
+
+    onUpdate({ additional_category_ids: Array.from(currentIds) });
   };
 
   const handleDurationChange = (value: string) => {
@@ -76,14 +117,35 @@ export function ActivityRow({
     }
   };
 
+  useEffect(() => {
+    setInlineNotes(activity.notes || '');
+  }, [activity.id, activity.notes]);
+
+  const commitInlineNotes = useCallback(() => {
+    const nextNotes = inlineNotes.trim();
+    const currentNotes = (activity.notes || '').trim();
+
+    if (nextNotes === currentNotes) {
+      return;
+    }
+
+    onUpdate({ notes: nextNotes || null });
+  }, [activity.notes, inlineNotes, onUpdate]);
+
   // Get category color for the row indicator
   const categoryColor = activity.category?.color || '#94a3b8';
+  const additionalCategoryIds = (activity.additional_category_ids || []).filter(
+    (categoryId) => categoryId && categoryId !== activity.category_id
+  );
+  const selectedAdditionalCategories = additionalCategoryIds
+    .map((categoryId) => categories.find((category) => category.id === categoryId))
+    .filter(Boolean) as DrillCategory[];
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid grid-cols-[40px_1fr_80px_80px_120px_150px_1fr_100px_80px] gap-2 px-4 py-2 items-center text-sm hover:bg-gray-50 ${
+      className={`grid grid-cols-[40px_1fr_80px_80px_120px_260px_1fr_100px_180px] gap-2 px-4 py-2 items-center text-sm hover:bg-gray-50 ${
         isDragging ? 'bg-blue-50' : ''
       }`}
     >
@@ -96,6 +158,7 @@ export function ActivityRow({
         <div
           className="w-6 h-6 rounded flex items-center justify-center text-xs font-medium text-white"
           style={{ backgroundColor: categoryColor }}
+          title="Drag to reorder"
         >
           {index}
         </div>
@@ -112,12 +175,87 @@ export function ActivityRow({
             autoFocus
           />
         ) : (
-          <span
-            className="cursor-pointer hover:text-primary"
-            onClick={() => !disabled && setIsEditing(true)}
-          >
-            {activity.name}
-          </span>
+          <div className="space-y-1">
+            <span
+              className="cursor-pointer hover:text-primary"
+              onClick={() => !disabled && setIsEditing(true)}
+            >
+              {activity.name}
+            </span>
+
+            {activity.linked_play_id ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs">
+                  Play: {activity.linked_play_name_snapshot || 'Linked Play'}
+                </span>
+                {activity.linked_play_version_snapshot && (
+                  <span className="text-[11px] text-gray-600">
+                    v{activity.linked_play_version_snapshot}
+                  </span>
+                )}
+                {linkedPlayIsStale && (
+                  <span className="text-[11px] text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded">
+                    Stale snapshot
+                  </span>
+                )}
+                {onViewLinkedPlay && (
+                  <button
+                    type="button"
+                    onClick={onViewLinkedPlay}
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    View
+                  </button>
+                )}
+                {canManagePlayLinks && onAttachPlay && (
+                  <button
+                    type="button"
+                    onClick={onAttachPlay}
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    Replace
+                  </button>
+                )}
+                {canManagePlayLinks && onClearPlay && (
+                  <button
+                    type="button"
+                    onClick={onClearPlay}
+                    className="text-[11px] text-red-600 hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+                {canManagePlayLinks && linkedPlayIsStale && onRefreshPlaySnapshot && (
+                  <button
+                    type="button"
+                    onClick={onRefreshPlaySnapshot}
+                    className="text-[11px] text-orange-700 hover:underline"
+                  >
+                    Update Snapshot
+                  </button>
+                )}
+              </div>
+            ) : (
+              canManagePlayLinks &&
+              onAttachPlay && (
+                <button
+                  type="button"
+                  onClick={onAttachPlay}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  Attach Play
+                </button>
+              )
+            )}
+
+            {activity.linked_play_thumbnail_data_url && (
+              <img
+                src={activity.linked_play_thumbnail_data_url}
+                alt={`${activity.linked_play_name_snapshot || 'Play'} preview`}
+                className="h-10 w-14 rounded border border-gray-200 object-cover"
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -160,7 +298,7 @@ export function ActivityRow({
       </div>
 
       {/* Category */}
-      <div>
+      <div className="space-y-1">
         <select
           value={activity.category_id || ''}
           onChange={(e) => handleCategoryChange(e.target.value)}
@@ -174,23 +312,68 @@ export function ActivityRow({
             </option>
           ))}
         </select>
+
+        {!activity.drill_id && categories.length > 1 && (
+          <details>
+            <summary className="cursor-pointer text-xs text-gray-500 hover:text-primary">
+              Additional categories ({additionalCategoryIds.length})
+            </summary>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {categories
+                .filter((category) => category.id !== activity.category_id)
+                .map((category) => {
+                  const isSelected = additionalCategoryIds.includes(category.id);
+                  return (
+                    <button
+                      key={`${activity.id}-${category.id}`}
+                      type="button"
+                      onClick={() => toggleAdditionalCategory(category.id)}
+                      disabled={disabled}
+                      className={`px-2 py-0.5 text-xs rounded border ${
+                        isSelected
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                      } disabled:opacity-50`}
+                    >
+                      {category.name}
+                    </button>
+                  );
+                })}
+            </div>
+          </details>
+        )}
+
+        {selectedAdditionalCategories.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {selectedAdditionalCategories.map((category) => (
+              <span
+                key={`${activity.id}-badge-${category.id}`}
+                className="inline-flex items-center rounded px-2 py-0.5 text-[10px] text-white"
+                style={{ backgroundColor: category.color }}
+              >
+                {category.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Notes */}
       <div>
-        {isEditing ? (
-          <input
-            type="text"
-            value={editNotes}
-            onChange={(e) => setEditNotes(e.target.value)}
-            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-            placeholder="Notes..."
-          />
-        ) : (
-          <span className="text-gray-600 truncate block" title={activity.notes || ''}>
-            {activity.notes || '-'}
-          </span>
-        )}
+        <input
+          type="text"
+          value={inlineNotes}
+          onChange={(e) => setInlineNotes(e.target.value)}
+          onBlur={commitInlineNotes}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              (event.target as HTMLInputElement).blur();
+            }
+          }}
+          disabled={disabled}
+          className="w-full px-2 py-1 border border-gray-200 rounded text-sm hover:border-gray-400 focus:border-primary focus:outline-none disabled:bg-gray-50"
+          placeholder="Add notes / points of emphasis"
+        />
       </div>
 
       {/* Min Remaining */}
@@ -233,6 +416,28 @@ export function ActivityRow({
           </>
         ) : (
           <>
+            <button
+              onClick={onMoveUp}
+              disabled={disabled || !canMoveUp}
+              className="p-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-40"
+              title="Move up"
+              aria-label="Move activity up"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={onMoveDown}
+              disabled={disabled || !canMoveDown}
+              className="p-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-40"
+              title="Move down"
+              aria-label="Move activity down"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
             <button
               onClick={() => setIsEditing(true)}
               disabled={disabled}

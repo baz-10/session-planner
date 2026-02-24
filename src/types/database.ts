@@ -5,6 +5,8 @@
  * For production, consider using `supabase gen types typescript` to auto-generate.
  */
 
+import type { BasketballPlayDocument, CourtTemplate, PlayType } from '@/lib/plays/diagram-types';
+
 // ============================================================================
 // ENUMS
 // ============================================================================
@@ -46,6 +48,33 @@ export interface Organization {
   logo_url: string | null;
   settings: Record<string, unknown>;
   created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationSubscription {
+  organization_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  status: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  grace_ends_at: string | null;
+  last_event_id: string | null;
+  last_event_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationBranding {
+  organization_id: string;
+  display_name: string | null;
+  logo_url: string | null;
+  primary_color: string;
+  accent_color: string;
+  updated_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,6 +190,27 @@ export interface DrillMedia {
 }
 
 // ============================================================================
+// PLAY TYPES
+// ============================================================================
+
+export interface Play {
+  id: string;
+  team_id: string | null;
+  organization_id: string | null;
+  name: string;
+  description: string | null;
+  play_type: PlayType;
+  court_template: CourtTemplate;
+  tags: string[];
+  diagram: BasketballPlayDocument;
+  thumbnail_data_url: string | null;
+  version: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // SESSION TYPES
 // ============================================================================
 
@@ -190,8 +240,14 @@ export interface SessionActivity {
   name: string;
   duration: number;
   category_id: string | null;
+  additional_category_ids: string[];
   notes: string | null;
   groups: ActivityGroup[];
+  linked_play_id: string | null;
+  linked_play_name_snapshot: string | null;
+  linked_play_version_snapshot: number | null;
+  linked_play_snapshot: BasketballPlayDocument | null;
+  linked_play_thumbnail_data_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -221,15 +277,35 @@ export interface Event {
   rsvp_deadline: string | null;
   opponent: string | null;
   repeat_rule: RepeatRule | null;
+  recurrence_series_id: string | null;
+  recurrence_is_root: boolean;
+  recurrence_instance_index: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface RepeatRule {
+  enabled?: boolean;
   frequency: 'weekly' | 'biweekly' | 'monthly';
+  interval?: number;
   until: string | null;
   days_of_week?: number[];
+  skip_dates?: string[];
+  timezone?: string;
+}
+
+export type AttendanceRiskLevel = 'low' | 'medium' | 'high';
+export type RecommendedTurnoutScenario = 'full' | 'short' | 'low';
+
+export interface AttendanceRiskSnapshot {
+  score: number;
+  level: AttendanceRiskLevel;
+  projected_attendance: number;
+  historical_baseline: number;
+  response_coverage: number;
+  recommended_scenario: RecommendedTurnoutScenario;
+  factors: string[];
 }
 
 export interface Rsvp {
@@ -334,6 +410,16 @@ export interface BillingReminder {
   sent_on: string;
   is_read: boolean;
   read_at: string | null;
+}
+
+export interface ResolvedBrandTheme {
+  primaryColor: string;
+  primaryLightColor: string;
+  primaryDarkColor: string;
+  accentColor: string;
+  accentLightColor: string;
+  accentDarkColor: string;
+  accentGlowColor: string;
 }
 
 // ============================================================================
@@ -450,6 +536,10 @@ export interface DrillWithCategory extends Drill {
   media: DrillMedia[];
 }
 
+export interface PlayWithDetails extends Play {
+  created_by_profile?: Profile | null;
+}
+
 export interface SessionWithActivities extends Session {
   activities: (SessionActivity & { drill: Drill | null; category: DrillCategory | null })[];
 }
@@ -509,6 +599,30 @@ export interface CreateDrillInput {
   tags?: string[];
 }
 
+export interface CreatePlayInput {
+  team_id?: string;
+  organization_id?: string;
+  name: string;
+  description?: string;
+  play_type?: PlayType;
+  court_template?: CourtTemplate;
+  tags?: string[];
+  diagram: BasketballPlayDocument;
+  thumbnail_data_url?: string | null;
+  version?: number;
+}
+
+export interface UpdatePlayInput {
+  name?: string;
+  description?: string | null;
+  play_type?: PlayType;
+  court_template?: CourtTemplate;
+  tags?: string[];
+  diagram?: BasketballPlayDocument;
+  thumbnail_data_url?: string | null;
+  version?: number;
+}
+
 export interface CreateSessionInput {
   team_id: string;
   name: string;
@@ -530,8 +644,14 @@ export interface CreateActivityInput {
   name: string;
   duration: number;
   category_id?: string;
+  additional_category_ids?: string[];
   notes?: string;
   groups?: ActivityGroup[];
+  linked_play_id?: string;
+  linked_play_name_snapshot?: string;
+  linked_play_version_snapshot?: number;
+  linked_play_snapshot?: BasketballPlayDocument;
+  linked_play_thumbnail_data_url?: string | null;
 }
 
 export interface CreateEventInput {
@@ -548,6 +668,7 @@ export interface CreateEventInput {
   rsvp_limit?: number;
   rsvp_deadline?: string;
   opponent?: string;
+  repeat_rule?: RepeatRule;
 }
 
 export interface CreatePostInput {
@@ -576,6 +697,23 @@ export interface CreateBillingInvoiceInput {
   recipient_user_ids: string[];
 }
 
+export interface CreateOrgCheckoutSessionInput {
+  organizationId: string;
+}
+
+export interface CreateOrgPortalSessionInput {
+  organizationId: string;
+}
+
+export interface VerifyOrgCheckoutSessionInput {
+  sessionId: string;
+}
+
+export interface UploadOrgBrandLogoInput {
+  organizationId: string;
+  file: File;
+}
+
 // ============================================================================
 // SUPABASE DATABASE TYPE (for client type safety)
 // ============================================================================
@@ -592,6 +730,16 @@ export interface Database {
         Row: Organization;
         Insert: Omit<Organization, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Organization, 'id' | 'created_at'>>;
+      };
+      organization_subscriptions: {
+        Row: OrganizationSubscription;
+        Insert: Omit<OrganizationSubscription, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<OrganizationSubscription, 'organization_id' | 'created_at'>>;
+      };
+      organization_branding: {
+        Row: OrganizationBranding;
+        Insert: Omit<OrganizationBranding, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<OrganizationBranding, 'organization_id' | 'created_at'>>;
       };
       organization_members: {
         Row: OrganizationMember;
@@ -632,6 +780,11 @@ export interface Database {
         Row: DrillMedia;
         Insert: Omit<DrillMedia, 'id' | 'created_at'>;
         Update: Partial<Omit<DrillMedia, 'id' | 'created_at'>>;
+      };
+      plays: {
+        Row: Play;
+        Insert: Omit<Play, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Play, 'id' | 'created_at'>>;
       };
       sessions: {
         Row: Session;
@@ -739,6 +892,14 @@ export interface Database {
         Returns: boolean;
       };
       is_org_admin: {
+        Args: { org_uuid: string };
+        Returns: boolean;
+      };
+      is_team_member_of_org: {
+        Args: { org_uuid: string };
+        Returns: boolean;
+      };
+      has_org_whitelabel_access: {
         Args: { org_uuid: string };
         Returns: boolean;
       };

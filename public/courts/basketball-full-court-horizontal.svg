@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <defs>
+    <pattern id="wood" patternUnits="userSpaceOnUse" width="52" height="1000">
+      <rect width="52" height="1000" fill="#ddb882" />
+      <rect x="0" width="18" height="1000" fill="#d5ad76" />
+      <rect x="27" width="9" height="1000" fill="#e6c598" />
+      <rect x="43" width="4" height="1000" fill="#cf9f64" />
+    </pattern>
+    <linearGradient id="vignette" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fff7e8" stop-opacity="0.22" />
+      <stop offset="52%" stop-color="#fff7e8" stop-opacity="0" />
+      <stop offset="100%" stop-color="#8e6231" stop-opacity="0.2" />
+    </linearGradient>
+    <style>
+      .line-major { fill: none; stroke: #fff8ed; stroke-width: 3.8; stroke-linecap: round; stroke-linejoin: round; }
+      .line-minor { fill: none; stroke: #fff8ed; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <g id="half-top">
+      <rect x="392" y="74" width="216" height="206" class="line-major" />
+      <rect x="392" y="74" width="216" height="206" fill="#cb995d" opacity="0.1" />
+      <line x1="435" y1="127" x2="565" y2="127" class="line-major" />
+      <rect x="480" y="127" width="40" height="16" class="line-minor" />
+      <circle cx="500" cy="155" r="8.5" class="line-major" />
+      <path d="M 447 194 A 53 53 0 0 0 553 194" class="line-minor" />
+      <path d="M 392 280 A 108 108 0 0 0 608 280" class="line-minor" />
+      <path d="M 196 304 A 304 304 0 0 0 804 304" class="line-major" />
+      <line x1="196" y1="74" x2="196" y2="304" class="line-major" />
+      <line x1="804" y1="74" x2="804" y2="304" class="line-major" />
+    </g>
+    <g id="full-vertical">
+      <rect x="74" y="74" width="852" height="852" class="line-major" />
+      <line x1="74" y1="500" x2="926" y2="500" class="line-major" />
+      <circle cx="500" cy="500" r="92" class="line-major" />
+      <circle cx="500" cy="500" r="54" class="line-minor" />
+      <use href="#half-top" />
+      <use href="#half-top" transform="rotate(180 500 500)" />
+    </g>
+  </defs>
+
+  <rect width="1000" height="1000" fill="url(#wood)" />
+  <rect width="1000" height="1000" fill="url(#vignette)" />
+
+  <use href="#full-vertical" transform="rotate(90 500 500)" />
+</svg>
+

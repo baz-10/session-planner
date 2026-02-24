@@ -5,13 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { useDrills } from '@/hooks/use-drills';
+import { usePlays } from '@/hooks/use-plays';
+import { useBranding } from '@/hooks/use-branding';
 import { SessionMetadataForm } from './session-metadata-form';
 import { ActivityTable } from './activity-table';
 import { TimeAllocationChart } from './time-allocation-chart';
 import { DrillSelectorModal } from './drill-selector-modal';
+import { PlaySelectorModal } from './play-selector-modal';
 import { SessionAutopilotPanel } from './session-autopilot-panel';
+import { CategoryManager } from '@/components/drills/category-manager';
 import { printSessionPlan } from '@/lib/utils/pdf-export';
-import type { Session, SessionActivity, DrillCategory, Drill } from '@/types/database';
+import { buildDrillTags, getAdditionalCategoryIdsFromTags } from '@/lib/utils/drill-tags';
+import type { Session, SessionActivity, DrillCategory, Drill, Play } from '@/types/database';
 import type { SessionAutopilotVariant } from '@/lib/ai/session-autopilot-types';
 
 interface ActivityWithCategory extends SessionActivity {
@@ -34,6 +39,14 @@ const normalizeActivitySortOrder = (
     sort_order: index,
   }));
 
+const normalizeAdditionalCategoryIds = (
+  categoryIds: Array<string | null | undefined>,
+  primaryCategoryId?: string | null
+): string[] =>
+  Array.from(new Set(categoryIds.filter(Boolean) as string[])).filter(
+    (categoryId) => categoryId !== primaryCategoryId
+  );
+
 interface SessionBuilderProps {
   sessionId?: string;
   isNew?: boolean;
@@ -41,7 +54,8 @@ interface SessionBuilderProps {
 
 export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps) {
   const router = useRouter();
-  const { currentTeam } = useAuth();
+  const { currentTeam, teamMemberships, setCurrentTeam } = useAuth();
+  const { displayName } = useBranding();
   const {
     getSession,
     createSession,
@@ -52,7 +66,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     reorderActivities,
     duplicateSession,
   } = useSessions();
-  const { getCategories } = useDrills();
+  const { getCategories, getDrills, createDrill } = useDrills();
+  const { getPlays, getPlay } = usePlays();
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canManagePlayLinks = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   // Session state
   const [session, setSession] = useState<Partial<SessionWithActivities>>({
@@ -69,10 +86,18 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   });
 
   const [categories, setCategories] = useState<DrillCategory[]>([]);
+  const [drillCategoryIdsByDrillId, setDrillCategoryIdsByDrillId] = useState<
+    Record<string, string[]>
+  >({});
   const [isLoading, setIsLoading] = useState(!isNew);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingActivitiesToLibrary, setIsSavingActivitiesToLibrary] = useState(false);
   const [isDrillModalOpen, setIsDrillModalOpen] = useState(false);
+  const [isPlayModalOpen, setIsPlayModalOpen] = useState(false);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [drillModalMode, setDrillModalMode] = useState<'single' | 'multiple'>('single');
+  const [targetPlayActivityId, setTargetPlayActivityId] = useState<string | null>(null);
+  const [playsById, setPlaysById] = useState<Record<string, Play>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Load session data if editing
@@ -80,7 +105,6 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     if (sessionId && !isNew) {
       loadSession();
     }
-    loadCategories();
   }, [sessionId, isNew]);
 
   const loadSession = async () => {
@@ -93,10 +117,73 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setIsLoading(false);
   };
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     const data = await getCategories();
     setCategories(data);
-  };
+  }, [getCategories]);
+
+  const loadDrillCategoryContext = useCallback(async () => {
+    const drills = await getDrills();
+    const nextMap: Record<string, string[]> = {};
+
+    drills.forEach((drill) => {
+      const categoryIds = Array.from(
+        new Set(
+          [drill.category_id, ...getAdditionalCategoryIdsFromTags(drill.tags)].filter(Boolean)
+        )
+      ) as string[];
+
+      nextMap[drill.id] = categoryIds;
+    });
+
+    setDrillCategoryIdsByDrillId(nextMap);
+  }, [getDrills]);
+
+  const loadPlayContext = useCallback(async () => {
+    const plays = await getPlays();
+    const nextMap: Record<string, Play> = {};
+    plays.forEach((play) => {
+      nextMap[play.id] = play;
+    });
+    setPlaysById(nextMap);
+  }, [getPlays]);
+
+  // Keep drill/category data aligned with whichever team is currently selected.
+  useEffect(() => {
+    void Promise.all([loadCategories(), loadDrillCategoryContext(), loadPlayContext()]);
+  }, [currentTeam?.id, loadCategories, loadDrillCategoryContext, loadPlayContext]);
+
+  // Ensure editing always uses the session's team context for drill/category actions.
+  useEffect(() => {
+    const sessionTeamId = session.team_id;
+    if (!sessionTeamId || currentTeam?.id === sessionTeamId) {
+      return;
+    }
+
+    const membership = teamMemberships.find((item) => item.team.id === sessionTeamId);
+    if (membership) {
+      setCurrentTeam(membership.team);
+    }
+  }, [session.team_id, currentTeam?.id, teamMemberships, setCurrentTeam]);
+
+  useEffect(() => {
+    if (categories.length === 0) return;
+
+    setSession((prev) => {
+      const currentActivities = prev.activities || [];
+      if (currentActivities.length === 0) return prev;
+
+      return {
+        ...prev,
+        activities: currentActivities.map((activity) => ({
+          ...activity,
+          category:
+            categories.find((category) => category.id === activity.category_id) ||
+            null,
+        })),
+      };
+    });
+  }, [categories]);
 
   // Handle metadata changes
   const handleMetadataChange = useCallback((updates: Partial<Session>) => {
@@ -107,22 +194,48 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Handle activity changes
   const handleActivityUpdate = useCallback(
     async (activityId: string, updates: Partial<SessionActivity>) => {
+      const resolvedCategoryId =
+        updates.category_id !== undefined ? updates.category_id : null;
+      const resolvedCategory =
+        updates.category_id !== undefined
+          ? categories.find((category) => category.id === resolvedCategoryId) || null
+          : undefined;
+      const normalizedAdditionalCategoryIds =
+        updates.additional_category_ids !== undefined
+          ? normalizeAdditionalCategoryIds(
+              updates.additional_category_ids,
+              updates.category_id !== undefined ? resolvedCategoryId : undefined
+            )
+          : undefined;
+      const normalizedUpdates: Partial<SessionActivity> = {
+        ...updates,
+        ...(normalizedAdditionalCategoryIds !== undefined
+          ? { additional_category_ids: normalizedAdditionalCategoryIds }
+          : {}),
+      };
+
       // Update local state immediately for responsiveness
       setSession((prev) => ({
         ...prev,
         activities: prev.activities?.map((a) =>
-          a.id === activityId ? { ...a, ...updates } : a
+          a.id === activityId
+            ? {
+                ...a,
+                ...normalizedUpdates,
+                ...(updates.category_id !== undefined ? { category: resolvedCategory } : {}),
+              }
+            : a
         ),
       }));
 
       // If session is saved, persist to database
       if (session.id) {
-        await updateActivity(activityId, updates);
+        await updateActivity(activityId, normalizedUpdates);
       } else {
         setHasUnsavedChanges(true);
       }
     },
-    [session.id, updateActivity]
+    [session.id, updateActivity, categories]
   );
 
   const handleActivityDelete = useCallback(
@@ -174,15 +287,26 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Add activity from drill library
   const handleAddDrill = useCallback(
     async (drill: DrillWithCategory) => {
+      const additionalCategoryIds = normalizeAdditionalCategoryIds(
+        getAdditionalCategoryIdsFromTags(drill.tags),
+        drill.category_id
+      );
+
       const newActivity: Partial<SessionActivity> = {
         id: `temp-${Date.now()}`,
         drill_id: drill.id,
         name: drill.name,
         duration: drill.default_duration,
         category_id: drill.category_id,
+        additional_category_ids: additionalCategoryIds,
         notes: drill.description || '',
         sort_order: session.activities?.length || 0,
         groups: [],
+        linked_play_id: null,
+        linked_play_name_snapshot: null,
+        linked_play_version_snapshot: null,
+        linked_play_snapshot: null,
+        linked_play_thumbnail_data_url: null,
       };
 
       // If session is saved, add to database
@@ -194,6 +318,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           name: drill.name,
           duration: drill.default_duration,
           category_id: drill.category_id || undefined,
+          additional_category_ids: additionalCategoryIds,
           notes: drill.description || undefined,
         });
 
@@ -237,6 +362,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         for (let i = 0; i < drills.length; i++) {
           const drill = drills[i];
+          const additionalCategoryIds = normalizeAdditionalCategoryIds(
+            getAdditionalCategoryIdsFromTags(drill.tags),
+            drill.category_id
+          );
           const result = await addActivity({
             session_id: session.id,
             drill_id: drill.id,
@@ -244,6 +373,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             name: drill.name,
             duration: drill.default_duration,
             category_id: drill.category_id || undefined,
+            additional_category_ids: additionalCategoryIds,
             notes: drill.description || undefined,
           });
 
@@ -262,6 +392,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       } else {
         // Add to local state
         const newActivities: ActivityWithCategory[] = drills.map((drill, index) => ({
+          additional_category_ids: normalizeAdditionalCategoryIds(
+            getAdditionalCategoryIdsFromTags(drill.tags),
+            drill.category_id
+          ),
           id: `temp-${Date.now()}-${index}`,
           session_id: '',
           drill_id: drill.id,
@@ -271,6 +405,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           notes: drill.description || null,
           sort_order: currentActivitiesCount + index,
           groups: [],
+          linked_play_id: null,
+          linked_play_name_snapshot: null,
+          linked_play_version_snapshot: null,
+          linked_play_snapshot: null,
+          linked_play_thumbnail_data_url: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           category: drill.category || categories.find((c) => c.id === drill.category_id),
@@ -300,6 +439,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           name,
           duration,
           category_id: categoryId,
+          additional_category_ids: [],
         });
 
         if (result.success && result.activity) {
@@ -319,9 +459,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           name,
           duration,
           category_id: categoryId || null,
+          additional_category_ids: [],
           notes: null,
           sort_order: session.activities?.length || 0,
           groups: [],
+          linked_play_id: null,
+          linked_play_name_snapshot: null,
+          linked_play_version_snapshot: null,
+          linked_play_snapshot: null,
+          linked_play_thumbnail_data_url: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           category,
@@ -351,6 +497,97 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setIsDrillModalOpen(true);
   }, []);
 
+  const openPlayModalForActivity = useCallback((activityId: string) => {
+    setTargetPlayActivityId(activityId);
+    setIsPlayModalOpen(true);
+  }, []);
+
+  const closePlayModal = useCallback(() => {
+    setTargetPlayActivityId(null);
+    setIsPlayModalOpen(false);
+  }, []);
+
+  const handleAttachPlayToActivity = useCallback(
+    async (play: Play) => {
+      if (!targetPlayActivityId) return;
+
+      await handleActivityUpdate(targetPlayActivityId, {
+        linked_play_id: play.id,
+        linked_play_name_snapshot: play.name,
+        linked_play_version_snapshot: play.version,
+        linked_play_snapshot: play.diagram,
+        linked_play_thumbnail_data_url: play.thumbnail_data_url,
+      });
+
+      setPlaysById((prev) => ({
+        ...prev,
+        [play.id]: play,
+      }));
+
+      closePlayModal();
+    },
+    [targetPlayActivityId, handleActivityUpdate, closePlayModal]
+  );
+
+  const handleClearLinkedPlay = useCallback(
+    async (activityId: string) => {
+      await handleActivityUpdate(activityId, {
+        linked_play_id: null,
+        linked_play_name_snapshot: null,
+        linked_play_version_snapshot: null,
+        linked_play_snapshot: null,
+        linked_play_thumbnail_data_url: null,
+      });
+    },
+    [handleActivityUpdate]
+  );
+
+  const handleRefreshPlaySnapshot = useCallback(
+    async (activityId: string) => {
+      const activity = (session.activities || []).find((item) => item.id === activityId);
+      if (!activity?.linked_play_id) return;
+
+      const latestPlay = (await getPlay(activity.linked_play_id)) || playsById[activity.linked_play_id];
+      if (!latestPlay) {
+        alert('The linked play no longer exists or cannot be accessed.');
+        return;
+      }
+
+      await handleActivityUpdate(activityId, {
+        linked_play_id: latestPlay.id,
+        linked_play_name_snapshot: latestPlay.name,
+        linked_play_version_snapshot: latestPlay.version,
+        linked_play_snapshot: latestPlay.diagram,
+        linked_play_thumbnail_data_url: latestPlay.thumbnail_data_url,
+      });
+
+      setPlaysById((prev) => ({
+        ...prev,
+        [latestPlay.id]: latestPlay,
+      }));
+    },
+    [session.activities, getPlay, playsById, handleActivityUpdate]
+  );
+
+  const handleViewLinkedPlay = useCallback(
+    (activityId: string) => {
+      const activity = (session.activities || []).find((item) => item.id === activityId);
+      if (!activity?.linked_play_id) return;
+      router.push(`/dashboard/plays/${activity.linked_play_id}`);
+    },
+    [session.activities, router]
+  );
+
+  const isLinkedPlayStale = useCallback(
+    (activity: ActivityWithCategory) => {
+      if (!activity.linked_play_id || !activity.linked_play_version_snapshot) return false;
+      const livePlay = playsById[activity.linked_play_id];
+      if (!livePlay) return false;
+      return livePlay.version > activity.linked_play_version_snapshot;
+    },
+    [playsById]
+  );
+
   // Apply an autopilot-generated variant (replace existing activities)
   const handleApplyAutopilotVariant = useCallback(
     async (variant: SessionAutopilotVariant) => {
@@ -378,6 +615,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         const persistedActivities: ActivityWithCategory[] = [];
         for (let index = 0; index < variant.activities.length; index += 1) {
           const generated = variant.activities[index];
+          const additionalCategoryIds = normalizeAdditionalCategoryIds(
+            generated.drillId ? drillCategoryIdsByDrillId[generated.drillId] || [] : [],
+            generated.categoryId || null
+          );
           const insertResult = await addActivity({
             session_id: session.id,
             drill_id: generated.drillId,
@@ -385,6 +626,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             name: generated.name,
             duration: generated.duration,
             category_id: generated.categoryId,
+            additional_category_ids: additionalCategoryIds,
             notes: generated.notes,
           });
 
@@ -417,6 +659,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       // Unsaved session: replace in local state.
       const generatedActivities: ActivityWithCategory[] = variant.activities.map((generated, index) => ({
+        additional_category_ids: normalizeAdditionalCategoryIds(
+          generated.drillId ? drillCategoryIdsByDrillId[generated.drillId] || [] : [],
+          generated.categoryId || null
+        ),
         id: `temp-${Date.now()}-${index}`,
         session_id: '',
         drill_id: generated.drillId || null,
@@ -426,6 +672,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         notes: generated.notes || null,
         sort_order: index,
         groups: [],
+        linked_play_id: null,
+        linked_play_name_snapshot: null,
+        linked_play_version_snapshot: null,
+        linked_play_snapshot: null,
+        linked_play_thumbnail_data_url: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         category:
@@ -444,10 +695,76 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }));
       setHasUnsavedChanges(true);
     },
-    [session.activities, session.id, categories, deleteActivity, addActivity]
+    [session.activities, session.id, categories, deleteActivity, addActivity, drillCategoryIdsByDrillId]
   );
 
   // Save session
+  const persistUnsavedActivities = useCallback(
+    async (targetSessionId: string) => {
+      const normalizedActivities = normalizeActivitySortOrder(
+        (session.activities || []) as ActivityWithCategory[]
+      );
+
+      let failedCount = 0;
+      const nextActivities: ActivityWithCategory[] = [];
+
+      for (const activity of normalizedActivities) {
+        const needsInsert =
+          !activity.id ||
+          activity.id.startsWith('temp-') ||
+          !activity.session_id ||
+          activity.session_id !== targetSessionId;
+
+        if (!needsInsert) {
+          nextActivities.push({
+            ...activity,
+            session_id: targetSessionId,
+          });
+          continue;
+        }
+
+        const activityResult = await addActivity({
+          session_id: targetSessionId,
+          drill_id: activity.drill_id || undefined,
+          sort_order: activity.sort_order,
+          name: activity.name,
+          duration: activity.duration,
+          category_id: activity.category_id || undefined,
+          additional_category_ids: activity.additional_category_ids || [],
+          notes: activity.notes || undefined,
+          linked_play_id: activity.linked_play_id || undefined,
+          linked_play_name_snapshot: activity.linked_play_name_snapshot || undefined,
+          linked_play_version_snapshot: activity.linked_play_version_snapshot || undefined,
+          linked_play_snapshot: activity.linked_play_snapshot || undefined,
+          linked_play_thumbnail_data_url: activity.linked_play_thumbnail_data_url || null,
+        });
+
+        if (!activityResult.success || !activityResult.activity) {
+          failedCount += 1;
+          nextActivities.push({
+            ...activity,
+            session_id: targetSessionId,
+          });
+          continue;
+        }
+
+        nextActivities.push({
+          ...activityResult.activity,
+          category:
+            activity.category ||
+            categories.find((category) => category.id === activityResult.activity?.category_id) ||
+            null,
+        } as ActivityWithCategory);
+      }
+
+      return {
+        failedCount,
+        activities: normalizeActivitySortOrder(nextActivities),
+      };
+    },
+    [session.activities, addActivity, categories]
+  );
+
   const handleSave = useCallback(async () => {
     if (!session.name?.trim()) {
       alert('Please enter a session name');
@@ -463,6 +780,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
     try {
       let didPersistAllChanges = true;
+      let targetSessionId = session.id;
 
       if (session.id) {
         // Update existing session
@@ -483,6 +801,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           setIsSaving(false);
           return;
         }
+
+        targetSessionId = session.id;
       } else {
         // Create new session
         const result = await createSession({
@@ -505,46 +825,46 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }
 
         if (result.session) {
-          const newSessionId = result.session.id;
-          const normalizedActivities = normalizeActivitySortOrder(
-            (session.activities || []) as ActivityWithCategory[]
-          );
-
-          // Add all activities to the new session
-          for (const activity of normalizedActivities) {
-            const activityResult = await addActivity({
-              session_id: newSessionId,
-              drill_id: activity.drill_id || undefined,
-              sort_order: activity.sort_order,
-              name: activity.name,
-              duration: activity.duration,
-              category_id: activity.category_id || undefined,
-              notes: activity.notes || undefined,
-            });
-
-            if (!activityResult.success) {
-              didPersistAllChanges = false;
-              console.error('Failed to add activity:', activityResult.error);
-            }
-          }
-
-          // Update URL to reflect new session ID
-          router.replace(`/dashboard/sessions/${newSessionId}`);
-          setSession((prev) => ({ ...prev, id: newSessionId }));
+          targetSessionId = result.session.id;
         }
       }
 
-      if (!didPersistAllChanges) {
-        alert('Session was saved, but one or more activities failed to save. Please review and save again.');
+      if (targetSessionId) {
+        const { failedCount, activities } = await persistUnsavedActivities(targetSessionId);
+
+        if (failedCount > 0) {
+          didPersistAllChanges = false;
+        }
+
+        setSession((prev) => ({
+          ...prev,
+          id: targetSessionId,
+          activities,
+        }));
       }
-      setHasUnsavedChanges(!didPersistAllChanges);
+
+      if (!didPersistAllChanges) {
+        alert(
+          'Session details were saved, but one or more activities failed to save. Your local activities were kept so you can retry Save Plan.'
+        );
+        setHasUnsavedChanges(true);
+        return;
+      }
+
+      if (!session.id && targetSessionId) {
+        // Only navigate to edit route once all activities are persisted
+        // so users never land on an empty activity list after save.
+        router.replace(`/dashboard/sessions/${targetSessionId}`);
+      }
+
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Save error:', error);
       alert('An unexpected error occurred while saving. Check the console for details.');
     } finally {
       setIsSaving(false);
     }
-  }, [session, currentTeam, createSession, updateSession, addActivity, router]);
+  }, [session, currentTeam, createSession, updateSession, persistUnsavedActivities, router]);
 
   // Save as new (duplicate)
   const handleSaveAsNew = useCallback(async () => {
@@ -564,8 +884,106 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Print session
   const handlePrint = useCallback(() => {
     if (!session.name) return;
-    printSessionPlan(session as SessionWithActivities, currentTeam?.name || '');
-  }, [session, currentTeam]);
+    printSessionPlan(session as SessionWithActivities, currentTeam?.name || '', {
+      categories,
+      drillCategoryIdsByDrillId,
+      appName: displayName,
+    });
+  }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName]);
+
+  const handleSaveActivitiesToLibrary = useCallback(async () => {
+    const activities = (session.activities || []) as ActivityWithCategory[];
+    if (activities.length === 0) {
+      alert('No activities to save yet.');
+      return;
+    }
+
+    setIsSavingActivitiesToLibrary(true);
+
+    try {
+      const existingDrills = await getDrills();
+      const existingNames = new Set(
+        existingDrills.map((drill) => drill.name.trim().toLowerCase()).filter(Boolean)
+      );
+
+      let createdCount = 0;
+      let skippedCount = 0;
+      let failedCreateCount = 0;
+      const createdDrillByActivityId = new Map<string, string>();
+
+      for (const activity of activities) {
+        const normalizedName = activity.name.trim().toLowerCase();
+        const alreadyLinked = Boolean(activity.drill_id);
+        const duplicateName = existingNames.has(normalizedName);
+
+        if (!normalizedName || alreadyLinked || duplicateName) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const createResult = await createDrill({
+          name: activity.name.trim(),
+          category_id: activity.category_id || undefined,
+          default_duration: activity.duration,
+          description: activity.notes || undefined,
+          notes: activity.notes || undefined,
+          tags: buildDrillTags([], activity.additional_category_ids || []),
+        });
+
+        if (!createResult.success || !createResult.drill) {
+          failedCreateCount += 1;
+          continue;
+        }
+
+        createdCount += 1;
+        existingNames.add(normalizedName);
+        createdDrillByActivityId.set(activity.id, createResult.drill.id);
+      }
+
+      if (createdDrillByActivityId.size > 0) {
+        setSession((prev) => ({
+          ...prev,
+          activities: (prev.activities || []).map((activity) =>
+            createdDrillByActivityId.has(activity.id)
+              ? { ...activity, drill_id: createdDrillByActivityId.get(activity.id) || activity.drill_id }
+              : activity
+          ),
+        }));
+
+        if (session.id) {
+          for (const [activityId, drillId] of createdDrillByActivityId.entries()) {
+            if (!activityId.startsWith('temp-')) {
+              await updateActivity(activityId, { drill_id: drillId });
+            }
+          }
+        } else {
+          setHasUnsavedChanges(true);
+        }
+      }
+
+      const summaryParts = [
+        `Saved ${createdCount} activit${createdCount === 1 ? 'y' : 'ies'} to Drill Library.`,
+      ];
+
+      if (skippedCount > 0) {
+        summaryParts.push(
+          `${skippedCount} skipped (already linked or same-name drill exists).`
+        );
+      }
+      if (failedCreateCount > 0) {
+        summaryParts.push(`${failedCreateCount} failed to save.`);
+      }
+
+      await loadDrillCategoryContext();
+
+      alert(summaryParts.join(' '));
+    } catch (error) {
+      console.error('Failed to save activities to drill library:', error);
+      alert('Failed to save activities to Drill Library. Please try again.');
+    } finally {
+      setIsSavingActivitiesToLibrary(false);
+    }
+  }, [session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext]);
 
   // Clear form
   const handleClear = useCallback(() => {
@@ -626,6 +1044,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           <TimeAllocationChart
             activities={session.activities || []}
             totalDuration={session.duration || 90}
+            categories={categories}
+            drillCategoryIdsByDrillId={drillCategoryIdsByDrillId}
           />
         </div>
       </div>
@@ -640,7 +1060,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           defensiveEmphasis: session.defensive_emphasis,
           existingActivities: (session.activities || []).map((activity) => ({
             name: activity.name,
-            duration: activity.duration,
+            duration: Number(activity.duration) || 0,
           })),
         }}
         disabled={isSaving}
@@ -658,6 +1078,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         onReorder={handleReorder}
         onAddDrillClick={openSingleDrillModal}
         onAddMultipleDrillsClick={openMultipleDrillModal}
+        onManageCategoriesClick={() => setIsCategoryManagerOpen(true)}
+        onSaveActivitiesToLibrary={handleSaveActivitiesToLibrary}
+        isSavingActivitiesToLibrary={isSavingActivitiesToLibrary}
+        canManagePlayLinks={Boolean(canManagePlayLinks)}
+        onAttachPlayClick={canManagePlayLinks ? openPlayModalForActivity : undefined}
+        onClearPlayClick={canManagePlayLinks ? handleClearLinkedPlay : undefined}
+        onRefreshPlaySnapshotClick={canManagePlayLinks ? handleRefreshPlaySnapshot : undefined}
+        onViewLinkedPlayClick={handleViewLinkedPlay}
+        linkedPlayIsStale={isLinkedPlayStale}
         disabled={isSaving}
       />
 
@@ -705,6 +1134,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         categories={categories}
         mode={drillModalMode}
       />
+
+      <PlaySelectorModal
+        isOpen={isPlayModalOpen}
+        onClose={closePlayModal}
+        onSelect={handleAttachPlayToActivity}
+      />
+
+      {isCategoryManagerOpen && (
+        <CategoryManager
+          categories={categories}
+          onClose={() => setIsCategoryManagerOpen(false)}
+          onUpdate={loadCategories}
+        />
+      )}
     </div>
   );
 }
