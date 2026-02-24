@@ -12,7 +12,9 @@
     "android": "npx cap open android",
     "cap:sync": "npx cap sync",
     "cap:add:ios": "npx cap add ios",
-    "cap:add:android": "npx cap add android"
+    "cap:add:android": "npx cap add android",
+    "agents:spawn": "bash scripts/agent-spawn.sh",
+    "agents:check": "bash scripts/agent-check.sh"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
