@@ -196,11 +196,41 @@ export function useEvents() {
    * Delete an event
    */
   const deleteEvent = useCallback(
-    async (eventId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('events').delete().eq('id', eventId);
+    async (
+      eventId: string,
+      options?: { deleteSeries?: boolean }
+    ): Promise<{ success: boolean; error?: string }> => {
+      let deleteError: { message?: string } | null = null;
 
-      if (error) {
-        console.error('Error deleting event:', error);
+      if (options?.deleteSeries) {
+        const { data: sourceEvent, error: lookupError } = await supabase
+          .from('events')
+          .select('recurrence_series_id')
+          .eq('id', eventId)
+          .single();
+
+        if (lookupError) {
+          console.error('Error loading event for delete:', lookupError);
+          return { success: false, error: 'Failed to load event before deleting' };
+        }
+
+        if (sourceEvent?.recurrence_series_id) {
+          const { error } = await supabase
+            .from('events')
+            .delete()
+            .eq('recurrence_series_id', sourceEvent.recurrence_series_id);
+          deleteError = error;
+        } else {
+          const { error } = await supabase.from('events').delete().eq('id', eventId);
+          deleteError = error;
+        }
+      } else {
+        const { error } = await supabase.from('events').delete().eq('id', eventId);
+        deleteError = error;
+      }
+
+      if (deleteError) {
+        console.error('Error deleting event:', deleteError);
         return { success: false, error: 'Failed to delete event' };
       }
 

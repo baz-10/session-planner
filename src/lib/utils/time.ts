@@ -101,7 +101,9 @@ export interface CategoryAllocation {
 
 export function calculateCategoryAllocations(
   activities: Array<{ duration: number; category_id: string | null; category?: { name: string; color: string } | null }>,
-  totalDuration: number
+  totalDuration: number,
+  _categoryLookup?: Map<string, { name: string; color: string }>,
+  _drillCategoryIdsByDrillId?: Record<string, string[]>
 ): CategoryAllocation[] {
   const categoryMap = new Map<string | null, { name: string; color: string; minutes: number }>();
 

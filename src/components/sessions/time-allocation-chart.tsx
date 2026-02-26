@@ -14,11 +14,15 @@ interface ActivityWithCategory extends SessionActivity {
 interface TimeAllocationChartProps {
   activities: ActivityWithCategory[];
   totalDuration: number;
+  categories?: DrillCategory[];
+  drillCategoryIdsByDrillId?: Record<string, string[]>;
 }
 
 export function TimeAllocationChart({
   activities,
   totalDuration,
+  categories: _categories,
+  drillCategoryIdsByDrillId: _drillCategoryIdsByDrillId,
 }: TimeAllocationChartProps) {
   const allocations = useMemo(() => {
     return calculateCategoryAllocations(activities, totalDuration);

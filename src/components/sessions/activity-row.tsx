@@ -15,10 +15,10 @@ interface ActivityRowProps {
   index: number;
   timing?: ActivityTiming;
   categories: DrillCategory[];
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   onUpdate: (updates: Partial<SessionActivity>) => void;
   onDelete: () => void;
   onAttachPlay?: () => void;
@@ -35,10 +35,10 @@ export function ActivityRow({
   index,
   timing,
   categories,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp = () => undefined,
+  onMoveDown = () => undefined,
   onUpdate,
   onDelete,
   onAttachPlay,

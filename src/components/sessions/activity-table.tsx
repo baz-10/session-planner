@@ -38,6 +38,15 @@ interface ActivityTableProps {
   onReorder: (activityIds: string[]) => void;
   onAddDrillClick: () => void;
   onAddMultipleDrillsClick?: () => void;
+  onManageCategoriesClick?: () => void;
+  onSaveActivitiesToLibrary?: () => void;
+  isSavingActivitiesToLibrary?: boolean;
+  canManagePlayLinks?: boolean;
+  onAttachPlayClick?: (activityId: string) => void;
+  onClearPlayClick?: (activityId: string) => void;
+  onRefreshPlaySnapshotClick?: (activityId: string) => void;
+  onViewLinkedPlayClick?: (activityId: string) => void;
+  linkedPlayIsStale?: (activity: ActivityWithCategory) => boolean;
   disabled?: boolean;
 }
 
@@ -51,6 +60,15 @@ export function ActivityTable({
   onReorder,
   onAddDrillClick,
   onAddMultipleDrillsClick,
+  onManageCategoriesClick,
+  onSaveActivitiesToLibrary,
+  isSavingActivitiesToLibrary = false,
+  canManagePlayLinks = false,
+  onAttachPlayClick,
+  onClearPlayClick,
+  onRefreshPlaySnapshotClick,
+  onViewLinkedPlayClick,
+  linkedPlayIsStale,
   disabled = false,
 }: ActivityTableProps) {
   const [localActivities, setLocalActivities] = useState(activities);
@@ -153,6 +171,8 @@ export function ActivityTable({
             ) : (
               localActivities.map((activity, index) => {
                 const timing = activityTimings.get(activity.id);
+                const canMoveUp = index > 0;
+                const canMoveDown = index < localActivities.length - 1;
                 return (
                   <ActivityRow
                     key={activity.id}
@@ -160,8 +180,44 @@ export function ActivityTable({
                     index={index + 1}
                     timing={timing}
                     categories={categories}
+                    canMoveUp={canMoveUp}
+                    canMoveDown={canMoveDown}
+                    onMoveUp={() => {
+                      if (!canMoveUp) return;
+                      const newOrder = arrayMove(localActivities, index, index - 1);
+                      setLocalActivities(newOrder);
+                      onReorder(newOrder.map((a) => a.id));
+                    }}
+                    onMoveDown={() => {
+                      if (!canMoveDown) return;
+                      const newOrder = arrayMove(localActivities, index, index + 1);
+                      setLocalActivities(newOrder);
+                      onReorder(newOrder.map((a) => a.id));
+                    }}
                     onUpdate={(updates) => onActivityUpdate(activity.id, updates)}
                     onDelete={() => onActivityDelete(activity.id)}
+                    canManagePlayLinks={canManagePlayLinks}
+                    linkedPlayIsStale={linkedPlayIsStale ? linkedPlayIsStale(activity) : false}
+                    onAttachPlay={
+                      canManagePlayLinks && onAttachPlayClick
+                        ? () => onAttachPlayClick(activity.id)
+                        : undefined
+                    }
+                    onClearPlay={
+                      canManagePlayLinks && onClearPlayClick
+                        ? () => onClearPlayClick(activity.id)
+                        : undefined
+                    }
+                    onRefreshPlaySnapshot={
+                      canManagePlayLinks && onRefreshPlaySnapshotClick
+                        ? () => onRefreshPlaySnapshotClick(activity.id)
+                        : undefined
+                    }
+                    onViewLinkedPlay={
+                      onViewLinkedPlayClick
+                        ? () => onViewLinkedPlayClick(activity.id)
+                        : undefined
+                    }
                     disabled={disabled}
                   />
                 );
@@ -188,6 +244,24 @@ export function ActivityTable({
           >
             Add Multiple Drills
           </button>
+          {onManageCategoriesClick && (
+            <button
+              onClick={onManageCategoriesClick}
+              disabled={disabled}
+              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Manage Categories
+            </button>
+          )}
+          {onSaveActivitiesToLibrary && (
+            <button
+              onClick={onSaveActivitiesToLibrary}
+              disabled={disabled || isSavingActivitiesToLibrary}
+              className="px-3 py-1.5 text-sm border border-primary text-primary rounded hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSavingActivitiesToLibrary ? 'Saving...' : 'Save Activities to Drill Library'}
+            </button>
+          )}
         </div>
 
         <div className="text-sm">
