@@ -223,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshOrganizationMemberships = useCallback(async () => {
     if (!state.user) {
       setOrganizationMemberships([]);
+      setCurrentOrganization(null);
       return;
     }
 
@@ -245,12 +246,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })) as OrganizationMembership[];
 
     setOrganizationMemberships(memberships);
+    setCurrentOrganization((previousOrganization) => {
+      if (memberships.length === 0) {
+        return null;
+      }
 
-    // Set current organization to first one if not set
-    if (!currentOrganization && memberships.length > 0) {
-      setCurrentOrganization(memberships[0].organization);
-    }
-  }, [supabase, state.user, currentOrganization]);
+      if (!previousOrganization) {
+        return memberships[0].organization;
+      }
+
+      const nextOrganization = memberships.find(
+        (membership) => membership.organization.id === previousOrganization.id
+      )?.organization;
+
+      return nextOrganization || memberships[0].organization;
+    });
+  }, [supabase, state.user]);
 
   // Refresh profile
   const refreshProfile = useCallback(async () => {
