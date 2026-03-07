@@ -1,7 +1,19 @@
 'use client';
 
-import { useBrandingContext } from '@/contexts/branding-context';
+const DEFAULT_DISPLAY_NAME = 'Session Planner';
 
-export function useBranding() {
-  return useBrandingContext();
+export interface BrandingState {
+  displayName: string;
+  logoUrl: string | null;
+  isWhitelabelActive: boolean;
+  refreshBranding: () => Promise<void>;
+}
+
+export function useBranding(): BrandingState {
+  return {
+    displayName: DEFAULT_DISPLAY_NAME,
+    logoUrl: null,
+    isWhitelabelActive: false,
+    refreshBranding: async () => {},
+  };
 }
