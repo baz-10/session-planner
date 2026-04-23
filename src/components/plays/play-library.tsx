@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { usePlays } from '@/hooks/use-plays';
+import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
+import { PlayDiagramPreview } from '@/components/plays/play-diagram-preview';
 import type { CourtTemplate, PlayType } from '@/lib/plays/diagram-types';
 import type { Play } from '@/types/database';
 
@@ -12,6 +14,7 @@ export function PlayLibrary() {
   const router = useRouter();
   const { currentTeam, teamMemberships } = useAuth();
   const { getPlays, duplicatePlay, deletePlay, searchPlays } = usePlays();
+  const { theme } = usePlayEditorTheme();
 
   const [plays, setPlays] = useState<Play[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,35 +192,53 @@ export function PlayLibrary() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {plays.map((play) => (
-            <article key={play.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <article
+              key={play.id}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/30 hover:shadow-lg"
+            >
               <button
                 onClick={() => router.push(`/dashboard/plays/${play.id}`)}
                 className="w-full text-left"
               >
-                <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-                  {play.thumbnail_data_url ? (
-                    <img
-                      src={play.thumbnail_data_url}
-                      alt={`${play.name} diagram`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-sm text-gray-500">
-                      No preview image
-                    </div>
-                  )}
+                <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+                  <PlayDiagramPreview
+                    alt={`${play.name} diagram`}
+                    diagram={play.diagram}
+                    courtTemplate={play.court_template}
+                    theme={theme}
+                    fallbackSrc={play.thumbnail_data_url}
+                    className="h-full w-full"
+                  />
                 </div>
-                <div className="p-3 space-y-2">
-                  <h3 className="font-semibold text-gray-900 line-clamp-1">{play.name}</h3>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                    <span className="px-2 py-0.5 bg-gray-100 rounded">{play.play_type}</span>
-                    <span className="px-2 py-0.5 bg-gray-100 rounded">{templateLabel(play.court_template)}</span>
-                    <span className="px-2 py-0.5 bg-gray-100 rounded">v{play.version}</span>
+                <div className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="line-clamp-1 text-base font-semibold text-slate-950">
+                        {play.name}
+                      </h3>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {templateLabel(play.court_template)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      v{play.version}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <span className="rounded-full bg-teal/10 px-2.5 py-1 font-semibold capitalize text-teal-dark">
+                      {play.play_type}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium">
+                      Theme: {theme}
+                    </span>
                   </div>
                   {play.tags && play.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {play.tags.slice(0, 4).map((tag) => (
-                        <span key={`${play.id}-${tag}`} className="text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary">
+                        <span
+                          key={`${play.id}-${tag}`}
+                          className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+                        >
                           {tag}
                         </span>
                       ))}
@@ -226,10 +247,10 @@ export function PlayLibrary() {
                 </div>
               </button>
 
-              <div className="px-3 pb-3 flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-3">
                 <button
                   onClick={() => router.push(`/dashboard/plays/${play.id}`)}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
                   {canEdit ? 'Edit' : 'View'}
                 </button>
@@ -237,13 +258,13 @@ export function PlayLibrary() {
                   <>
                     <button
                       onClick={() => handleDuplicate(play)}
-                      className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
                       Duplicate
                     </button>
                     <button
                       onClick={() => handleDelete(play)}
-                      className="px-2 py-1 text-xs border border-red-200 text-red-700 rounded hover:bg-red-50"
+                      className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
                     >
                       Delete
                     </button>

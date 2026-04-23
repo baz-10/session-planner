@@ -32,20 +32,8 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <nav className="flex items-center gap-2 text-sm text-gray-600">
-            <a href="/dashboard" className="hover:text-primary">Dashboard</a>
-            <span>/</span>
-            <a href="/dashboard/sessions" className="hover:text-primary">Sessions</a>
-            <span>/</span>
-            <span className="text-gray-900">Edit Plan</span>
-          </nav>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[#f8fafc]">
+      <main>
         <SessionBuilder sessionId={sessionId} />
       </main>
     </div>

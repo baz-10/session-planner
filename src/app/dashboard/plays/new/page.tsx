@@ -46,15 +46,7 @@ export default function NewPlayPage() {
   }
 
   return (
-    <div className="p-8 space-y-5">
-      <nav className="flex items-center gap-2 text-sm">
-        <Link href="/dashboard" className="text-gray-500 hover:text-primary">Dashboard</Link>
-        <span className="text-gray-400">/</span>
-        <Link href="/dashboard/plays" className="text-gray-500 hover:text-primary">Plays</Link>
-        <span className="text-gray-400">/</span>
-        <span className="text-gray-900 font-medium">New Play</span>
-      </nav>
-
+    <div className="min-h-full bg-[#f8fafc] p-3 md:p-4">
       <PlayEditorShell />
     </div>
   );

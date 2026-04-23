@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { usePlays } from '@/hooks/use-plays';
+import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
 import {
   Toast,
   ToastClose,
@@ -19,6 +20,15 @@ import {
   getTemplateById,
   type PlayTemplate,
 } from '@/lib/plays/templates';
+import {
+  createPlayDiagramDataUrl,
+  getCourtSurfaceImageSource,
+  getPlayerTokenAppearance,
+} from '@/lib/plays/play-diagram-render';
+import {
+  getPlayEditorThemeChrome,
+  PLAY_EDITOR_THEME_OPTIONS,
+} from '@/lib/plays/play-theme';
 import type {
   ActionType,
   AnimationTrigger,
@@ -64,12 +74,6 @@ const NORMALIZED_SIZE = 1000;
 const DESKTOP_STAGE_SIZE = 720;
 const MOBILE_STAGE_SIZE = 340;
 const PLAYBACK_SPEED_OPTIONS = [0.5, 1, 1.5, 2] as const;
-
-const COURT_TEMPLATE_ASSET: Record<CourtTemplate, string> = {
-  half_court: '/courts/basketball-half-court.svg',
-  full_court_vertical: '/courts/basketball-full-court-vertical.svg',
-  full_court_horizontal: '/courts/basketball-full-court-horizontal.svg',
-};
 
 type ToastVariant = NonNullable<ToastProps['variant']>;
 
@@ -237,6 +241,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
   const lastFrameTsRef = useRef<number | null>(null);
   const { currentTeam, teamMemberships } = useAuth();
   const { getPlay, createPlay, updatePlay, isLoading } = usePlays();
+  const { theme: editorTheme, setTheme: setEditorTheme } = usePlayEditorTheme();
 
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -262,6 +267,10 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
   );
 
   const stageSize = isMobile ? MOBILE_STAGE_SIZE : DESKTOP_STAGE_SIZE;
+  const themeChrome = useMemo(
+    () => getPlayEditorThemeChrome(editorTheme),
+    [editorTheme]
+  );
 
   const membership = teamMemberships.find((item) => item.team.id === currentTeam?.id);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
@@ -370,6 +379,11 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
 
     const image = new window.Image();
     let cancelled = false;
+    const nextSource = getCourtSurfaceImageSource({
+      courtTemplate: play.courtTemplate,
+      theme: editorTheme,
+      idPrefix: `editor-court-${play.courtTemplate}-${editorTheme}`,
+    });
 
     setCourtImageStatus('loading');
     image.onload = () => {
@@ -379,18 +393,18 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
     };
     image.onerror = () => {
       if (cancelled) return;
-      console.error('Failed to load court template:', COURT_TEMPLATE_ASSET[play.courtTemplate]);
+      console.error('Failed to load court template:', nextSource);
       setCourtImage(null);
       setCourtImageStatus('error');
     };
-    image.src = COURT_TEMPLATE_ASSET[play.courtTemplate];
+    image.src = nextSource;
 
     return () => {
       cancelled = true;
       image.onload = null;
       image.onerror = null;
     };
-  }, [play.courtTemplate]);
+  }, [editorTheme, play.courtTemplate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1158,8 +1172,20 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
 
     let thumbnailDataUrl = play.thumbnailDataUrl;
     try {
-      thumbnailDataUrl =
-        stageRef.current?.toDataURL({ pixelRatio: 0.5, mimeType: 'image/png' }) || play.thumbnailDataUrl;
+      if (play.courtTemplate === 'half_court') {
+        thumbnailDataUrl =
+          createPlayDiagramDataUrl({
+            diagram: play.diagram,
+            courtTemplate: play.courtTemplate,
+            theme: editorTheme,
+            phaseIndex: safeActivePhaseIndex,
+            idPrefix: `play-thumb-${play.id || 'new'}-${safeActivePhaseIndex}-${editorTheme}`,
+          }) || play.thumbnailDataUrl;
+      } else {
+        thumbnailDataUrl =
+          stageRef.current?.toDataURL({ pixelRatio: 0.5, mimeType: 'image/png' }) ||
+          play.thumbnailDataUrl;
+      }
     } catch (error) {
       console.error('Unable to generate play thumbnail:', error);
       showToast('Preview image unavailable', 'Saved play without refreshing thumbnail image.', 'warning');
@@ -1222,9 +1248,42 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
     createPlay,
     hasUnsavedChanges,
     allTags,
+    editorTheme,
     router,
+    safeActivePhaseIndex,
     showToast,
   ]);
+
+  const exportDiagram = useCallback(() => {
+    try {
+      const dataUrl =
+        play.courtTemplate === 'half_court'
+          ? createPlayDiagramDataUrl({
+              diagram: play.diagram,
+              courtTemplate: play.courtTemplate,
+              theme: editorTheme,
+              phaseIndex: displayPhaseIndex,
+              idPrefix: `play-export-${play.id || 'new'}-${displayPhaseIndex}-${editorTheme}`,
+            })
+          : stageRef.current?.toDataURL({
+              pixelRatio: 2,
+              mimeType: 'image/png',
+            });
+
+      if (!dataUrl) {
+        showToast('Export unavailable', 'Could not generate an export image.', 'warning');
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${(play.name || 'play-diagram').trim().replace(/\s+/g, '-').toLowerCase()}.png`;
+      link.click();
+    } catch (error) {
+      console.error('Unable to export play diagram:', error);
+      showToast('Export failed', 'Unable to download the current diagram.', 'error');
+    }
+  }, [displayPhaseIndex, editorTheme, play.courtTemplate, play.diagram, play.id, play.name, showToast]);
 
   if (loadError) {
     return (
@@ -1240,29 +1299,105 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
 
   return (
     <ToastProvider>
-      <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{play.id ? 'Edit Play' : 'Create Play'}</h1>
-          <p className="text-sm text-gray-600">
-            Build multi-phase basketball diagrams and attach snapshots to session activities.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {hasUnsavedChanges && <span className="text-sm text-orange-600">Unsaved changes</span>}
-          <button
-            onClick={save}
-            disabled={isSaving || isLoading || !canEdit || isMobile || playbackState.isPlaying}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
-          >
-            {isSaving ? 'Saving...' : play.id ? 'Save Play' : 'Create Play'}
-          </button>
+      <div
+        className="space-y-4 rounded-[28px] p-4 md:p-5"
+        style={{ backgroundColor: themeChrome.shellBg }}
+      >
+      <div
+        className="rounded-[22px] border px-5 py-4"
+        style={{
+          backgroundColor: themeChrome.panelBg,
+          borderColor: themeChrome.borderColor,
+          color: themeChrome.panelInk,
+        }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/plays')}
+              className="rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-white/5"
+              style={{
+                borderColor: themeChrome.borderColor,
+                color: themeChrome.panelInk,
+              }}
+            >
+              ← Plays
+            </button>
+            <div className="min-w-0">
+              <h1
+                className="truncate text-xl font-bold tracking-[-0.02em]"
+                style={{ color: themeChrome.panelInk }}
+              >
+                {play.name || (play.id ? 'Untitled play' : 'New play')}
+              </h1>
+              <p className="text-xs" style={{ color: themeChrome.subtleInk }}>
+                {play.playType} ·{' '}
+                {play.courtTemplate === 'half_court'
+                  ? 'Half court'
+                  : play.courtTemplate === 'full_court_vertical'
+                  ? 'Full court vertical'
+                  : 'Full court horizontal'}{' '}
+                · v{play.version} · {hasUnsavedChanges ? 'Unsaved changes' : 'Auto-saved state clean'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex items-center gap-1 rounded-[10px] p-[3px]"
+              style={{ backgroundColor: themeChrome.chipBg }}
+            >
+              {PLAY_EDITOR_THEME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setEditorTheme(option.value)}
+                  className="rounded-[7px] px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={{
+                    backgroundColor:
+                      option.value === editorTheme ? '#14b8a6' : 'transparent',
+                    color:
+                      option.value === editorTheme
+                        ? '#ffffff'
+                        : themeChrome.panelInk,
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={exportDiagram}
+              className="rounded-lg border px-3 py-2 text-sm font-semibold transition-colors hover:bg-white/5"
+              style={{
+                borderColor: themeChrome.borderColor,
+                color: themeChrome.panelInk,
+              }}
+            >
+              Export
+            </button>
+            <button
+              onClick={save}
+              disabled={isSaving || isLoading || !canEdit || isMobile || playbackState.isPlaying}
+              className="rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-navy-light disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : play.id ? 'Save play' : 'Create play'}
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div
+        className="grid grid-cols-1 gap-4 rounded-[22px] border p-4 lg:grid-cols-4"
+        style={{
+          backgroundColor: themeChrome.panelBg,
+          borderColor: themeChrome.borderColor,
+        }}
+      >
         <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Name</label>
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Name</label>
           <input
             value={play.name}
             onChange={(event) => {
@@ -1270,12 +1405,17 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               markChanged();
             }}
             disabled={!editingEnabled}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            className="w-full rounded-xl px-3 py-2 text-sm outline-none transition-colors"
+            style={{
+              border: `1px solid ${themeChrome.fieldBorder}`,
+              backgroundColor: themeChrome.fieldBg,
+              color: themeChrome.panelInk,
+            }}
             placeholder="Trans Pin into Thumbs Side"
           />
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Play Type</label>
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Play Type</label>
           <select
             value={play.playType}
             onChange={(event) => {
@@ -1283,7 +1423,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               markChanged();
             }}
             disabled={!editingEnabled}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+            style={{
+              border: `1px solid ${themeChrome.fieldBorder}`,
+              backgroundColor: themeChrome.fieldBg,
+              color: themeChrome.panelInk,
+            }}
           >
             <option value="offense">Offense</option>
             <option value="defense">Defense</option>
@@ -1294,7 +1439,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Court Template</label>
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Court Template</label>
           <select
             value={play.courtTemplate}
             onChange={(event) => {
@@ -1307,7 +1452,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               markChanged();
             }}
             disabled={!editingEnabled}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+            style={{
+              border: `1px solid ${themeChrome.fieldBorder}`,
+              backgroundColor: themeChrome.fieldBg,
+              color: themeChrome.panelInk,
+            }}
           >
             <option value="half_court">Half Court</option>
             <option value="full_court_vertical">Full Court Vertical</option>
@@ -1315,7 +1465,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
           </select>
         </div>
         <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Tags</label>
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Tags</label>
           <input
             value={play.tagsInput}
             onChange={(event) => {
@@ -1323,12 +1473,17 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               markChanged();
             }}
             disabled={!editingEnabled}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+            className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+            style={{
+              border: `1px solid ${themeChrome.fieldBorder}`,
+              backgroundColor: themeChrome.fieldBg,
+              color: themeChrome.panelInk,
+            }}
             placeholder="horns, ato"
           />
         </div>
         <div className="lg:col-span-4 space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</label>
+          <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Description</label>
           <textarea
             value={play.description}
             onChange={(event) => {
@@ -1337,7 +1492,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
             }}
             disabled={!editingEnabled}
             rows={2}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none"
+            className="w-full resize-none rounded-xl px-3 py-2 text-sm outline-none"
+            style={{
+              border: `1px solid ${themeChrome.fieldBorder}`,
+              backgroundColor: themeChrome.fieldBg,
+              color: themeChrome.panelInk,
+            }}
             placeholder="Quick coaching context for this set."
           />
         </div>
@@ -1350,34 +1510,53 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr_300px] gap-4">
-        <aside className="bg-white rounded-lg border border-gray-200 p-3 space-y-3">
+        <aside
+          className="space-y-3 rounded-[22px] border p-3"
+          style={{
+            backgroundColor: themeChrome.panelBg,
+            borderColor: themeChrome.borderColor,
+          }}
+        >
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Phases</h2>
-            <span className="text-xs text-gray-500">{play.diagram.phases.length}</span>
+            <h2 className="text-sm font-semibold" style={{ color: themeChrome.panelInk }}>Phases</h2>
+            <span className="text-xs" style={{ color: themeChrome.subtleInk }}>{play.diagram.phases.length}</span>
           </div>
 
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
             {play.diagram.phases.map((phase, index) => (
               <div
                 key={phase.id}
-                className={`border rounded-md p-2 ${
-                  index === safeActivePhaseIndex ? 'border-primary bg-primary/5' : 'border-gray-200'
-                }`}
+                className="rounded-xl border p-2"
+                style={{
+                  borderColor:
+                    index === safeActivePhaseIndex ? '#14b8a6' : themeChrome.borderColor,
+                  backgroundColor:
+                    index === safeActivePhaseIndex
+                      ? themeChrome.isDark
+                        ? 'rgba(20,184,166,0.18)'
+                        : 'rgba(20,184,166,0.08)'
+                      : themeChrome.fieldBg,
+                }}
               >
                 <button
                   onClick={() => jumpToPhase(index)}
                   className="w-full text-left"
                 >
-                  <div className="text-xs text-gray-500 mb-1">Phase {index + 1}</div>
+                  <div className="mb-1 text-xs" style={{ color: themeChrome.subtleInk }}>Phase {index + 1}</div>
                 </button>
                 {editingEnabled ? (
                   <input
                     value={phase.name}
                     onChange={(event) => updatePhaseName(index, event.target.value)}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    className="w-full rounded-lg px-2 py-1 text-sm outline-none"
+                    style={{
+                      border: `1px solid ${themeChrome.fieldBorder}`,
+                      backgroundColor: themeChrome.panelBg,
+                      color: themeChrome.panelInk,
+                    }}
                   />
                 ) : (
-                  <p className="text-sm font-medium text-gray-900">{phase.name}</p>
+                  <p className="text-sm font-medium" style={{ color: themeChrome.panelInk }}>{phase.name}</p>
                 )}
                 {editingEnabled && play.diagram.phases.length > 1 && (
                   <button
@@ -1395,7 +1574,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
             <button
               onClick={() => duplicatePhase(true)}
               disabled={!editingEnabled}
-              className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.fieldBg,
+                color: themeChrome.panelInk,
+              }}
               title="Carry forward objects, clear actions"
             >
               Next
@@ -1403,21 +1587,31 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
             <button
               onClick={() => duplicatePhase(false)}
               disabled={!editingEnabled}
-              className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.fieldBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Clone
             </button>
             <button
               onClick={addEmptyPhase}
               disabled={!editingEnabled}
-              className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.fieldBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Empty
             </button>
           </div>
 
           <div className="pt-2 border-t border-gray-200 space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">Load Core Template</label>
+            <label className="text-xs font-medium uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Load Core Template</label>
             <select
               disabled={!editingEnabled}
               value={templateToLoad}
@@ -1426,7 +1620,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                 if (!value) return;
                 setTemplate(value);
               }}
-              className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm"
+              className="w-full rounded-lg px-2 py-1.5 text-sm outline-none"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.fieldBg,
+                color: themeChrome.panelInk,
+              }}
             >
               <option value="">Choose template...</option>
               {CORE_PLAY_TEMPLATES.map((template) => (
@@ -1438,21 +1637,41 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
           </div>
         </aside>
 
-        <div className="bg-slate-100 rounded-lg border border-gray-300 p-3">
+        <div
+          className="rounded-[22px] border p-3"
+          style={{
+            background: themeChrome.centerBg,
+            borderColor: themeChrome.borderColor,
+          }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div className="text-xs text-gray-600">
+            <div className="text-xs" style={{ color: themeChrome.subtleInk }}>
               {editingEnabled
                 ? 'Click to select. Drag objects/actions to reposition.'
                 : isPlaybackPreviewing
                 ? 'Playback preview mode'
                 : 'Read-only preview mode'}
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-600">
-              <span className="px-2 py-0.5 rounded bg-white border border-gray-200">
+            <div className="flex items-center gap-2 text-[11px]" style={{ color: themeChrome.subtleInk }}>
+              <span
+                className="rounded-full px-2 py-0.5"
+                style={{
+                  backgroundColor: themeChrome.panelBg,
+                  border: `1px solid ${themeChrome.fieldBorder}`,
+                }}
+              >
                 Phase {displayPhaseIndex + 1}
               </span>
               {editingEnabled && (
-                <span className="px-2 py-0.5 rounded bg-white border border-gray-200">Delete/Backspace removes selection</span>
+                <span
+                  className="rounded-full px-2 py-0.5"
+                  style={{
+                    backgroundColor: themeChrome.panelBg,
+                    border: `1px solid ${themeChrome.fieldBorder}`,
+                  }}
+                >
+                  Delete/Backspace removes selection
+                </span>
               )}
             </div>
           </div>
@@ -1461,40 +1680,65 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
             <button
               onClick={togglePlayback}
               disabled={!canAnimate}
-              className="px-2.5 py-1.5 text-xs border border-gray-300 bg-white rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2.5 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.panelBg,
+                color: themeChrome.panelInk,
+              }}
             >
               {playbackState.isPlaying ? 'Pause' : 'Play'}
             </button>
             <button
               onClick={handlePlayFullAnimation}
               disabled={!canAnimate}
-              className="px-2.5 py-1.5 text-xs border border-gray-300 bg-white rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2.5 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.panelBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Play Full Animation
             </button>
             <button
               onClick={handleRestartPlayback}
               disabled={!canAnimate}
-              className="px-2.5 py-1.5 text-xs border border-gray-300 bg-white rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2.5 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.panelBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Restart
             </button>
             <button
               onClick={handlePreviousPhase}
               disabled={isFirstPhase}
-              className="px-2 py-1.5 text-xs border border-gray-300 bg-white rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.panelBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Prev
             </button>
             <button
               onClick={handleNextPhase}
               disabled={isLastPhase}
-              className="px-2 py-1.5 text-xs border border-gray-300 bg-white rounded hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg px-2 py-1.5 text-xs disabled:opacity-50"
+              style={{
+                border: `1px solid ${themeChrome.fieldBorder}`,
+                backgroundColor: themeChrome.panelBg,
+                color: themeChrome.panelInk,
+              }}
             >
               Next
             </button>
             <div className="flex items-center gap-1.5 ml-auto">
-              <label className="text-[11px] text-gray-600 uppercase tracking-wide">Speed</label>
+              <label className="text-[11px] uppercase tracking-wide" style={{ color: themeChrome.subtleInk }}>Speed</label>
               <select
                 value={playbackSpeed}
                 onChange={(event) =>
@@ -1502,7 +1746,12 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                     Number(event.target.value) as (typeof PLAYBACK_SPEED_OPTIONS)[number]
                   )
                 }
-                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                className="rounded-lg px-2 py-1 text-xs outline-none"
+                style={{
+                  border: `1px solid ${themeChrome.fieldBorder}`,
+                  backgroundColor: themeChrome.panelBg,
+                  color: themeChrome.panelInk,
+                }}
               >
                 {PLAYBACK_SPEED_OPTIONS.map((speed) => (
                   <option key={speed} value={speed}>
@@ -1514,11 +1763,15 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
           </div>
 
           <div className="flex items-center justify-center">
+            <div
+              className="overflow-hidden rounded-[18px]"
+              style={{ boxShadow: themeChrome.courtShadow }}
+            >
             <Stage
               width={stageSize}
               height={stageSize}
               ref={stageRef}
-              className="rounded-md shadow-inner border border-amber-200"
+              className="rounded-[18px]"
               onMouseDown={() => {
                 if (!editingEnabled) return;
                 setSelectedObjectId(null);
@@ -1537,7 +1790,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                   />
                 ) : (
                   <>
-                    <Rect x={0} y={0} width={stageSize} height={stageSize} fill="#dfb981" />
+                    <Rect x={0} y={0} width={stageSize} height={stageSize} fill={themeChrome.isDark ? '#0f1f33' : '#dfb981'} />
                     <Rect
                       x={0}
                       y={0}
@@ -1552,7 +1805,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       y={stageSize * 0.48}
                       text={courtImageStatus === 'error' ? 'Court Template Unavailable' : 'Loading Court Template...'}
                       fontSize={stageSize * 0.03}
-                      fill="rgba(255, 249, 235, 0.8)"
+                      fill={themeChrome.isDark ? 'rgba(226,232,240,0.85)' : 'rgba(255, 249, 235, 0.8)'}
                       listening={false}
                     />
                   </>
@@ -1666,7 +1919,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       y={y - height / 2}
                       width={width}
                       height={height}
-                      stroke={selected ? '#2563eb' : '#111827'}
+                      stroke={selected ? '#2563eb' : themeChrome.panelInk}
                       strokeWidth={selected ? 3 : 2}
                       fillEnabled={false}
                       draggable={editingEnabled}
@@ -1686,7 +1939,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       x={x}
                       y={y}
                       radius={object.size || 42}
-                      stroke={selected ? '#2563eb' : '#111827'}
+                      stroke={selected ? '#2563eb' : themeChrome.panelInk}
                       strokeWidth={selected ? 3 : 2}
                       fillEnabled={false}
                       draggable={editingEnabled}
@@ -1706,7 +1959,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       key={object.id}
                       points={[x, y - size, x - size, y + size, x + size, y + size]}
                       closed
-                      stroke={selected ? '#2563eb' : '#111827'}
+                      stroke={selected ? '#2563eb' : '#7c2d12'}
                       fill="#eab308"
                       strokeWidth={2}
                       draggable={editingEnabled}
@@ -1728,7 +1981,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       text={object.label || 'TEXT'}
                       fontSize={18}
                       fontStyle={selected ? 'bold' : 'normal'}
-                      fill="#111827"
+                      fill={editorTheme === 'hardwood' ? '#111827' : '#f8fafc'}
                       draggable={editingEnabled}
                       onDragEnd={(event) => handleObjectDrag(object.id, event.target.x(), event.target.y())}
                       onClick={(event) => {
@@ -1748,9 +2001,10 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                   (isOffense || isDefense);
                 const displayLabel =
                   isDefense && object.label ? object.label.replace(/^X/i, '') || 'X' : object.label;
-                const tokenStroke = isDefense ? '#7f1d1d' : isBall ? '#7c2d12' : '#0f172a';
-                const tokenFill = isDefense ? '#fff5f5' : isBall ? '#fb923c' : '#fff8dc';
-                const labelColor = isDefense ? '#991b1b' : isBall ? '#7c2d12' : '#111827';
+                const tokenAppearance = getPlayerTokenAppearance(editorTheme, object.type);
+                const tokenStroke = tokenAppearance.stroke;
+                const tokenFill = tokenAppearance.fill;
+                const labelColor = tokenAppearance.labelColor;
                 const labelSize = isBall ? Math.max(10, Math.round(radius * 0.62)) : Math.max(12, Math.round(radius * 0.75));
 
                 return (
@@ -1777,13 +2031,22 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                         listening={false}
                       />
                     )}
+                    {tokenAppearance.haloFill && (
+                      <Circle
+                        x={x}
+                        y={y}
+                        radius={30}
+                        fill={tokenAppearance.haloFill}
+                        listening={false}
+                      />
+                    )}
                     <Circle
                       x={x}
                       y={y}
                       radius={radius}
                       fill={tokenFill}
                       stroke={tokenStroke}
-                      strokeWidth={isDefense ? 2.5 : 3}
+                      strokeWidth={tokenAppearance.strokeWidth || (isDefense ? 2.5 : 3)}
                       shadowColor="rgba(15, 23, 42, 0.22)"
                       shadowBlur={5}
                       shadowOffsetY={1}
@@ -1799,38 +2062,25 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                         x={x}
                         y={y}
                         radius={Math.max(5, radius - 4)}
-                        stroke={isDefense ? 'rgba(185, 28, 28, 0.38)' : 'rgba(15, 23, 42, 0.22)'}
+                        stroke={
+                          tokenAppearance.innerStroke ||
+                          (isDefense ? 'rgba(185, 28, 28, 0.32)' : 'rgba(15, 23, 42, 0.22)')
+                        }
                         strokeWidth={1.5}
                         listening={false}
                       />
-                    )}
-                    {isDefense && (
-                      <>
-                        <Line
-                          points={[x - radius * 0.52, y - radius * 0.52, x + radius * 0.52, y + radius * 0.52]}
-                          stroke="rgba(185, 28, 28, 0.32)"
-                          strokeWidth={1.8}
-                          listening={false}
-                        />
-                        <Line
-                          points={[x + radius * 0.52, y - radius * 0.52, x - radius * 0.52, y + radius * 0.52]}
-                          stroke="rgba(185, 28, 28, 0.32)"
-                          strokeWidth={1.8}
-                          listening={false}
-                        />
-                      </>
                     )}
                     {isBall && (
                       <>
                         <Line
                           points={[x - radius * 0.65, y, x + radius * 0.65, y]}
-                          stroke="rgba(124, 45, 18, 0.75)"
+                          stroke={tokenAppearance.lineAccent || 'rgba(124, 45, 18, 0.75)'}
                           strokeWidth={1.6}
                           listening={false}
                         />
                         <Line
                           points={[x, y - radius * 0.65, x, y + radius * 0.65]}
-                          stroke="rgba(124, 45, 18, 0.75)"
+                          stroke={tokenAppearance.lineAccent || 'rgba(124, 45, 18, 0.75)'}
                           strokeWidth={1.6}
                           listening={false}
                         />
@@ -1846,7 +2096,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                         verticalAlign="middle"
                         text={displayLabel}
                         fontSize={labelSize}
-                        fontStyle={isOffense ? '700' : '600'}
+                        fontStyle="bold"
                         fill={labelColor}
                         listening={false}
                       />
@@ -1856,12 +2106,60 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               })}
               </Layer>
             </Stage>
+            </div>
           </div>
 
           {!isMobile && (
-            <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+            <div
+              className="mt-3 space-y-3 rounded-[18px] border p-3"
+              style={{
+                backgroundColor: themeChrome.panelBg,
+                borderColor: themeChrome.borderColor,
+              }}
+            >
+              <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
+                {play.diagram.phases.map((phase, index) => (
+                  <button
+                    key={`phase-chip-${phase.id}`}
+                    type="button"
+                    onClick={() => jumpToPhase(index)}
+                    className="min-w-[120px] rounded-xl border px-3 py-2 text-left transition-colors"
+                    style={{
+                      borderColor:
+                        index === safeActivePhaseIndex
+                          ? '#14b8a6'
+                          : themeChrome.fieldBorder,
+                      backgroundColor:
+                        index === safeActivePhaseIndex
+                          ? themeChrome.isDark
+                            ? 'rgba(20,184,166,0.18)'
+                            : 'rgba(20,184,166,0.08)'
+                          : themeChrome.fieldBg,
+                      color: themeChrome.panelInk,
+                    }}
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: themeChrome.subtleInk }}>
+                      Phase {index + 1}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold">{phase.name}</div>
+                  </button>
+                ))}
+                {editingEnabled && (
+                  <button
+                    type="button"
+                    onClick={addEmptyPhase}
+                    className="rounded-xl border border-dashed px-3 py-2 text-sm font-semibold"
+                    style={{
+                      borderColor: themeChrome.fieldBorder,
+                      color: themeChrome.subtleInk,
+                    }}
+                  >
+                    + Phase
+                  </button>
+                )}
+              </div>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">
+                <h3 className="text-sm font-semibold" style={{ color: themeChrome.panelInk }}>
                   Animation Timeline (Phase {safeActivePhaseIndex + 1})
                 </h3>
                 <div className="flex items-center gap-2">
@@ -1870,14 +2168,14 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                       {phaseWarnings.length} warning{phaseWarnings.length > 1 ? 's' : ''}
                     </span>
                   )}
-                  <span className="text-[11px] text-gray-500">
+                  <span className="text-[11px]" style={{ color: themeChrome.subtleInk }}>
                     Legacy default: After Previous
                   </span>
                 </div>
               </div>
 
               {activePhase.actions.length === 0 ? (
-                <div className="text-xs text-gray-500 py-1">
+                <div className="py-1 text-xs" style={{ color: themeChrome.subtleInk }}>
                   Add actions to this phase to build animation steps.
                 </div>
               ) : (

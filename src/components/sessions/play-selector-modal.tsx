@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePlays } from '@/hooks/use-plays';
+import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
+import { PlayDiagramPreview } from '@/components/plays/play-diagram-preview';
 import type { CourtTemplate, PlayType } from '@/lib/plays/diagram-types';
 import type { Play } from '@/types/database';
 
@@ -13,6 +15,7 @@ interface PlaySelectorModalProps {
 
 export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorModalProps) {
   const { getPlays, searchPlays } = usePlays();
+  const { theme } = usePlayEditorTheme();
 
   const [plays, setPlays] = useState<Play[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -149,13 +152,14 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
                   className="text-left border border-gray-200 rounded-lg overflow-hidden hover:border-primary hover:bg-primary/5"
                 >
                   <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-                    {play.thumbnail_data_url ? (
-                      <img src={play.thumbnail_data_url} alt={play.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">
-                        No preview
-                      </div>
-                    )}
+                    <PlayDiagramPreview
+                      alt={play.name}
+                      diagram={play.diagram}
+                      courtTemplate={play.court_template}
+                      theme={theme}
+                      fallbackSrc={play.thumbnail_data_url}
+                      className="h-full w-full"
+                    />
                   </div>
                   <div className="p-3">
                     <div className="font-medium text-gray-900 line-clamp-1">{play.name}</div>

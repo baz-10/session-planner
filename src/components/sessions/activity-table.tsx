@@ -16,12 +16,10 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { LibraryBig, Plus, Tags } from 'lucide-react';
 import { ActivityRow } from './activity-row';
-import {
-  calculateActivityTimings,
-  formatTime12Hour,
-  type ActivityTiming,
-} from '@/lib/utils/time';
+import { calculateActivityTimings, type ActivityTiming } from '@/lib/utils/time';
+import type { PlayEditorTheme } from '@/lib/plays/play-theme';
 import type { SessionActivity, DrillCategory } from '@/types/database';
 
 interface ActivityWithCategory extends SessionActivity {
@@ -33,6 +31,8 @@ interface ActivityTableProps {
   sessionStartTime: string;
   totalDuration: number;
   categories: DrillCategory[];
+  playTheme: PlayEditorTheme;
+  playerLabelsById?: Record<string, string>;
   onActivityUpdate: (id: string, updates: Partial<SessionActivity>) => void;
   onActivityDelete: (id: string) => void;
   onReorder: (activityIds: string[]) => void;
@@ -55,6 +55,8 @@ export function ActivityTable({
   sessionStartTime,
   totalDuration,
   categories,
+  playTheme,
+  playerLabelsById = {},
   onActivityUpdate,
   onActivityDelete,
   onReorder,
@@ -73,26 +75,25 @@ export function ActivityTable({
 }: ActivityTableProps) {
   const [localActivities, setLocalActivities] = useState(activities);
 
-  // Keep local drag state synced to upstream activity updates
   useEffect(() => {
     setLocalActivities(activities);
   }, [activities]);
 
-  // Calculate timings for all activities
   const activityTimings = useMemo(() => {
     const timingData = calculateActivityTimings(
-      localActivities.map((a) => ({ id: a.id, duration: a.duration })),
+      localActivities.map((activity) => ({
+        id: activity.id,
+        duration: activity.duration,
+      })),
       sessionStartTime || '17:00',
       totalDuration || 90
     );
 
-    // Create a map for quick lookup
     const timingMap = new Map<string, ActivityTiming>();
-    timingData.forEach((t) => timingMap.set(t.id, t));
+    timingData.forEach((timing) => timingMap.set(timing.id, timing));
     return timingMap;
   }, [localActivities, sessionStartTime, totalDuration]);
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -104,180 +105,179 @@ export function ActivityTable({
     })
   );
 
-  // Handle drag end
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
 
       if (over && active.id !== over.id) {
-        const oldIndex = localActivities.findIndex((a) => a.id === active.id);
-        const newIndex = localActivities.findIndex((a) => a.id === over.id);
+        const oldIndex = localActivities.findIndex((activity) => activity.id === active.id);
+        const newIndex = localActivities.findIndex((activity) => activity.id === over.id);
+        const nextOrder = arrayMove(localActivities, oldIndex, newIndex);
 
-        const newOrder = arrayMove(localActivities, oldIndex, newIndex);
-        setLocalActivities(newOrder);
-        onReorder(newOrder.map((a) => a.id));
+        setLocalActivities(nextOrder);
+        onReorder(nextOrder.map((activity) => activity.id));
       }
     },
     [localActivities, onReorder]
   );
 
-  // Calculate total allocated time
   const totalAllocated = useMemo(
-    () => localActivities.reduce((sum, a) => sum + a.duration, 0),
+    () => localActivities.reduce((sum, activity) => sum + activity.duration, 0),
     [localActivities]
   );
 
   const minutesRemaining = totalDuration - totalAllocated;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      {/* Table Header */}
-      <div className="bg-primary text-white">
-        <div className="grid grid-cols-[40px_1fr_80px_80px_120px_150px_1fr_100px_80px] gap-2 px-4 py-3 text-sm font-medium">
-          <div className="text-center">#</div>
-          <div>Activity</div>
-          <div className="text-center">Min</div>
-          <div className="text-center">Total Min</div>
-          <div className="text-center">Time</div>
-          <div>Category</div>
-          <div>Notes</div>
-          <div className="text-center">Min Left</div>
-          <div className="text-center">Action</div>
-        </div>
-      </div>
-
-      {/* Activity Rows */}
+    <div className="space-y-4">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={localActivities.map((a) => a.id)}
+          items={localActivities.map((activity) => activity.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="divide-y divide-gray-100">
+          <div className="space-y-3">
             {localActivities.length === 0 ? (
-              <div className="px-4 py-12 text-center text-gray-500">
-                <p className="mb-2">No activities added yet</p>
-                <button
-                  onClick={onAddDrillClick}
-                  disabled={disabled}
-                  className="text-primary hover:underline disabled:opacity-50"
-                >
-                  Add your first activity
-                </button>
+              <div className="rounded-[20px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">No activities yet</h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  Add drills, custom blocks, or let autopilot sketch the run of show.
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={onAddDrillClick}
+                    disabled={disabled}
+                    className="inline-flex items-center gap-2 rounded-xl border border-teal px-4 py-2 text-sm font-semibold text-teal transition-colors hover:bg-teal/5 disabled:opacity-50"
+                  >
+                    <LibraryBig className="h-4 w-4" />
+                    Add from library
+                  </button>
+                  <button
+                    onClick={onAddMultipleDrillsClick || onAddDrillClick}
+                    disabled={disabled}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add custom block
+                  </button>
+                </div>
               </div>
             ) : (
-              localActivities.map((activity, index) => {
-                const timing = activityTimings.get(activity.id);
-                const canMoveUp = index > 0;
-                const canMoveDown = index < localActivities.length - 1;
-                return (
-                  <ActivityRow
-                    key={activity.id}
-                    activity={activity}
-                    index={index + 1}
-                    timing={timing}
-                    categories={categories}
-                    canMoveUp={canMoveUp}
-                    canMoveDown={canMoveDown}
-                    onMoveUp={() => {
-                      if (!canMoveUp) return;
-                      const newOrder = arrayMove(localActivities, index, index - 1);
-                      setLocalActivities(newOrder);
-                      onReorder(newOrder.map((a) => a.id));
-                    }}
-                    onMoveDown={() => {
-                      if (!canMoveDown) return;
-                      const newOrder = arrayMove(localActivities, index, index + 1);
-                      setLocalActivities(newOrder);
-                      onReorder(newOrder.map((a) => a.id));
-                    }}
-                    onUpdate={(updates) => onActivityUpdate(activity.id, updates)}
-                    onDelete={() => onActivityDelete(activity.id)}
-                    canManagePlayLinks={canManagePlayLinks}
-                    linkedPlayIsStale={linkedPlayIsStale ? linkedPlayIsStale(activity) : false}
-                    onAttachPlay={
-                      canManagePlayLinks && onAttachPlayClick
-                        ? () => onAttachPlayClick(activity.id)
-                        : undefined
-                    }
-                    onClearPlay={
-                      canManagePlayLinks && onClearPlayClick
-                        ? () => onClearPlayClick(activity.id)
-                        : undefined
-                    }
-                    onRefreshPlaySnapshot={
-                      canManagePlayLinks && onRefreshPlaySnapshotClick
-                        ? () => onRefreshPlaySnapshotClick(activity.id)
-                        : undefined
-                    }
-                    onViewLinkedPlay={
-                      onViewLinkedPlayClick
-                        ? () => onViewLinkedPlayClick(activity.id)
-                        : undefined
-                    }
-                    disabled={disabled}
-                  />
-                );
-              })
+              localActivities.map((activity, index) => (
+                <ActivityRow
+                  key={activity.id}
+                  activity={activity}
+                  index={index + 1}
+                  timing={activityTimings.get(activity.id)}
+                  categories={categories}
+                  playTheme={playTheme}
+                  playerLabelsById={playerLabelsById}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < localActivities.length - 1}
+                  onMoveUp={() => {
+                    if (index <= 0) return;
+                    const nextOrder = arrayMove(localActivities, index, index - 1);
+                    setLocalActivities(nextOrder);
+                    onReorder(nextOrder.map((item) => item.id));
+                  }}
+                  onMoveDown={() => {
+                    if (index >= localActivities.length - 1) return;
+                    const nextOrder = arrayMove(localActivities, index, index + 1);
+                    setLocalActivities(nextOrder);
+                    onReorder(nextOrder.map((item) => item.id));
+                  }}
+                  onUpdate={(updates) => onActivityUpdate(activity.id, updates)}
+                  onDelete={() => onActivityDelete(activity.id)}
+                  canManagePlayLinks={canManagePlayLinks}
+                  linkedPlayIsStale={linkedPlayIsStale ? linkedPlayIsStale(activity) : false}
+                  onAttachPlay={
+                    canManagePlayLinks && onAttachPlayClick
+                      ? () => onAttachPlayClick(activity.id)
+                      : undefined
+                  }
+                  onClearPlay={
+                    canManagePlayLinks && onClearPlayClick
+                      ? () => onClearPlayClick(activity.id)
+                      : undefined
+                  }
+                  onRefreshPlaySnapshot={
+                    canManagePlayLinks && onRefreshPlaySnapshotClick
+                      ? () => onRefreshPlaySnapshotClick(activity.id)
+                      : undefined
+                  }
+                  onViewLinkedPlay={
+                    onViewLinkedPlayClick
+                      ? () => onViewLinkedPlayClick(activity.id)
+                      : undefined
+                  }
+                  disabled={disabled}
+                />
+              ))
             )}
           </div>
         </SortableContext>
       </DndContext>
 
-      {/* Action Buttons */}
-      <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onAddDrillClick}
             disabled={disabled}
-            className="px-3 py-1.5 text-sm border border-primary text-primary rounded hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-xl border border-teal px-3 py-2 text-sm font-semibold text-teal transition-colors hover:bg-teal/5 disabled:opacity-50"
           >
-            Add Lines
+            <LibraryBig className="h-4 w-4" />
+            Add from library
           </button>
           <button
             onClick={onAddMultipleDrillsClick || onAddDrillClick}
             disabled={disabled}
-            className="px-3 py-1.5 text-sm border border-primary text-primary rounded hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
           >
-            Add Multiple Drills
+            <Plus className="h-4 w-4" />
+            Add custom
           </button>
           {onManageCategoriesClick && (
             <button
               onClick={onManageCategoriesClick}
               disabled={disabled}
-              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
-              Manage Categories
+              <Tags className="h-4 w-4" />
+              Categories
             </button>
           )}
           {onSaveActivitiesToLibrary && (
             <button
               onClick={onSaveActivitiesToLibrary}
               disabled={disabled || isSavingActivitiesToLibrary}
-              className="px-3 py-1.5 text-sm border border-primary text-primary rounded hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
             >
-              {isSavingActivitiesToLibrary ? 'Saving...' : 'Save Activities to Drill Library'}
+              {isSavingActivitiesToLibrary ? 'Saving...' : 'Save activities to library'}
             </button>
           )}
         </div>
 
-        <div className="text-sm">
-          <span className="text-gray-600">Total: </span>
-          <span className="font-medium">{totalAllocated} min</span>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="font-mono font-semibold text-slate-700">
+            {totalAllocated} / {totalDuration} min planned
+          </span>
           {minutesRemaining > 0 && (
-            <>
-              <span className="text-gray-600 mx-2">|</span>
-              <span className="text-orange-600">{minutesRemaining} min remaining</span>
-            </>
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+              {minutesRemaining} min remaining
+            </span>
           )}
           {minutesRemaining < 0 && (
-            <>
-              <span className="text-gray-600 mx-2">|</span>
-              <span className="text-red-600">{Math.abs(minutesRemaining)} min over</span>
-            </>
+            <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+              {Math.abs(minutesRemaining)} min over
+            </span>
+          )}
+          {minutesRemaining === 0 && (
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+              Fully allocated
+            </span>
           )}
         </div>
       </div>

@@ -1,22 +1,44 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  CalendarDays,
+  Clock3,
+  Copy,
+  MapPin,
+  Sparkles,
+  StickyNote,
+  Quote,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { useDrills } from '@/hooks/use-drills';
 import { usePlays } from '@/hooks/use-plays';
+import { usePlayers } from '@/hooks/use-players';
+import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
 import { useBranding } from '@/hooks/use-branding';
-import { SessionMetadataForm } from './session-metadata-form';
 import { ActivityTable } from './activity-table';
-import { TimeAllocationChart } from './time-allocation-chart';
 import { DrillSelectorModal } from './drill-selector-modal';
 import { PlaySelectorModal } from './play-selector-modal';
 import { SessionAutopilotPanel } from './session-autopilot-panel';
+import { Button } from '@/components/ui/button';
 import { CategoryManager } from '@/components/drills/category-manager';
 import { printSessionPlan } from '@/lib/utils/pdf-export';
 import { buildDrillTags, getAdditionalCategoryIdsFromTags } from '@/lib/utils/drill-tags';
-import type { Session, SessionActivity, DrillCategory, Drill, Play } from '@/types/database';
+import {
+  calculateActivityTimings,
+  formatDuration,
+  formatTime12Hour,
+} from '@/lib/utils/time';
+import type {
+  Session,
+  SessionActivity,
+  DrillCategory,
+  Drill,
+  Play,
+  Player,
+} from '@/types/database';
 import type { SessionAutopilotVariant } from '@/lib/ai/session-autopilot-types';
 
 interface ActivityWithCategory extends SessionActivity {
@@ -29,6 +51,38 @@ interface SessionWithActivities extends Session {
 
 interface DrillWithCategory extends Drill {
   category?: DrillCategory | null;
+}
+
+const CATEGORY_FALLBACK_COLORS: Record<string, string> = {
+  warmup: '#94a3b8',
+  passing: '#f59e0b',
+  defense: '#ef4444',
+  play: '#14b8a6',
+  conditioning: '#8b5cf6',
+  shooting: '#eab308',
+  live: '#1e3a5f',
+  wrap: '#64748b',
+};
+
+function addMinutesToTime(startTime: string, minutesToAdd: number): string {
+  const [hours, minutes] = (startTime || '17:00').split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + minutesToAdd;
+  const nextHours = Math.floor(totalMinutes / 60) % 24;
+  const nextMinutes = totalMinutes % 60;
+  return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
+}
+
+function resolveCategoryColor(activity: ActivityWithCategory): string {
+  if (activity.category?.color) {
+    return activity.category.color;
+  }
+
+  const lookupKey = activity.category?.name?.toLowerCase().trim() || '';
+  return CATEGORY_FALLBACK_COLORS[lookupKey] || '#94a3b8';
+}
+
+function toInputDate(value?: string | null): string {
+  return value || '';
 }
 
 const normalizeActivitySortOrder = (
@@ -68,6 +122,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   } = useSessions();
   const { getCategories, getDrills, createDrill } = useDrills();
   const { getPlays, getPlay } = usePlays();
+  const { getTeamPlayers } = usePlayers();
+  const { theme: playTheme } = usePlayEditorTheme();
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManagePlayLinks = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
@@ -98,7 +154,9 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const [drillModalMode, setDrillModalMode] = useState<'single' | 'multiple'>('single');
   const [targetPlayActivityId, setTargetPlayActivityId] = useState<string | null>(null);
   const [playsById, setPlaysById] = useState<Record<string, Play>>({});
+  const [playerLabelsById, setPlayerLabelsById] = useState<Record<string, string>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showAutopilot, setShowAutopilot] = useState(false);
 
   // Load session data if editing
   useEffect(() => {
@@ -148,10 +206,39 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setPlaysById(nextMap);
   }, [getPlays]);
 
+  const loadPlayerContext = useCallback(async () => {
+    if (!currentTeam?.id) {
+      setPlayerLabelsById({});
+      return;
+    }
+
+    const players = (await getTeamPlayers(currentTeam.id)) as Player[];
+    const nextMap = (players || []).reduce<Record<string, string>>((accumulator, player) => {
+      const firstName = player.first_name || '';
+      const lastName = player.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      accumulator[player.id] = fullName || player.jersey_number || 'Player';
+      return accumulator;
+    }, {});
+
+    setPlayerLabelsById(nextMap);
+  }, [currentTeam?.id, getTeamPlayers]);
+
   // Keep drill/category data aligned with whichever team is currently selected.
   useEffect(() => {
-    void Promise.all([loadCategories(), loadDrillCategoryContext(), loadPlayContext()]);
-  }, [currentTeam?.id, loadCategories, loadDrillCategoryContext, loadPlayContext]);
+    void Promise.all([
+      loadCategories(),
+      loadDrillCategoryContext(),
+      loadPlayContext(),
+      loadPlayerContext(),
+    ]);
+  }, [
+    currentTeam?.id,
+    loadCategories,
+    loadDrillCategoryContext,
+    loadPlayContext,
+    loadPlayerContext,
+  ]);
 
   // Ensure editing always uses the session's team context for drill/category actions.
   useEffect(() => {
@@ -1008,6 +1095,36 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setHasUnsavedChanges(false);
   }, [hasUnsavedChanges]);
 
+  const activities = (session.activities || []) as ActivityWithCategory[];
+  const sessionStartTime = session.start_time || '17:00';
+  const sessionDuration = session.duration || 90;
+  const totalAllocatedMinutes = useMemo(
+    () => activities.reduce((sum, activity) => sum + activity.duration, 0),
+    [activities]
+  );
+  const sessionEndTime = useMemo(
+    () => addMinutesToTime(sessionStartTime, sessionDuration),
+    [sessionDuration, sessionStartTime]
+  );
+  const timelineRows = useMemo(() => {
+    const timings = calculateActivityTimings(
+      activities.map((activity) => ({
+        id: activity.id,
+        duration: activity.duration,
+      })),
+      sessionStartTime,
+      sessionDuration
+    );
+
+    return activities.map((activity, index) => ({
+      ...activity,
+      color: resolveCategoryColor(activity),
+      timing: timings[index],
+    }));
+  }, [activities, sessionDuration, sessionStartTime]);
+  const offenseFocus = session.offensive_emphasis?.trim() || 'Set offense focus';
+  const defenseFocus = session.defensive_emphasis?.trim() || 'Set defense focus';
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1017,111 +1134,381 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">
-          {isNew ? 'Create New Plan' : 'Update Plan'}
-        </h1>
-        {hasUnsavedChanges && (
-          <span className="text-sm text-orange-600">Unsaved changes</span>
+    <div className="space-y-6 bg-[#f8fafc] p-4 md:p-6 xl:p-8">
+      <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1e3a5f] via-[#16314f] to-[#0f1f33] text-white shadow-[0_30px_80px_rgba(15,31,51,0.28)]">
+        <div className="relative overflow-hidden px-6 py-7 md:px-9">
+          <div className="absolute right-[-90px] top-[-90px] h-80 w-80 rounded-full bg-teal opacity-20 blur-3xl" />
+          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-4xl">
+              <div className="font-mono text-[12px] font-semibold tracking-[0.28em] text-teal-light">
+                SESSION PLAN
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <input
+                  type="text"
+                  value={session.name || ''}
+                  onChange={(event) =>
+                    handleMetadataChange({ name: event.target.value })
+                  }
+                  disabled={isSaving}
+                  className="w-full min-w-0 bg-transparent text-[28px] font-bold tracking-[-0.04em] text-white outline-none placeholder:text-white/50 md:text-[30px] xl:max-w-[780px]"
+                  placeholder="Tuesday Practice · Ball-screen emphasis"
+                />
+                {hasUnsavedChanges && (
+                  <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
+                    Unsaved
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-[180px_180px_minmax(0,1fr)]">
+                <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
+                  <CalendarDays className="h-4 w-4 text-teal-light" />
+                  <input
+                    type="date"
+                    value={toInputDate(session.date)}
+                    onChange={(event) =>
+                      handleMetadataChange({ date: event.target.value || null })
+                    }
+                    disabled={isSaving}
+                    className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
+                  />
+                </label>
+
+                <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
+                  <Clock3 className="h-4 w-4 text-teal-light" />
+                  <input
+                    type="time"
+                    value={sessionStartTime}
+                    onChange={(event) =>
+                      handleMetadataChange({ start_time: event.target.value || null })
+                    }
+                    disabled={isSaving}
+                    className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
+                  />
+                </label>
+
+                <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
+                  <MapPin className="h-4 w-4 text-teal-light" />
+                  <input
+                    type="text"
+                    value={session.location || ''}
+                    onChange={(event) =>
+                      handleMetadataChange({ location: event.target.value || null })
+                    }
+                    disabled={isSaving}
+                    className="w-full bg-transparent text-white outline-none placeholder:text-white/45"
+                    placeholder="Main gym"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 text-sm text-white/70">
+                {session.date ? session.date : 'Choose a date'} ·{' '}
+                {formatTime12Hour(sessionStartTime)}-{formatTime12Hour(sessionEndTime)} ·{' '}
+                {session.location?.trim() || 'Add location'}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+              {session.id && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveAsNew}
+                  disabled={isSaving}
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                >
+                  <Copy className="h-4 w-4" />
+                  Duplicate
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={handlePrint}
+                disabled={isSaving || !session.name}
+                className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              >
+                Print
+              </Button>
+              <Button
+                variant="accent"
+                onClick={handleSave}
+                disabled={isSaving || !session.name?.trim()}
+                isLoading={isSaving}
+                className="bg-teal px-5 text-white hover:bg-teal-dark"
+              >
+                Save plan
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-teal px-4 py-3 text-white shadow-lg shadow-teal/20">
+              <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/80">
+                DURATION
+              </div>
+              <div className="mt-2 text-[28px] font-bold leading-none">
+                {totalAllocatedMinutes} / {sessionDuration}
+              </div>
+              <div className="mt-2 font-mono text-[11px] text-white/75">
+                min planned
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+              <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/60">
+                ACTIVITIES
+              </div>
+              <div className="mt-2 text-[28px] font-bold leading-none">
+                {activities.length}
+              </div>
+              <div className="mt-2 font-mono text-[11px] text-white/70">
+                {totalAllocatedMinutes > sessionDuration
+                  ? 'over allocation'
+                  : `${Math.max(sessionDuration - totalAllocatedMinutes, 0)} min open`}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+              <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/60">
+                OFFENSE FOCUS
+              </div>
+              <div className="mt-2 text-sm font-semibold leading-6 text-white">
+                {offenseFocus}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+              <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/60">
+                DEFENSE FOCUS
+              </div>
+              <div className="mt-2 text-sm font-semibold leading-6 text-white">
+                {defenseFocus}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-6">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+          <div className="text-base font-bold text-slate-950">Practice timeline</div>
+          <div className="font-mono text-xs text-slate-500">
+            {formatTime12Hour(sessionStartTime)} {'->'} {formatTime12Hour(sessionEndTime)}
+          </div>
+        </div>
+
+        {timelineRows.length > 0 ? (
+          <>
+            <div className="flex h-14 gap-0.5 overflow-hidden rounded-xl bg-slate-100">
+              {timelineRows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{ flex: row.duration, backgroundColor: row.color }}
+                  className="relative flex min-w-[16px] items-end px-2 py-2"
+                >
+                  <span className="font-mono text-[10px] font-bold text-white drop-shadow">
+                    {row.duration}m
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-0.5">
+              {timelineRows.map((row) => (
+                <div
+                  key={`${row.id}-time`}
+                  style={{ flex: row.duration }}
+                  className="min-w-[16px] font-mono text-[10px] text-slate-500"
+                >
+                  {row.timing ? formatTime12Hour(row.timing.startTime) : '--'}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+            Add activities to build the timeline ribbon.
+          </div>
         )}
-      </div>
+      </section>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Metadata Form */}
-        <div className="lg:col-span-2">
-          <SessionMetadataForm
-            session={session}
-            onChange={handleMetadataChange}
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr_1.2fr_1fr]">
+        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            Offense emphasis
+          </div>
+          <input
+            type="text"
+            value={session.offensive_emphasis || ''}
+            onChange={(event) =>
+              handleMetadataChange({
+                offensive_emphasis: event.target.value || null,
+              })
+            }
             disabled={isSaving}
+            className="w-full border-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Horns, ball-screen reads"
           />
         </div>
 
-        {/* Right: Time Allocation Chart */}
-        <div>
-          <TimeAllocationChart
-            activities={session.activities || []}
-            totalDuration={session.duration || 90}
-            categories={categories}
-            drillCategoryIdsByDrillId={drillCategoryIdsByDrillId}
+        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            Defense emphasis
+          </div>
+          <input
+            type="text"
+            value={session.defensive_emphasis || ''}
+            onChange={(event) =>
+              handleMetadataChange({
+                defensive_emphasis: event.target.value || null,
+              })
+            }
+            disabled={isSaving}
+            className="w-full border-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Drop coverage against PnR"
           />
         </div>
-      </div>
 
-      {/* Activity Table */}
-      <SessionAutopilotPanel
-        teamId={currentTeam?.id}
-        sessionContext={{
-          sessionName: session.name,
-          durationMinutes: session.duration || undefined,
-          offensiveEmphasis: session.offensive_emphasis,
-          defensiveEmphasis: session.defensive_emphasis,
-          existingActivities: (session.activities || []).map((activity) => ({
-            name: activity.name,
-            duration: Number(activity.duration) || 0,
-          })),
-        }}
-        disabled={isSaving}
-        onApplyVariant={handleApplyAutopilotVariant}
-      />
+        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            <StickyNote className="h-3.5 w-3.5" />
+            Session notes
+          </div>
+          <textarea
+            value={session.announcements || ''}
+            onChange={(event) =>
+              handleMetadataChange({
+                announcements: event.target.value || null,
+              })
+            }
+            disabled={isSaving}
+            rows={4}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+            placeholder="General reminders, constraints, and coaching cues..."
+          />
+        </div>
 
-      {/* Activity Table */}
-      <ActivityTable
-        activities={session.activities || []}
-        sessionStartTime={session.start_time || '17:00'}
-        totalDuration={session.duration || 90}
-        categories={categories}
-        onActivityUpdate={handleActivityUpdate}
-        onActivityDelete={handleActivityDelete}
-        onReorder={handleReorder}
-        onAddDrillClick={openSingleDrillModal}
-        onAddMultipleDrillsClick={openMultipleDrillModal}
-        onManageCategoriesClick={() => setIsCategoryManagerOpen(true)}
-        onSaveActivitiesToLibrary={handleSaveActivitiesToLibrary}
-        isSavingActivitiesToLibrary={isSavingActivitiesToLibrary}
-        canManagePlayLinks={Boolean(canManagePlayLinks)}
-        onAttachPlayClick={canManagePlayLinks ? openPlayModalForActivity : undefined}
-        onClearPlayClick={canManagePlayLinks ? handleClearLinkedPlay : undefined}
-        onRefreshPlaySnapshotClick={canManagePlayLinks ? handleRefreshPlaySnapshot : undefined}
-        onViewLinkedPlayClick={handleViewLinkedPlay}
-        linkedPlayIsStale={isLinkedPlayStale}
-        disabled={isSaving}
-      />
+        <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            <Quote className="h-3.5 w-3.5" />
+            Quote of day
+          </div>
+          <textarea
+            value={session.quote || ''}
+            onChange={(event) =>
+              handleMetadataChange({
+                quote: event.target.value || null,
+              })
+            }
+            disabled={isSaving}
+            rows={4}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+            placeholder="Lock into the details and the scoreboard takes care of itself."
+          />
+        </div>
+      </section>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-3 py-4 border-t border-gray-200">
-        <button
-          onClick={handleClear}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">Activities</h2>
+            <p className="text-sm text-slate-500">
+              {activities.length > 0
+                ? `${activities.length} blocks scheduled across ${formatDuration(
+                    totalAllocatedMinutes
+                  )}.`
+                : 'Build the run of show for this session.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={openSingleDrillModal}
+              disabled={isSaving}
+              className="border-teal text-teal hover:bg-teal/5 hover:text-teal"
+            >
+              + From library
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openMultipleDrillModal}
+              disabled={isSaving}
+            >
+              + Custom
+            </Button>
+            <Button
+              variant="accent"
+              onClick={() => setShowAutopilot((previous) => !previous)}
+              disabled={isSaving}
+              className="bg-gradient-to-r from-teal to-teal-dark text-white hover:from-teal-dark hover:to-teal-dark"
+            >
+              <Sparkles className="h-4 w-4" />
+              Autopilot
+            </Button>
+          </div>
+        </div>
+
+        {showAutopilot && (
+          <SessionAutopilotPanel
+            teamId={currentTeam?.id}
+            sessionContext={{
+              sessionName: session.name,
+              durationMinutes: session.duration || undefined,
+              offensiveEmphasis: session.offensive_emphasis,
+              defensiveEmphasis: session.defensive_emphasis,
+              existingActivities: activities.map((activity) => ({
+                name: activity.name,
+                duration: Number(activity.duration) || 0,
+              })),
+            }}
+            disabled={isSaving}
+            onApplyVariant={handleApplyAutopilotVariant}
+          />
+        )}
+
+        <ActivityTable
+          activities={activities}
+          sessionStartTime={sessionStartTime}
+          totalDuration={sessionDuration}
+          categories={categories}
+          playTheme={playTheme}
+          playerLabelsById={playerLabelsById}
+          onActivityUpdate={handleActivityUpdate}
+          onActivityDelete={handleActivityDelete}
+          onReorder={handleReorder}
+          onAddDrillClick={openSingleDrillModal}
+          onAddMultipleDrillsClick={openMultipleDrillModal}
+          onManageCategoriesClick={() => setIsCategoryManagerOpen(true)}
+          onSaveActivitiesToLibrary={handleSaveActivitiesToLibrary}
+          isSavingActivitiesToLibrary={isSavingActivitiesToLibrary}
+          canManagePlayLinks={Boolean(canManagePlayLinks)}
+          onAttachPlayClick={canManagePlayLinks ? openPlayModalForActivity : undefined}
+          onClearPlayClick={canManagePlayLinks ? handleClearLinkedPlay : undefined}
+          onRefreshPlaySnapshotClick={
+            canManagePlayLinks ? handleRefreshPlaySnapshot : undefined
+          }
+          onViewLinkedPlayClick={handleViewLinkedPlay}
+          linkedPlayIsStale={isLinkedPlayStale}
           disabled={isSaving}
-          className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-        >
-          Clear Form
-        </button>
-        <button
-          onClick={handlePrint}
-          disabled={isSaving || !session.name}
-          className="px-4 py-2 border border-primary text-primary rounded-md hover:bg-primary/5 disabled:opacity-50"
-        >
-          Print Plan
-        </button>
-        {session.id && (
-          <button
-            onClick={handleSaveAsNew}
-            disabled={isSaving}
-            className="px-4 py-2 border border-primary text-primary rounded-md hover:bg-primary/5 disabled:opacity-50"
-          >
-            Save as New Plan
-          </button>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={isSaving || !session.name?.trim()}
-          className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
-        >
-          {isSaving ? 'Saving...' : 'Save Plan'}
-        </button>
+        />
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <Button variant="outline" onClick={handleClear} disabled={isSaving}>
+          Clear form
+        </Button>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-slate-500">
+            {hasUnsavedChanges
+              ? 'Changes are local until you save the plan.'
+              : 'All changes saved to this plan.'}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-mono text-xs text-slate-600">
+            {totalAllocatedMinutes} min allocated
+          </span>
+        </div>
       </div>
 
       {/* Drill Selector Modal */}
