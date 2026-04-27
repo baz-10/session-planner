@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePlays } from '@/hooks/use-plays';
 import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
 import { PlayDiagramPreview } from '@/components/plays/play-diagram-preview';
@@ -18,6 +18,7 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
   const { theme } = usePlayEditorTheme();
 
   const [plays, setPlays] = useState<Play[]>([]);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [playType, setPlayType] = useState<string>('');
@@ -35,10 +36,19 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
     setIsLoading(false);
   }, [getPlays, playType, courtTemplate, selectedTag]);
 
+  const loadTagOptions = useCallback(async () => {
+    const data = await getPlays();
+    const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    setTagOptions(tags);
+  }, [getPlays]);
+
   useEffect(() => {
     if (!isOpen) return;
     void loadPlays();
-  }, [isOpen, loadPlays]);
+    void loadTagOptions();
+  }, [isOpen, loadPlays, loadTagOptions]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,11 +73,6 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
 
     return () => clearTimeout(timeout);
   }, [isOpen, searchQuery, playType, courtTemplate, selectedTag, searchPlays, loadPlays]);
-
-  const availableTags = useMemo(() => {
-    const tags = plays.flatMap((play) => play.tags || []);
-    return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
-  }, [plays]);
 
   const templateLabel = (value: CourtTemplate) => {
     if (value === 'half_court') return 'Half Court';
@@ -128,7 +133,7 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"
           >
             <option value="">All Tags</option>
-            {availableTags.map((tag) => (
+            {tagOptions.map((tag) => (
               <option key={tag} value={tag}>
                 {tag}
               </option>

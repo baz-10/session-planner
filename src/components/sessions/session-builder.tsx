@@ -81,6 +81,23 @@ function resolveCategoryColor(activity: ActivityWithCategory): string {
   return CATEGORY_FALLBACK_COLORS[lookupKey] || '#94a3b8';
 }
 
+const SESSION_DURATION_OPTIONS = [60, 75, 90, 105, 120, 150, 180] as const;
+
+function formatDurationOptionLabel(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  if (remainder === 0) {
+    return `${minutes} min (${hours} hour${hours === 1 ? '' : 's'})`;
+  }
+
+  return `${minutes} min (${hours}h ${remainder}m)`;
+}
+
 function toInputDate(value?: string | null): string {
   return value || '';
 }
@@ -1162,7 +1179,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 )}
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-[180px_180px_minmax(0,1fr)]">
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_180px_200px_minmax(0,1fr)]">
                 <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
                   <CalendarDays className="h-4 w-4 text-teal-light" />
                   <input
@@ -1187,6 +1204,27 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                     disabled={isSaving}
                     className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
                   />
+                </label>
+
+                <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
+                  <Clock3 className="h-4 w-4 text-teal-light" />
+                  <select
+                    value={String(sessionDuration)}
+                    onChange={(event) =>
+                      handleMetadataChange({
+                        duration: Number.parseInt(event.target.value, 10) || 90,
+                      })
+                    }
+                    disabled={isSaving}
+                    className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
+                    aria-label="Session duration"
+                  >
+                    {SESSION_DURATION_OPTIONS.map((minutes) => (
+                      <option key={minutes} value={minutes} className="text-slate-900">
+                        {formatDurationOptionLabel(minutes)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80">
@@ -1246,13 +1284,13 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           <div className="relative mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-teal px-4 py-3 text-white shadow-lg shadow-teal/20">
               <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/80">
-                DURATION
+                ALLOCATION
               </div>
               <div className="mt-2 text-[28px] font-bold leading-none">
                 {totalAllocatedMinutes} / {sessionDuration}
               </div>
               <div className="mt-2 font-mono text-[11px] text-white/75">
-                min planned
+                {Math.max(sessionDuration - totalAllocatedMinutes, 0)} min open
               </div>
             </div>
 

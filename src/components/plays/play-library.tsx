@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -22,11 +22,12 @@ export function PlayLibrary() {
   const [playType, setPlayType] = useState<string>('');
   const [courtTemplate, setCourtTemplate] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   const membership = teamMemberships.find((item) => item.team.id === currentTeam?.id);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
 
-  const loadPlays = async () => {
+  const loadPlays = useCallback(async () => {
     setIsLoading(true);
     const data = await getPlays({
       playType: (playType || undefined) as PlayType | undefined,
@@ -35,16 +36,31 @@ export function PlayLibrary() {
     });
     setPlays(data);
     setIsLoading(false);
-  };
+  }, [courtTemplate, getPlays, playType, selectedTag]);
+
+  const loadTagOptions = useCallback(async () => {
+    if (!currentTeam) {
+      setTagOptions([]);
+      return;
+    }
+
+    const data = await getPlays();
+    const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    setTagOptions(tags);
+  }, [currentTeam, getPlays]);
 
   useEffect(() => {
     if (!currentTeam) {
       setIsLoading(false);
       setPlays([]);
+      setTagOptions([]);
       return;
     }
     void loadPlays();
-  }, [currentTeam?.id, playType, courtTemplate, selectedTag]);
+    void loadTagOptions();
+  }, [currentTeam?.id, loadPlays, loadTagOptions]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -66,12 +82,7 @@ export function PlayLibrary() {
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [searchQuery, playType, courtTemplate, selectedTag]);
-
-  const availableTags = useMemo(() => {
-    const tags = plays.flatMap((play) => play.tags || []);
-    return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
-  }, [plays]);
+  }, [courtTemplate, loadPlays, playType, searchPlays, searchQuery, selectedTag]);
 
   const handleDuplicate = async (play: Play) => {
     const newName = prompt('Name for duplicate play:', `${play.name} (Copy)`);
@@ -170,7 +181,7 @@ export function PlayLibrary() {
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"
           >
             <option value="">All Tags</option>
-            {availableTags.map((tag) => (
+            {tagOptions.map((tag) => (
               <option key={tag} value={tag}>
                 {tag}
               </option>

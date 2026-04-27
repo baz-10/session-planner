@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -190,6 +190,22 @@ export function ActivityRow({
     onUpdate({ notes: nextNotes || null });
   }, [activity.notes, inlineNotes, onUpdate]);
 
+  const handleEditKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleSave();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleCancel();
+      }
+    },
+    [handleCancel, handleSave]
+  );
+
   const linkedPlayCourtTemplate =
     activity.linked_play_snapshot?.courtTemplate || 'half_court';
 
@@ -218,6 +234,7 @@ export function ActivityRow({
             min="1"
             value={editDuration}
             onChange={(event) => setEditDuration(event.target.value)}
+            onKeyDown={handleEditKeyDown}
             className="w-12 rounded-md border border-white/20 bg-white/15 px-1 py-0.5 text-center font-mono text-base font-bold text-white outline-none placeholder:text-white/70"
           />
         ) : (
@@ -249,6 +266,7 @@ export function ActivityRow({
               type="text"
               value={editName}
               onChange={(event) => setEditName(event.target.value)}
+              onKeyDown={handleEditKeyDown}
               className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-teal"
               autoFocus
             />
@@ -257,6 +275,7 @@ export function ActivityRow({
               type="button"
               onClick={() => !disabled && setIsEditing(true)}
               className="text-left text-[15px] font-bold text-slate-950 transition-colors hover:text-primary"
+              title="Edit activity title and duration"
             >
               {activity.name}
             </button>
@@ -506,7 +525,7 @@ export function ActivityRow({
               onClick={() => setIsEditing(true)}
               disabled={disabled}
               className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-              title="Edit activity"
+              title="Edit activity title and duration"
             >
               <Pencil className="h-4 w-4" />
             </button>
