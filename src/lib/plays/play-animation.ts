@@ -60,6 +60,11 @@ export interface TransitionFrame {
   isSettleSegment: boolean;
 }
 
+export interface PhaseEndState {
+  positions: PositionMap;
+  ballOwnerObjectId: string | null;
+}
+
 function clampProgress(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -108,6 +113,88 @@ function phasePositions(phase: PlayPhase): PositionMap {
     map[object.id] = { ...object.position };
   }
   return map;
+}
+
+function equivalentObjectKey(object: PlayObject): string {
+  return `${object.type}:${object.label || ''}`;
+}
+
+function buildEquivalentObjectIdMap(fromPhase: PlayPhase, toPhase: PlayPhase): Record<string, string> {
+  const map: Record<string, string> = {};
+  const usedTargetIds = new Set<string>();
+
+  for (const object of fromPhase.objects) {
+    const exactMatch = toPhase.objects.find((target) => target.id === object.id);
+    if (exactMatch) {
+      map[object.id] = exactMatch.id;
+      usedTargetIds.add(exactMatch.id);
+    }
+  }
+
+  for (const object of fromPhase.objects) {
+    if (map[object.id]) {
+      continue;
+    }
+
+    const objectKey = equivalentObjectKey(object);
+    const labeledMatch = toPhase.objects.find(
+      (target) => !usedTargetIds.has(target.id) && equivalentObjectKey(target) === objectKey
+    );
+
+    if (labeledMatch) {
+      map[object.id] = labeledMatch.id;
+      usedTargetIds.add(labeledMatch.id);
+      continue;
+    }
+
+    const sameTypeMatch = toPhase.objects.find(
+      (target) => !usedTargetIds.has(target.id) && target.type === object.type
+    );
+
+    if (sameTypeMatch) {
+      map[object.id] = sameTypeMatch.id;
+      usedTargetIds.add(sameTypeMatch.id);
+    }
+  }
+
+  return map;
+}
+
+function phaseTransitionTargetPositions(fromPhase: PlayPhase, toPhase: PlayPhase): PositionMap {
+  const map: PositionMap = {};
+  const rawTargetPositions = phasePositions(toPhase);
+  const equivalentObjectIdMap = buildEquivalentObjectIdMap(fromPhase, toPhase);
+  const mappedTargetIds = new Set<string>();
+
+  for (const object of fromPhase.objects) {
+    const targetObjectId = equivalentObjectIdMap[object.id];
+    const targetPosition = targetObjectId ? rawTargetPositions[targetObjectId] : undefined;
+    map[object.id] = { ...(targetPosition || object.position) };
+
+    if (targetObjectId) {
+      mappedTargetIds.add(targetObjectId);
+    }
+  }
+
+  for (const [objectId, position] of Object.entries(rawTargetPositions)) {
+    if (!mappedTargetIds.has(objectId)) {
+      map[objectId] = { ...position };
+    }
+  }
+
+  return map;
+}
+
+function mapObjectIdToNextPhase(
+  objectId: string | null,
+  fromPhase: PlayPhase,
+  toPhase: PlayPhase
+): string | null {
+  if (!objectId) {
+    return null;
+  }
+
+  return buildEquivalentObjectIdMap(fromPhase, toPhase)[objectId] || null;
 }
 
 function inferOwnerFromLegacyBallMarker(phase: PlayPhase): string | null {
@@ -333,7 +420,7 @@ export function compilePlayPlayback(
     const timeline = compilePhaseTimeline(phase, speedMultiplier);
     const startOwnerObjectId = phaseStartOwners[index] || null;
     const basePositions = phasePositions(phase);
-    const targetPositions = phasePositions(nextPhase);
+    const targetPositions = phaseTransitionTargetPositions(phase, nextPhase);
     const postActionPositions = applyMovementActionsAtTime(
       basePositions,
       timeline.scheduledActions,
@@ -362,13 +449,39 @@ export function compilePlayPlayback(
     if (nextPhaseOverride !== undefined) {
       phaseStartOwners[index + 1] = nextPhaseOverride;
     } else {
-      phaseStartOwners[index + 1] = endOwnerObjectId;
+      phaseStartOwners[index + 1] = mapObjectIdToNextPhase(
+        endOwnerObjectId,
+        phase,
+        nextPhase
+      );
     }
   }
 
   return {
     transitions,
     phaseStartOwners,
+  };
+}
+
+export function resolvePhaseEndState(
+  phase: PlayPhase,
+  startOwnerObjectId = resolveInitialBallOwner(phase)
+): PhaseEndState {
+  const timeline = compilePhaseTimeline(phase);
+  const positions = applyMovementActionsAtTime(
+    phasePositions(phase),
+    timeline.scheduledActions,
+    timeline.actionDurationMs
+  );
+  const ballOwnerObjectId = resolveBallOwnerAtTime(
+    startOwnerObjectId,
+    timeline.scheduledActions,
+    timeline.actionDurationMs
+  );
+
+  return {
+    positions,
+    ballOwnerObjectId,
   };
 }
 
@@ -424,4 +537,3 @@ export function getTransitionFrame(
     isSettleSegment: true,
   };
 }
-

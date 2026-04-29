@@ -52,6 +52,7 @@ import {
   DEFAULT_ACTION_DURATION_MS,
   getPhaseActionWarnings,
   getTransitionFrame,
+  resolvePhaseEndState,
 } from '@/lib/plays/play-animation';
 import {
   Arrow,
@@ -115,10 +116,10 @@ function clamp(value: number): number {
   return Math.max(0, Math.min(NORMALIZED_SIZE, value));
 }
 
-function cloneObject(object: PlayObject): PlayObject {
+function cloneObject(object: PlayObject, preserveId = false): PlayObject {
   return {
     ...object,
-    id: uid('obj'),
+    id: preserveId ? object.id : uid('obj'),
     position: { ...object.position },
   };
 }
@@ -827,9 +828,18 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
     (clearActions = false) => {
       if (!activePhase || !editingEnabled) return;
 
+      const phaseEndState = clearActions
+        ? resolvePhaseEndState(
+            activePhase,
+            compiledPlayback.phaseStartOwners[safeActivePhaseIndex] || null
+          )
+        : null;
       const objectIdMap: Record<string, string> = {};
       const objects = activePhase.objects.map((object) => {
-        const copy = cloneObject(object);
+        const copy = cloneObject(object, true);
+        if (phaseEndState?.positions[object.id]) {
+          copy.position = { ...phaseEndState.positions[object.id] };
+        }
         objectIdMap[object.id] = copy.id;
         return copy;
       });
@@ -838,7 +848,9 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
         ? []
         : activePhase.actions.map((action) => cloneAction(action, objectIdMap));
       const nextBallOwnerObjectId =
-        typeof activePhase.ballOwnerObjectId === 'string'
+        phaseEndState
+          ? phaseEndState.ballOwnerObjectId
+          : typeof activePhase.ballOwnerObjectId === 'string'
           ? objectIdMap[activePhase.ballOwnerObjectId] || undefined
           : activePhase.ballOwnerObjectId;
 
@@ -868,9 +880,11 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
     },
     [
       activePhase,
+      compiledPlayback.phaseStartOwners,
       editingEnabled,
       markChanged,
       play.diagram.phases.length,
+      safeActivePhaseIndex,
       stopAnimationLoop,
     ]
   );
@@ -1813,7 +1827,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               </Layer>
 
               <Layer>
-                {activePhase.actions.map((action) => {
+                {displayPhase.actions.map((action) => {
                   const fromX = normalizedToStage(action.from.x, stageSize);
                   const fromY = normalizedToStage(action.from.y, stageSize);
                   const toX = normalizedToStage(action.to.x, stageSize);
@@ -1903,7 +1917,7 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
                   );
                 })}
 
-              {activePhase.objects.map((object) => {
+              {displayPhase.objects.map((object) => {
                 const displayPosition = displayPositions[object.id] || object.position;
                 const x = normalizedToStage(displayPosition.x, stageSize);
                 const y = normalizedToStage(displayPosition.y, stageSize);
