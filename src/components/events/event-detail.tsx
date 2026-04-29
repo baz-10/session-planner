@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { format, isPast } from 'date-fns';
+import { PlayCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
@@ -336,9 +338,18 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-lg">{sessionDetails.name}</h3>
-                {sessionDetails.duration && (
-                  <span className="text-gray-500">{sessionDetails.duration} min</span>
-                )}
+                <div className="flex items-center gap-3">
+                  {sessionDetails.duration && (
+                    <span className="text-gray-500">{sessionDetails.duration} min</span>
+                  )}
+                  <Link
+                    href={`/dashboard/sessions/${sessionDetails.id}/run`}
+                    className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-light"
+                  >
+                    <PlayCircle className="h-4 w-4" />
+                    Run live
+                  </Link>
+                </div>
               </div>
 
               {sessionDetails.activities?.length > 0 ? (

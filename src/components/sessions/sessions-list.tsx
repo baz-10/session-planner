@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { PlayCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { formatDuration } from '@/lib/utils/time';
@@ -172,6 +173,13 @@ export function SessionsList() {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right">
                 <div className="flex items-center justify-end gap-1">
+                  <Link
+                    href={`/dashboard/sessions/${session.id}/run`}
+                    className="p-2 text-text-secondary hover:text-teal hover:bg-whisper rounded-md transition-colors"
+                    title="Run live"
+                  >
+                    <PlayCircle className="h-5 w-5" />
+                  </Link>
                   <Link
                     href={`/dashboard/sessions/${session.id}`}
                     className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"

@@ -6,3 +6,4 @@ export { ActivityRow } from './activity-row';
 export { DrillSelectorModal } from './drill-selector-modal';
 export { TimeAllocationChart } from './time-allocation-chart';
 export { SessionAutopilotPanel } from './session-autopilot-panel';
+export { SessionRunMode } from './session-run-mode';

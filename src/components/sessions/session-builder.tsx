@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   CalendarDays,
   Clock3,
   Copy,
   MapPin,
+  PlayCircle,
   Sparkles,
   StickyNote,
   Quote,
@@ -1250,6 +1252,29 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             </div>
 
             <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+              {session.id && !hasUnsavedChanges && (
+                <Button
+                  asChild
+                  variant="outline"
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                >
+                  <Link href={`/dashboard/sessions/${session.id}/run`}>
+                    <PlayCircle className="h-4 w-4" />
+                    Run live
+                  </Link>
+                </Button>
+              )}
+              {session.id && hasUnsavedChanges && (
+                <Button
+                  variant="outline"
+                  disabled
+                  title="Save the plan before opening live mode."
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  Run live
+                </Button>
+              )}
               {session.id && (
                 <Button
                   variant="outline"
