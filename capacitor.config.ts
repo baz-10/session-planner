@@ -1,14 +1,17 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+const capacitorServerUrl = process.env.CAPACITOR_SERVER_URL;
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 const config: CapacitorConfig = {
   appId: 'com.sessionplanner.app',
   appName: 'Session Planner',
   webDir: 'out',
   server: {
-    // For development, use local server
-    // For production, comment this out to use bundled assets
-    url: process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined,
-    cleartext: process.env.NODE_ENV === 'development',
+    // Development uses the local Next server. Production native builds can set
+    // CAPACITOR_SERVER_URL to the deployed Next.js app while preserving API routes.
+    url: capacitorServerUrl || (isDevelopment ? 'http://localhost:3000' : undefined),
+    cleartext: isDevelopment,
   },
   plugins: {
     PushNotifications: {

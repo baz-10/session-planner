@@ -30,15 +30,36 @@ ios/
 npm run build
 ```
 
-This creates a static export in the `out/` directory.
+This validates the Next.js app. The current app uses dynamic routes and API routes,
+so `next build` does not create a full static export.
 
 ### 2. Sync with iOS
 
 ```bash
-npx cap sync ios
+npm run build:mobile
 ```
 
-This copies web assets to the iOS project and updates native dependencies.
+This runs `next build`, prepares the Capacitor `out/` webDir, and runs
+`npx cap sync`. If you already built the app and only need to sync native assets,
+use:
+
+```bash
+npm run cap:sync
+```
+
+Direct `npx cap sync` also works after `out/` has been prepared.
+
+### Hosted Next.js App URL
+
+Because the app relies on Next.js API routes and dynamic authenticated pages, the
+current native build should point Capacitor at the deployed web app:
+
+```bash
+CAPACITOR_SERVER_URL=https://your-session-planner-domain.example npm run build:mobile
+```
+
+Without `CAPACITOR_SERVER_URL`, Capacitor syncs a lightweight placeholder shell.
+That is useful for native project validation, but it is not the full live app.
 
 ### 3. Open in Xcode
 
@@ -151,12 +172,27 @@ pod install --repo-update
 2. Delete derived data: Cmd+Option+Shift+K
 3. Re-sync: `npx cap sync ios`
 
+### `xcodebuild requires Xcode`
+
+If `npm run build:mobile` or `npx cap sync` fails with:
+
+```text
+xcode-select: error: tool 'xcodebuild' requires Xcode
+```
+
+Install full Xcode, open it once to accept licenses, then select it:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
+```
+
 ### Web Assets Not Updating
 
 Ensure you run both commands:
 ```bash
 npm run build
-npx cap sync ios
+npm run cap:sync
 ```
 
 ### Signing Issues
@@ -169,10 +205,10 @@ npx cap sync ios
 
 ```bash
 # Full rebuild and open
-npm run build && npx cap sync ios && npx cap open ios
+CAPACITOR_SERVER_URL=https://your-session-planner-domain.example npm run build:mobile && npx cap open ios
 
 # Just sync (if web assets already built)
-npx cap sync ios
+npm run cap:sync
 
 # Open Xcode
 npx cap open ios
@@ -180,7 +216,9 @@ npx cap open ios
 
 ## Notes
 
-- The app uses static export (`output: 'export'`) for Capacitor compatibility
-- API routes are not available in the mobile app - all data comes from Supabase client SDK
+- The mobile UI is implemented in reusable components under `src/components/mobile`.
+- Primary mobile routes are `/dashboard`, `/dashboard/sessions`, `/dashboard/sessions/[id]`, `/dashboard/sessions/[id]/run`, `/dashboard/events`, `/dashboard/team`, and `/dashboard/more`.
+- The current native package is a hosted Next.js app wrapper when `CAPACITOR_SERVER_URL` is set.
+- A fully bundled offline app would require replacing or proxying API-route dependent features such as Autopilot and billing.
 - OAuth callbacks require deep linking configuration for production use
 - For development, you can test on the iOS Simulator without an Apple Developer account

@@ -23,7 +23,9 @@ export function createBrowserSupabaseClient(): any {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase environment variables are not configured');
   }
-  console.log('[Supabase] Creating client for:', supabaseUrl);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Supabase] Creating client for:', supabaseUrl);
+  }
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,

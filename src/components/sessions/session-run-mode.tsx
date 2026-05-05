@@ -9,6 +9,9 @@ import {
   ChevronRight,
   ClipboardCopy,
   Clock3,
+  Edit3,
+  ListChecks,
+  MessageSquareText,
   Pause,
   Play,
   RotateCcw,
@@ -19,6 +22,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
+import { MobileListCard, MobileStickyActionBar } from '@/components/mobile';
 import {
   calculateActivityTimings,
   formatTime12Hour,
@@ -593,9 +597,199 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         : runState.status === 'paused'
           ? 'Paused'
           : 'Ready';
+  const upcomingActivities = activities.slice(runState.activeIndex + 1, runState.activeIndex + 3);
+  const activeCategoryLabel = activeActivity?.category?.name || 'Activity';
+  const coachCueLines = activeActivity?.notes
+    ?.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 4);
 
   return (
-    <div className="min-h-full bg-slate-50 p-3 md:p-6 xl:p-8">
+    <>
+      <div className="min-h-full bg-[#f7f9fc] p-4 pb-40 md:hidden">
+        <header className="mb-5 flex items-center gap-3">
+          <Link
+            href={`/dashboard/sessions/${session.id}`}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-navy shadow-sm"
+            aria-label="Back to plan"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </Link>
+          <div className="min-w-0 flex-1 text-center">
+            <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
+              Run Live
+            </h1>
+            <p className="truncate text-[15px] font-medium text-slate-500">{session.name}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+            aria-label="Reset run"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
+        </header>
+
+        <MobileListCard className="mb-4 space-y-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-[78px] w-[78px] shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light">
+              <ListChecks className="h-10 w-10" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-extrabold text-teal">Current Activity</div>
+              <h2 className="mt-1 text-[28px] font-extrabold leading-tight text-navy">
+                {activeActivity?.name}
+              </h2>
+              <span className="mt-3 inline-flex rounded-2xl border border-teal px-3 py-1 text-sm font-extrabold text-teal">
+                {activeCategoryLabel}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] bg-slate-50 px-4 py-5 text-center">
+            <div className="font-mono text-[64px] font-extrabold leading-none tracking-normal text-navy">
+              {formatClock(runState.remainingSeconds)}
+            </div>
+            <div className="mt-2 text-sm font-extrabold uppercase tracking-normal text-slate-500">
+              Remaining
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-teal transition-all duration-500"
+                style={{ width: `${activeProgressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {activeActivity?.notes && (
+            <div className="flex gap-3 rounded-2xl border border-accent/20 bg-teal-glow px-4 py-4 text-[17px] font-medium leading-7 text-navy">
+              <MessageSquareText className="mt-1 h-6 w-6 shrink-0 text-teal" />
+              <p className="line-clamp-3">{activeActivity.notes}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={handlePlayPause}
+              disabled={runState.status === 'complete'}
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
+            >
+              {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              {runState.status === 'running' ? 'Pause' : runState.status === 'paused' ? 'Resume' : 'Start'}
+            </button>
+            <button
+              type="button"
+              onClick={markActiveComplete}
+              disabled={runState.status === 'complete'}
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-teal text-base font-extrabold text-white disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-5 w-5" />
+              Complete
+            </button>
+          </div>
+        </MobileListCard>
+
+        <MobileListCard className="mb-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-extrabold text-navy">Up Next</h2>
+            <span className="text-sm font-extrabold text-teal">
+              {upcomingActivities.length} Activities
+            </span>
+          </div>
+          {upcomingActivities.length > 0 ? (
+            <div className="divide-y divide-slate-200">
+              {upcomingActivities.map((activity, offset) => (
+                <div key={activity.id} className="flex items-center gap-4 py-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-glow font-mono text-xl font-extrabold text-teal">
+                    {runState.activeIndex + offset + 2}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-1 text-base font-extrabold text-navy">
+                      {activity.name}
+                    </div>
+                    {activity.category?.name && (
+                      <div className="mt-1 inline-flex rounded-full border border-teal px-2 py-0.5 text-xs font-bold text-teal">
+                        {activity.category.name}
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-semibold text-slate-500">{activity.duration} min</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm font-semibold text-slate-500">No remaining activities.</p>
+          )}
+        </MobileListCard>
+
+        <MobileListCard className="mb-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-extrabold text-navy">Coaching Notes</h2>
+            <Edit3 className="h-5 w-5 text-teal" />
+          </div>
+          {coachCueLines && coachCueLines.length > 0 ? (
+            <ul className="space-y-3">
+              {coachCueLines.map((line) => (
+                <li key={line} className="flex gap-3 text-[16px] font-medium leading-6 text-navy">
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm font-semibold text-slate-500">
+              No saved coaching notes for this activity.
+            </p>
+          )}
+        </MobileListCard>
+
+        <MobileListCard className="mb-4 flex items-center gap-4">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-teal-glow text-teal">
+            <BarProgressIcon />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[17px] font-extrabold text-navy">
+              {completedCount} of {activities.length} activities complete
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-teal" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+        </MobileListCard>
+      </div>
+
+      <MobileStickyActionBar>
+        <button
+          type="button"
+          onClick={() => jumpToActivity(runState.activeIndex - 1)}
+          disabled={runState.activeIndex === 0}
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white px-3 text-base font-extrabold text-navy disabled:opacity-40"
+        >
+          <ChevronLeft className="h-5 w-5" />
+          Previous
+        </button>
+        <button
+          type="button"
+          onClick={markActiveComplete}
+          disabled={runState.status === 'complete'}
+          className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-base font-extrabold text-white disabled:opacity-40"
+        >
+          Next
+          <ChevronRight className="h-5 w-5" />
+        </button>
+        <Link
+          href={`/dashboard/sessions/${session.id}`}
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-base font-extrabold text-navy"
+        >
+          <Edit3 className="h-5 w-5" />
+          Edit
+        </Link>
+      </MobileStickyActionBar>
+
+      <div className="hidden min-h-full bg-slate-50 p-3 md:block md:p-6 xl:p-8">
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="rounded-[24px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/10 md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -842,7 +1036,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                       onClick={() => jumpToActivity(index)}
                       className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
                         isActive
-                          ? 'border-teal bg-teal/5'
+                          ? 'border-teal bg-accent/5'
                           : isDone
                             ? 'border-emerald-200 bg-emerald-50'
                             : 'border-slate-200 bg-white hover:border-slate-300'
@@ -960,6 +1154,17 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           </aside>
         </main>
       </div>
-    </div>
+      </div>
+    </>
+  );
+}
+
+function BarProgressIcon() {
+  return (
+    <svg className="h-8 w-8" fill="none" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="6" y="17" width="5" height="9" rx="2" fill="currentColor" opacity="0.55" />
+      <rect x="14" y="11" width="5" height="15" rx="2" fill="currentColor" opacity="0.75" />
+      <rect x="22" y="5" width="5" height="21" rx="2" fill="currentColor" />
+    </svg>
   );
 }

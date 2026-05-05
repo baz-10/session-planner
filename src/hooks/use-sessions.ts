@@ -16,6 +16,12 @@ interface SessionWithActivities extends Session {
   activities: (SessionActivity & { category?: DrillCategory | null })[];
 }
 
+function logSessionDebug(...args: unknown[]) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(...args);
+  }
+}
+
 function isLegacySessionActivityColumnError(error: { message?: string | null } | null): boolean {
   if (!error?.message) return false;
   const message = error.message.toLowerCase();
@@ -111,7 +117,7 @@ export function useSessions() {
   const createSession = useCallback(
     async (input: CreateSessionInput): Promise<{ success: boolean; session?: Session; error?: string }> => {
       const targetTeamId = input.team_id || currentTeam?.id;
-      console.log('[createSession] Starting...', {
+      logSessionDebug('[createSession] Starting...', {
         hasUser: !!user,
         hasCurrentTeam: !!currentTeam,
         currentTeamId: currentTeam?.id,
@@ -119,7 +125,7 @@ export function useSessions() {
       });
 
       if (!user || !targetTeamId) {
-        console.log('[createSession] Missing user or target team');
+        logSessionDebug('[createSession] Missing user or target team');
         return { success: false, error: 'Not authenticated or no team selected' };
       }
 
@@ -146,7 +152,7 @@ export function useSessions() {
           return { success: false, error: 'Only coaches or admins can create session plans for this team.' };
         }
 
-        console.log('[createSession] Inserting session for team:', targetTeamId);
+        logSessionDebug('[createSession] Inserting session for team:', targetTeamId);
 
         // Add timeout to prevent infinite hanging
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -175,7 +181,7 @@ export function useSessions() {
         const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
 
         setIsLoading(false);
-        console.log('[createSession] Result:', { success: !error, error, hasData: !!data });
+        logSessionDebug('[createSession] Result:', { success: !error, error, hasData: !!data });
 
         if (error || !data) {
           console.error('[createSession] Error:', error);
@@ -186,7 +192,7 @@ export function useSessions() {
           return { success: false, error: errorMessage };
         }
 
-        console.log('[createSession] Success! Session ID:', data.id);
+        logSessionDebug('[createSession] Success! Session ID:', data.id);
         return { success: true, session: data as Session };
       } catch (err) {
         setIsLoading(false);

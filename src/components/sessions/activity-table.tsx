@@ -221,7 +221,7 @@ export function ActivityTable({
         </SortableContext>
       </DndContext>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="hidden flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm md:flex">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onAddDrillClick}

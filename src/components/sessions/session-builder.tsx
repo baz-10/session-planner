@@ -4,14 +4,20 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
+  ArrowLeft,
   CalendarDays,
   Clock3,
   Copy,
+  ListChecks,
   MapPin,
   PlayCircle,
+  Save,
   Sparkles,
   StickyNote,
   Quote,
+  Shield,
+  Timer,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
@@ -25,6 +31,10 @@ import { DrillSelectorModal } from './drill-selector-modal';
 import { PlaySelectorModal } from './play-selector-modal';
 import { SessionAutopilotPanel } from './session-autopilot-panel';
 import { Button } from '@/components/ui/button';
+import {
+  MobileListCard,
+  MobileStickyActionBar,
+} from '@/components/mobile';
 import { CategoryManager } from '@/components/drills/category-manager';
 import { printSessionPlan } from '@/lib/utils/pdf-export';
 import { buildDrillTags, getAdditionalCategoryIdsFromTags } from '@/lib/utils/drill-tags';
@@ -1153,8 +1163,164 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   }
 
   return (
-    <div className="space-y-6 bg-[#f8fafc] p-4 md:p-6 xl:p-8">
-      <section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1e3a5f] via-[#16314f] to-[#0f1f33] text-white shadow-[0_30px_80px_rgba(15,31,51,0.28)]">
+    <div className="space-y-6 bg-[#f8fafc] p-4 pb-40 md:p-6 xl:p-8">
+      <div className="space-y-4 md:hidden">
+        <header className="flex items-center gap-3">
+          <Link
+            href="/dashboard/sessions"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-navy shadow-sm"
+            aria-label="Back to sessions"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
+              Session Builder
+            </h1>
+            <div className="mt-1 truncate text-[17px] font-medium text-slate-500">
+              {currentTeam?.name || 'Select a team'}
+            </div>
+          </div>
+        </header>
+
+        <MobileListCard className="space-y-4">
+          <div className="flex gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] bg-teal-glow text-teal">
+              <ListChecks className="h-8 w-8" />
+            </div>
+            <label className="min-w-0 flex-1">
+              <span className="text-sm font-semibold text-slate-500">Session Name</span>
+              <input
+                type="text"
+                value={session.name || ''}
+                onChange={(event) => handleMetadataChange({ name: event.target.value })}
+                disabled={isSaving}
+                className="mt-1 w-full border-0 bg-transparent text-[20px] font-extrabold leading-6 text-navy outline-none placeholder:text-slate-400"
+                placeholder="New practice plan"
+              />
+            </label>
+          </div>
+
+          <div className="divide-y divide-slate-200">
+            <label className="grid min-h-[58px] grid-cols-[28px_1fr_1.2fr] items-center gap-3">
+              <CalendarDays className="h-5 w-5 text-slate-500" />
+              <span className="text-sm font-semibold text-slate-500">Date</span>
+              <input
+                type="date"
+                value={toInputDate(session.date)}
+                onChange={(event) => handleMetadataChange({ date: event.target.value || null })}
+                disabled={isSaving}
+                className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
+              />
+            </label>
+            <label className="grid min-h-[58px] grid-cols-[28px_1fr_1.2fr] items-center gap-3">
+              <Clock3 className="h-5 w-5 text-slate-500" />
+              <span className="text-sm font-semibold text-slate-500">Start Time</span>
+              <input
+                type="time"
+                value={sessionStartTime}
+                onChange={(event) => handleMetadataChange({ start_time: event.target.value || null })}
+                disabled={isSaving}
+                className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
+              />
+            </label>
+            <label className="grid min-h-[58px] grid-cols-[28px_1fr_1.2fr] items-center gap-3">
+              <Timer className="h-5 w-5 text-slate-500" />
+              <span className="text-sm font-semibold text-slate-500">Duration</span>
+              <select
+                value={String(sessionDuration)}
+                onChange={(event) =>
+                  handleMetadataChange({
+                    duration: Number.parseInt(event.target.value, 10) || 90,
+                  })
+                }
+                disabled={isSaving}
+                className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
+                aria-label="Session duration"
+              >
+                {SESSION_DURATION_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {formatDuration(minutes)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid min-h-[58px] grid-cols-[28px_1fr_1.2fr] items-center gap-3">
+              <MapPin className="h-5 w-5 text-slate-500" />
+              <span className="text-sm font-semibold text-slate-500">Location</span>
+              <input
+                type="text"
+                value={session.location || ''}
+                onChange={(event) => handleMetadataChange({ location: event.target.value || null })}
+                disabled={isSaving}
+                className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none placeholder:text-slate-400"
+                placeholder="Add location"
+              />
+            </label>
+          </div>
+        </MobileListCard>
+
+        <div className="grid grid-cols-2 gap-3">
+          <MobileListCard className="min-h-[118px] p-4">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-glow text-teal">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+            <label>
+              <span className="text-xs font-semibold text-slate-500">Offensive Emphasis</span>
+              <input
+                type="text"
+                value={session.offensive_emphasis || ''}
+                onChange={(event) =>
+                  handleMetadataChange({ offensive_emphasis: event.target.value || null })
+                }
+                disabled={isSaving}
+                className="mt-1 w-full bg-transparent text-sm font-extrabold text-navy outline-none placeholder:text-slate-400"
+                placeholder="Set focus"
+              />
+            </label>
+          </MobileListCard>
+
+          <MobileListCard className="min-h-[118px] p-4">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+              <Shield className="h-6 w-6" />
+            </div>
+            <label>
+              <span className="text-xs font-semibold text-slate-500">Defensive Emphasis</span>
+              <input
+                type="text"
+                value={session.defensive_emphasis || ''}
+                onChange={(event) =>
+                  handleMetadataChange({ defensive_emphasis: event.target.value || null })
+                }
+                disabled={isSaving}
+                className="mt-1 w-full bg-transparent text-sm font-extrabold text-navy outline-none placeholder:text-slate-400"
+                placeholder="Set focus"
+              />
+            </label>
+          </MobileListCard>
+        </div>
+
+        <MobileListCard className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <div className="font-mono text-2xl font-extrabold text-navy">{activities.length}</div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">Activities</div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl font-extrabold text-navy">
+              {totalAllocatedMinutes}
+            </div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">Allocated</div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl font-extrabold text-teal">
+              {Math.max(sessionDuration - totalAllocatedMinutes, 0)}
+            </div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">Open min</div>
+          </div>
+        </MobileListCard>
+      </div>
+
+      <section className="hidden overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1e3a5f] via-[#16314f] to-[#0f1f33] text-white shadow-[0_30px_80px_rgba(15,31,51,0.28)] md:block">
         <div className="relative overflow-hidden px-6 py-7 md:px-9">
           <div className="absolute right-[-90px] top-[-90px] h-80 w-80 rounded-full bg-teal opacity-20 blur-3xl" />
           <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
@@ -1307,7 +1473,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           </div>
 
           <div className="relative mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-teal px-4 py-3 text-white shadow-lg shadow-teal/20">
+            <div className="rounded-2xl bg-teal px-4 py-3 text-white shadow-[0_14px_30px_rgba(20,184,166,0.2)]">
               <div className="font-mono text-[10px] font-semibold tracking-[0.18em] text-white/80">
                 ALLOCATION
               </div>
@@ -1354,7 +1520,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-sm md:px-6">
+      <section className="hidden rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-sm md:block md:px-6">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
           <div className="text-base font-bold text-slate-950">Practice timeline</div>
           <div className="font-mono text-xs text-slate-500">
@@ -1396,7 +1562,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         )}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_1fr_1.2fr_1fr]">
+      <section className="hidden gap-4 md:grid xl:grid-cols-[1fr_1fr_1.2fr_1fr]">
         <div className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
             Offense emphasis
@@ -1490,7 +1656,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               variant="outline"
               onClick={openSingleDrillModal}
               disabled={isSaving}
-              className="border-teal text-teal hover:bg-teal/5 hover:text-teal"
+              className="border-teal text-teal hover:bg-accent/5 hover:text-teal"
             >
               + From library
             </Button>
@@ -1558,7 +1724,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         />
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="hidden flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex">
         <Button variant="outline" onClick={handleClear} disabled={isSaving}>
           Clear form
         </Button>
@@ -1573,6 +1739,26 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           </span>
         </div>
       </div>
+
+      <MobileStickyActionBar>
+        <button
+          type="button"
+          onClick={openSingleDrillModal}
+          disabled={isSaving}
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-teal bg-white px-4 text-base font-extrabold text-teal disabled:opacity-50"
+        >
+          + Add Activity
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving || !session.name?.trim()}
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-navy px-4 text-base font-extrabold text-white disabled:opacity-50"
+        >
+          <Save className="h-5 w-5" />
+          {isSaving ? 'Saving' : 'Save Plan'}
+        </button>
+      </MobileStickyActionBar>
 
       {/* Drill Selector Modal */}
       <DrillSelectorModal

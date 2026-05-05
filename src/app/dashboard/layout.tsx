@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useBranding } from '@/hooks/use-branding';
-import { useState } from 'react';
+import { CalendarDays, ClipboardCheck, Home, MoreHorizontal, Users } from 'lucide-react';
+import { MobileBottomTabs } from '@/components/mobile';
 
 interface NavItem {
   name: string;
@@ -149,57 +150,57 @@ export default function DashboardLayout({
     return pathname.startsWith(href);
   };
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const moreRoutes = [
+    '/dashboard/more',
+    '/dashboard/drills',
+    '/dashboard/plays',
+    '/dashboard/attendance',
+    '/dashboard/billing',
+    '/dashboard/feed',
+    '/dashboard/chat',
+    '/dashboard/organization',
+  ];
 
-  // Bottom nav items for mobile (keep concise)
-  const bottomNavItems = navItems.filter((item) =>
-    ['Dashboard', 'Sessions', 'Drills', 'Events', 'Attendance'].includes(item.name)
-  );
+  const bottomNavItems = [
+    {
+      name: 'Home',
+      href: '/dashboard',
+      icon: <Home className="h-6 w-6" />,
+      active: pathname === '/dashboard',
+    },
+    {
+      name: 'Sessions',
+      href: '/dashboard/sessions',
+      icon: <ClipboardCheck className="h-6 w-6" />,
+      active: pathname.startsWith('/dashboard/sessions'),
+    },
+    {
+      name: 'Events',
+      href: '/dashboard/events',
+      icon: <CalendarDays className="h-6 w-6" />,
+      active: pathname.startsWith('/dashboard/events'),
+    },
+    {
+      name: 'Team',
+      href: '/dashboard/team',
+      icon: <Users className="h-6 w-6" />,
+      active: pathname.startsWith('/dashboard/team'),
+    },
+    {
+      name: 'More',
+      href: '/dashboard/more',
+      icon: <MoreHorizontal className="h-6 w-6" />,
+      active: moreRoutes.some((route) => pathname.startsWith(route)),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      {/* Mobile Header */}
-      <header className="md:hidden bg-white border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-40">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-navy rounded-lg flex items-center justify-center">
-            {logoUrl ? (
-              <img src={logoUrl} alt={displayName} className="w-full h-full rounded-lg object-cover" />
-            ) : (
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            )}
-          </div>
-          <span className="text-base font-bold text-navy">{displayName}</span>
-        </Link>
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-gray-100"
-        >
-          <svg className="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      </header>
-
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="md:hidden fixed inset-0 bg-black/50 z-50"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       {/* Sidebar - Hidden on mobile, visible on desktop */}
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 bg-white border-r border-border flex flex-col
-        transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      <aside className="hidden md:static md:flex md:inset-y-0 md:left-0 md:z-50 md:w-64 md:flex-col md:border-r md:border-border md:bg-white">
         {/* Logo */}
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
+          <Link href="/dashboard" className="flex items-center gap-3">
             <div className="w-10 h-10 bg-navy rounded-lg flex items-center justify-center">
               {logoUrl ? (
                 <img src={logoUrl} alt={displayName} className="w-full h-full rounded-lg object-cover" />
@@ -211,14 +212,6 @@ export default function DashboardLayout({
             </div>
             <span className="text-lg font-bold text-navy">{displayName}</span>
           </Link>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="md:hidden p-1 rounded hover:bg-gray-100"
-          >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Navigation */}
@@ -229,7 +222,6 @@ export default function DashboardLayout({
               <Link
                 key={item.name}
                 href={item.href}
-                onClick={() => setSidebarOpen(false)}
                 className={isActive(item.href) ? 'nav-item-active' : 'nav-item'}
               >
                 {item.icon}
@@ -272,29 +264,12 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto pb-20 md:pb-0">
+      <main className="flex-1 overflow-auto pb-24 md:pb-0">
         {children}
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-border z-40 safe-area-bottom">
-        <div className="flex justify-around items-center h-16">
-          {bottomNavItems.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex flex-col items-center justify-center flex-1 h-full px-1 ${
-                isActive(item.href)
-                  ? 'text-teal'
-                  : 'text-gray-500 hover:text-navy'
-              }`}
-            >
-              <span className={isActive(item.href) ? 'text-teal' : ''}>{item.icon}</span>
-              <span className="text-xs mt-1 truncate">{item.name}</span>
-            </Link>
-          ))}
-        </div>
-      </nav>
+      <MobileBottomTabs items={bottomNavItems} />
     </div>
   );
 }

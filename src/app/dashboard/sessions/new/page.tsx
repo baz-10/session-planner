@@ -21,17 +21,6 @@ export default function NewSessionPage() {
     }
   }, [user, isLoading, router]);
 
-  // Log auth state for debugging
-  useEffect(() => {
-    console.log('[NewSessionPage] Auth state:', {
-      isLoading,
-      hasUser: !!user,
-      hasCurrentTeam: !!currentTeam,
-      teamId: currentTeam?.id,
-      numTeamMemberships: teamMemberships?.length || 0,
-    });
-  }, [isLoading, user, currentTeam, teamMemberships]);
-
   if (isLoading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[50vh]">

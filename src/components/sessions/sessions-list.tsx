@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { PlayCircle } from 'lucide-react';
+import {
+  CalendarDays,
+  Clock3,
+  Copy,
+  Edit3,
+  MapPin,
+  PlayCircle,
+  Trash2,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
-import { formatDuration } from '@/lib/utils/time';
+import { MobileEmptyState, MobileListCard, MobileLoadingState } from '@/components/mobile';
+import { formatDuration, formatTime12Hour } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
 
 export function SessionsList() {
@@ -19,11 +28,9 @@ export function SessionsList() {
   // Reload sessions when currentTeam changes
   useEffect(() => {
     if (currentTeam) {
-      console.log('[SessionsList] Loading sessions for team:', currentTeam.id);
       loadSessions();
     } else if (!authLoading) {
       // No team and auth is done loading - show empty state
-      console.log('[SessionsList] No team available, showing empty state');
       setIsLoading(false);
     }
   }, [currentTeam, authLoading]);
@@ -64,61 +71,129 @@ export function SessionsList() {
   };
 
   if (isLoading || authLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <MobileLoadingState label="Loading sessions" className="min-h-[240px]" />;
   }
 
   // Show message if no team is available
   if (!currentTeam) {
     return (
-      <div className="card p-12 text-center">
-        <div className="empty-state-icon mx-auto mb-4">
-          <svg className="w-16 h-16 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <h2 className="text-xl font-semibold text-navy mb-2">No Team Available</h2>
-        <p className="text-text-secondary mb-6 max-w-sm mx-auto">
-          Join or create a team to view and create practice sessions.
-        </p>
-        <Link href="/dashboard/team" className="btn-accent">
-          Go to Team Settings
-        </Link>
-      </div>
+      <MobileEmptyState
+        icon={<UsersIcon />}
+        title="No team available"
+        description="Join or create a team to view and create practice sessions."
+        action={
+          <Link href="/dashboard/team" className="btn-accent">
+            Go to Team Settings
+          </Link>
+        }
+      />
     );
   }
 
   if (sessions.length === 0) {
     return (
-      <div className="card p-12 text-center">
-        <div className="empty-state-icon mx-auto mb-4">
-          <svg className="w-16 h-16 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-        </div>
-        <h2 className="text-xl font-semibold text-navy mb-2">No Practice Plans Yet</h2>
-        <p className="text-text-secondary mb-6 max-w-sm mx-auto">
-          Create your first practice plan to start organizing your sessions with timed activities.
-        </p>
-        {canCreateSessions ? (
-          <Link href="/dashboard/sessions/new" className="btn-accent">
-            Create Your First Plan
-          </Link>
-        ) : (
-          <p className="text-sm text-text-muted">
-            Coach/Admin role required to create plans for this team.
-          </p>
-        )}
-      </div>
+      <MobileEmptyState
+        icon={<ClipboardIcon />}
+        title="No practice plans yet"
+        description="Create your first practice plan to start organizing your sessions with timed activities."
+        action={
+          canCreateSessions ? (
+            <Link href="/dashboard/sessions/new" className="btn-accent">
+              Create Your First Plan
+            </Link>
+          ) : (
+            <p className="text-sm text-text-muted">
+              Coach/Admin role required to create plans for this team.
+            </p>
+          )
+        }
+      />
     );
   }
 
   return (
-    <div className="card overflow-hidden">
-      <table className="w-full">
+    <>
+      <div className="space-y-3 md:hidden">
+        {sessions.map((session) => (
+          <MobileListCard key={session.id}>
+            <div className="flex items-start gap-3">
+              <Link
+                href={`/dashboard/sessions/${session.id}`}
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light"
+                aria-label={`Edit ${session.name}`}
+              >
+                <ClipboardIcon />
+              </Link>
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`/dashboard/sessions/${session.id}`}
+                  className="line-clamp-2 text-[17px] font-extrabold leading-5 text-navy"
+                >
+                  {session.name}
+                </Link>
+                {session.is_template && <span className="mt-2 inline-flex badge-teal">Template</span>}
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 text-[13px] font-semibold text-slate-500">
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-4 w-4" />
+                {formatDate(session.date)}
+              </span>
+              {session.start_time && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="h-4 w-4" />
+                  {formatTime12Hour(session.start_time)}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-4 w-4" />
+                {session.duration ? formatDuration(session.duration) : '-'}
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <MapPin className="h-4 w-4 shrink-0" />
+                <span className="truncate">{session.location || '-'}</span>
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+              <Link
+                href={`/dashboard/sessions/${session.id}/run`}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Run live
+              </Link>
+              <Link
+                href={`/dashboard/sessions/${session.id}`}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                aria-label={`Edit ${session.name}`}
+              >
+                <Edit3 className="h-4 w-4" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => handleDuplicate(session.id, session.name)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                aria-label={`Duplicate ${session.name}`}
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(session.id, session.name)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600"
+                aria-label={`Delete ${session.name}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </MobileListCard>
+        ))}
+      </div>
+
+      <div className="card hidden overflow-hidden md:block">
+        <table className="w-full">
         <thead className="bg-whisper border-b border-border">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">
@@ -212,7 +287,24 @@ export function SessionsList() {
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+    </svg>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2a5 5 0 00-10 0v2m10 0H7m8-13a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
   );
 }

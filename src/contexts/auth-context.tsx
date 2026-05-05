@@ -14,6 +14,12 @@ import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization,
 
 const AUTH_INIT_TIMEOUT_MS = 30000;
 
+function logAuth(...args: unknown[]) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(...args);
+  }
+}
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -74,7 +80,7 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  console.log('🔵 AuthProvider MOUNTED');
+  logAuth('AuthProvider mounted');
 
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -116,16 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch team memberships
   const refreshTeamMemberships = useCallback(async () => {
     if (!state.user) {
-      console.log('[Auth] refreshTeamMemberships: No user, skipping');
+      logAuth('[Auth] refreshTeamMemberships: No user, skipping');
       setTeamMemberships([]);
       return;
     }
 
-    console.log('[Auth] refreshTeamMemberships: Fetching for user', state.user.id);
+    logAuth('[Auth] refreshTeamMemberships: Fetching for user', state.user.id);
 
     // Debug: Check what auth.uid() returns from Supabase's perspective
     const { data: debugAuth, error: debugError } = await supabase.rpc('debug_auth');
-    console.log('[Auth] debug_auth result:', debugAuth, debugError);
+    logAuth('[Auth] debug_auth result:', debugAuth, debugError);
 
     const { data, error } = await supabase
       .from('team_members')
@@ -135,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `)
       .eq('user_id', state.user.id);
 
-    console.log('[Auth] team_members query result:', { data, error, count: data?.length });
+    logAuth('[Auth] team_members query result:', { data, error, count: data?.length });
 
     if (error) {
       console.error('[Auth] Error fetching team memberships:', error);
@@ -147,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       team: item.team as Team,
     })) as TeamMembership[];
 
-    console.log('[Auth] Setting teamMemberships:', memberships.length, 'teams');
+    logAuth('[Auth] Setting teamMemberships:', memberships.length, 'teams');
     setTeamMemberships(memberships);
 
     const hasCurrentTeamMembership = currentTeam
@@ -160,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Prefer a coach/admin team by default, and recover if currentTeam isn't one of the user's memberships.
     if ((!currentTeam || !hasCurrentTeamMembership) && preferredMembership?.team) {
-      console.log('[Auth] Setting currentTeam to:', preferredMembership.team.name);
+      logAuth('[Auth] Setting currentTeam to:', preferredMembership.team.name);
       setCurrentTeam(preferredMembership.team);
     }
   }, [supabase, state.user, currentTeam]);
@@ -172,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    console.log('[Auth] Fetching linked players for parent...');
+    logAuth('[Auth] Fetching linked players for parent...');
 
     // For parents, fetch player links with their team data
     const { data, error } = await supabase
@@ -191,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    console.log('[Auth] Linked players result:', data?.length || 0, 'players found');
+    logAuth('[Auth] Linked players result:', data?.length || 0, 'players found');
 
     const players = (data || []).map((item: ParentPlayerLink & { player: Player & { team?: Team } }) => ({
       ...item.player,
@@ -213,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!currentTeam && teamMemberships.length === 0 && data && data.length > 0) {
       const firstPlayerWithTeam = data.find((item: { player: Player & { team?: Team } }) => item.player?.team);
       if (firstPlayerWithTeam?.player?.team) {
-        console.log('[Auth] Setting parent team from linked player:', firstPlayerWithTeam.player.team.name);
+        logAuth('[Auth] Setting parent team from linked player:', firstPlayerWithTeam.player.team.name);
         setCurrentTeam(firstPlayerWithTeam.player.team as Team);
       }
     }
@@ -273,12 +279,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
-    console.log('🔴 AUTH USEEFFECT RUNNING');
+    logAuth('[Auth] useEffect running');
     let mounted = true;
 
     const initializeAuth = async () => {
       try {
-        console.log('🟡 [Auth] Starting session check...');
+        logAuth('[Auth] Starting session check...');
 
         // Protect against indefinite hangs, while allowing enough time for cold starts.
         const timeoutPromise = new Promise((_, reject) =>
@@ -288,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sessionPromise = supabase.auth.getSession();
 
         const { data, error } = await Promise.race([sessionPromise, timeoutPromise]) as Awaited<typeof sessionPromise>;
-        console.log('🟡 [Auth] Session result:', { hasSession: !!data?.session, userId: data?.session?.user?.id, error });
+        logAuth('[Auth] Session result:', { hasSession: !!data?.session, userId: data?.session?.user?.id, error });
 
         if (!mounted) return;
 
@@ -307,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = data?.session;
         let profile = null;
         if (session?.user) {
-          console.log('[Auth] Fetching profile for user:', session.user.id);
+          logAuth('[Auth] Fetching profile for user:', session.user.id);
           profile = await fetchProfile(session.user.id);
         }
 
@@ -318,7 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isLoading: false,
           isInitialized: true,
         });
-        console.log('🟡 [Auth] Initialization complete, user:', session?.user?.id);
+        logAuth('[Auth] Initialization complete, user:', session?.user?.id);
       } catch (error) {
         console.error('🔴 [Auth] Initialization error:', error);
         if (mounted) {
