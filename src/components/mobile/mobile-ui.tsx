@@ -132,7 +132,7 @@ export function MobileActionCard({
 }: MobileActionCardProps) {
   const content = (
     <>
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-teal to-teal-dark text-white shadow-[0_10px_24px_rgba(20,184,166,0.24)]">
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-teal text-white shadow-[0_10px_24px_rgba(20,184,166,0.24)]">
         {icon}
       </span>
       <span className="mt-3 text-center text-[15px] font-extrabold leading-tight text-navy">

@@ -1671,7 +1671,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               variant="accent"
               onClick={() => setShowAutopilot((previous) => !previous)}
               disabled={isSaving}
-              className="bg-gradient-to-r from-teal to-teal-dark text-white hover:from-teal-dark hover:to-teal-dark"
+              className="bg-gradient-teal text-white hover:opacity-95"
             >
               <Sparkles className="h-4 w-4" />
               Autopilot

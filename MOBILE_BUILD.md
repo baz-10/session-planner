@@ -218,6 +218,9 @@ npx cap open ios
 
 - The mobile UI is implemented in reusable components under `src/components/mobile`.
 - Primary mobile routes are `/dashboard`, `/dashboard/sessions`, `/dashboard/sessions/[id]`, `/dashboard/sessions/[id]/run`, `/dashboard/events`, `/dashboard/team`, and `/dashboard/more`.
+
+## Known Limitations
+
 - The current native package is a hosted Next.js app wrapper when `CAPACITOR_SERVER_URL` is set.
 - A fully bundled offline app would require replacing or proxying API-route dependent features such as Autopilot and billing.
 - OAuth callbacks require deep linking configuration for production use

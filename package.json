@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "audit:mobile": "node scripts/audit-mobile-experience.mjs",
     "prepare:mobile-webdir": "node scripts/prepare-capacitor-webdir.mjs",
     "build:mobile": "next build && npm run prepare:mobile-webdir && npx cap sync",
     "ios": "npx cap open ios",

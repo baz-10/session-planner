@@ -35,7 +35,7 @@ import { formatDuration, formatTime12Hour } from '@/lib/utils/time';
 import type { Session, TeamMember } from '@/types/database';
 
 interface DashboardSnapshot {
-  sessionsThisWeek: number;
+  upcomingSessions: number;
   totalSessions: number;
   teamMembers: number;
   activePlayers: number;
@@ -46,7 +46,7 @@ interface DashboardSnapshot {
 }
 
 const emptySnapshot: DashboardSnapshot = {
-  sessionsThisWeek: 0,
+  upcomingSessions: 0,
   totalSessions: 0,
   teamMembers: 0,
   activePlayers: 0,
@@ -63,17 +63,6 @@ function parseSessionDate(date: string | null): Date | null {
   if (!year || !month || !day) return null;
 
   return new Date(year, month - 1, day);
-}
-
-function startOfWeek(date: Date): Date {
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff);
-}
-
-function endOfWeek(date: Date): Date {
-  const start = startOfWeek(date);
-  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
 }
 
 function formatSessionDate(date: string | null): string {
@@ -120,8 +109,7 @@ export default function DashboardPage() {
 
       try {
         const now = new Date();
-        const weekStart = startOfWeek(now);
-        const weekEnd = endOfWeek(now);
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
 
@@ -137,13 +125,13 @@ export default function DashboardPage() {
         const teamMembers = membersResult.success ? membersResult.members || [] : [];
         const activeMembers = teamMembers.filter((member: TeamMember) => member.status !== 'inactive');
         const activePlayers = activeMembers.filter((member: TeamMember) => member.role === 'player');
-        const sessionsThisWeek = sessions.filter((session) => {
+        const upcomingSessions = sessions.filter((session) => {
           const sessionDate = parseSessionDate(session.date);
-          return Boolean(sessionDate && sessionDate >= weekStart && sessionDate < weekEnd);
+          return Boolean(sessionDate && sessionDate >= todayStart);
         }).length;
 
         setSnapshot({
-          sessionsThisWeek,
+          upcomingSessions,
           totalSessions: sessions.length,
           teamMembers: activeMembers.length,
           activePlayers: activePlayers.length,
@@ -179,16 +167,16 @@ export default function DashboardPage() {
 
   return (
     <MobilePageShell>
-      <header className="mb-6 flex items-center gap-4">
-        <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
+      <header className="mb-6 flex items-center gap-3">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
           {logoUrl ? (
             <img src={logoUrl} alt={displayName} className="h-full w-full object-cover" />
           ) : (
-            <ClipboardList className="h-9 w-9" />
+            <ClipboardList className="h-8 w-8" />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[25px] font-extrabold leading-tight text-navy md:text-3xl">
+          <h1 className="truncate text-[23px] font-extrabold leading-tight text-navy md:text-3xl">
             Welcome back, {profile?.full_name?.split(' ')[0] || 'Coach'}
           </h1>
           <div className="mt-1 flex min-w-0 items-center gap-2 text-[17px] font-medium text-slate-500">
@@ -198,7 +186,7 @@ export default function DashboardPage() {
         </div>
         <Link
           href="/dashboard/feed"
-          className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm"
+          className="relative flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm"
           aria-label="Notifications"
         >
           <Bell className="h-6 w-6" />
@@ -210,7 +198,7 @@ export default function DashboardPage() {
         <MobileStatCard
           icon={<CalendarCheck className="h-7 w-7" />}
           label="Upcoming"
-          value={isDashboardLoading ? '...' : snapshot.sessionsThisWeek}
+          value={isDashboardLoading ? '...' : snapshot.upcomingSessions}
           caption={`${snapshot.totalSessions} total`}
           tone="blue"
         />
