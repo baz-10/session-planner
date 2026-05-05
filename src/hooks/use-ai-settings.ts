@@ -37,7 +37,6 @@ export function useAISettings() {
 
     setIsLoading(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: profile } = await (supabase as any)
         .from('profiles')
         .select('settings')
@@ -70,7 +69,6 @@ export function useAISettings() {
       setIsSaving(true);
       try {
         // Get current profile settings
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: profile } = await (supabase as any)
           .from('profiles')
           .select('settings')
@@ -84,7 +82,6 @@ export function useAISettings() {
         };
 
         // Update profile with new AI settings
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await (supabase as any)
           .from('profiles')
           .update({

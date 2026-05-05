@@ -18,7 +18,6 @@ if (typeof window !== 'undefined') {
  * Uses localStorage for session persistence (works with static exports).
  * Note: Using `any` type to avoid strict type inference issues with Supabase queries.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createBrowserSupabaseClient(): any {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase environment variables are not configured');

@@ -31,7 +31,6 @@ async function runReminders(
     const providedSecret = request.headers.get('x-billing-cron-secret');
     const isCronRequest = Boolean(cronSecret && providedSecret === cronSecret);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let supabase: any;
     let sentBy: string | null = null;
     let scopedTeamIds: string[] = [];

@@ -7,7 +7,6 @@ import type { Profile } from '@/types/database';
  * This client uses cookies for session management.
  * Note: Using relaxed typing to avoid strict type inference issues with Supabase queries.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function createServerSupabaseClient(): Promise<any> {
   const cookieStore = await cookies();
 

@@ -775,9 +775,9 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           type="button"
           onClick={markActiveComplete}
           disabled={runState.status === 'complete'}
-          className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-base font-extrabold text-white disabled:opacity-40"
+          className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
         >
-          Next
+          Next Activity
           <ChevronRight className="h-5 w-5" />
         </button>
         <Link

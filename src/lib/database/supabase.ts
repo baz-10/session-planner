@@ -12,7 +12,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
  * Uses the anon key which respects RLS policies
  * Note: Using relaxed typing to avoid strict type inference issues
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabase: any = createClient(supabaseUrl, supabaseAnonKey);
 
 /**

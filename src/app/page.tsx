@@ -267,7 +267,7 @@ export default function HomePage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-navy">RSVP Received</p>
-                      <p className="text-xs text-text-muted">Marcus confirmed for Saturday's game</p>
+                      <p className="text-xs text-text-muted">Marcus confirmed for Saturday&apos;s game</p>
                     </div>
                   </div>
                 </div>
@@ -339,7 +339,7 @@ export default function HomePage() {
                   </h3>
                   <p className="text-white/70 text-lg mb-8">
                     Use Session Planner on the web, and soon on iOS. Your data syncs instantly
-                    across all devices so you're always prepared—at home or on the sidelines.
+                    across all devices so you&apos;re always prepared—at home or on the sidelines.
                   </p>
                   <div className="flex flex-wrap gap-4">
                     <div className="flex items-center gap-3 px-4 py-3 bg-white/10 rounded-xl">
@@ -412,7 +412,7 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                <p className="text-text-secondary mb-8 leading-relaxed">"{testimonial.quote}"</p>
+                <p className="text-text-secondary mb-8 leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</p>
 
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-navy flex items-center justify-center">
@@ -441,7 +441,7 @@ export default function HomePage() {
           </h2>
 
           <p className="text-xl text-text-secondary max-w-2xl mx-auto mb-12">
-            Join thousands of coaches who've upgraded their game.
+            Join thousands of coaches who&apos;ve upgraded their game.
             Create your free account in seconds—no credit card required.
           </p>
 

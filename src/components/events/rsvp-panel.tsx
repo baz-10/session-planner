@@ -171,7 +171,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
             <option value="all">All ({event.rsvps.length})</option>
             <option value="going">Going ({groupedRsvps.going.length})</option>
             <option value="maybe">Maybe ({groupedRsvps.maybe.length})</option>
-            <option value="not_going">Can't Go ({groupedRsvps.not_going.length})</option>
+            <option value="not_going">Can&apos;t Go ({groupedRsvps.not_going.length})</option>
             <option value="pending">Pending ({groupedRsvps.pending.length})</option>
           </select>
         </div>

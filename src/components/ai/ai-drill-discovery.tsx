@@ -91,8 +91,8 @@ export function AIDrillDiscovery({ onSelectDrill, context, className = '' }: AID
         </div>
 
         <p className="text-sm text-gray-600 mb-4">
-          Enable AI features to discover drills by describing what you need. For example: "shooting
-          drills for beginners" or "defensive footwork exercises".
+          Enable AI features to discover drills by describing what you need. For example: &ldquo;shooting
+          drills for beginners&rdquo; or &ldquo;defensive footwork exercises&rdquo;.
         </p>
 
         <button

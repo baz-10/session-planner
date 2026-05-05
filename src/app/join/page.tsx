@@ -122,7 +122,7 @@ function JoinPageContent() {
 
           <h1 className="text-2xl font-bold text-navy text-center mb-2">Join a Team</h1>
           <p className="text-text-secondary text-center mb-6">
-            Enter your team's invite code to join
+            Enter your team&apos;s invite code to join
           </p>
 
           {error && (

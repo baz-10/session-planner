@@ -293,39 +293,48 @@ export default function DashboardPage() {
         ) : snapshot.recentSessions.length > 0 ? (
           <div className="space-y-3">
             {snapshot.recentSessions.map((session) => (
-              <MobileListCard key={session.id} className="flex items-center gap-4">
-                <Link
-                  href={`/dashboard/sessions/${session.id}`}
-                  className="flex h-[74px] w-[74px] shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light shadow-[0_14px_28px_rgba(15,31,51,0.12)]"
-                  aria-label={`Open ${session.name}`}
-                >
-                  <ClipboardList className="h-9 w-9" />
-                </Link>
-                <div className="min-w-0 flex-1">
+              <MobileListCard key={session.id} className="space-y-4">
+                <div className="flex items-center gap-4">
                   <Link
                     href={`/dashboard/sessions/${session.id}`}
-                    className="line-clamp-2 text-[17px] font-extrabold leading-5 text-navy transition-colors hover:text-teal"
+                    className="flex h-[74px] w-[74px] shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light shadow-[0_14px_28px_rgba(15,31,51,0.12)]"
+                    aria-label={`Open ${session.name}`}
                   >
-                    {session.name}
+                    <ClipboardList className="h-9 w-9" />
                   </Link>
-                  <div className="mt-2 grid gap-x-3 gap-y-1 text-[13px] font-medium text-slate-500 sm:grid-cols-2">
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarDays className="h-4 w-4" />
-                      {formatSessionDate(session.date)}
-                    </span>
-                    {session.start_time && (
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/dashboard/sessions/${session.id}`}
+                      className="line-clamp-2 text-[17px] font-extrabold leading-5 text-navy transition-colors hover:text-teal"
+                    >
+                      {session.name}
+                    </Link>
+                    <div className="mt-2 grid gap-x-3 gap-y-1 text-[13px] font-medium text-slate-500 sm:grid-cols-2">
                       <span className="inline-flex items-center gap-1">
-                        <Clock3 className="h-4 w-4" />
-                        {formatTime12Hour(session.start_time)}
+                        <CalendarDays className="h-4 w-4" />
+                        {formatSessionDate(session.date)}
                       </span>
-                    )}
-                    {session.duration && <span>{formatDuration(session.duration)}</span>}
-                    {session.location && <span className="truncate">{session.location}</span>}
+                      {session.start_time && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock3 className="h-4 w-4" />
+                          {formatTime12Hour(session.start_time)}
+                        </span>
+                      )}
+                      {session.duration && <span>{formatDuration(session.duration)}</span>}
+                      {session.location && <span className="truncate">{session.location}</span>}
+                    </div>
                   </div>
+                  <Link
+                    href={`/dashboard/sessions/${session.id}/run`}
+                    className="hidden min-h-11 shrink-0 items-center justify-center rounded-2xl border border-teal px-4 text-sm font-extrabold text-teal transition-colors hover:bg-accent/5 sm:inline-flex"
+                  >
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    Run live
+                  </Link>
                 </div>
                 <Link
                   href={`/dashboard/sessions/${session.id}/run`}
-                  className="hidden min-h-11 shrink-0 items-center justify-center rounded-2xl border border-teal px-4 text-sm font-extrabold text-teal transition-colors hover:bg-accent/5 sm:inline-flex"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-teal text-base font-extrabold text-teal transition-colors active:scale-[0.98] sm:hidden"
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
                   Run live

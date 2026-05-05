@@ -263,7 +263,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
               </div>
               <div className="bg-white rounded-lg p-3">
                 <div className="text-2xl font-bold text-red-600">{counts.not_going}</div>
-                <div className="text-xs text-gray-500">Can't Go</div>
+                <div className="text-xs text-gray-500">Can&apos;t Go</div>
               </div>
               <div className="bg-white rounded-lg p-3">
                 <div className="text-2xl font-bold text-gray-400">{counts.pending}</div>
