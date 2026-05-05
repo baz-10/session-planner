@@ -32,7 +32,8 @@ addCheck('implementation plan', 'docs/mobile-implementation-plan.md', [
 addCheck('mobile qa report', 'docs/mobile-qa-report.md', [
   'Visual Checks',
   '393 x 852',
-  'session-planner-mobile-dashboard-fixed.png',
+  'session-planner-mobile-dashboard-final.png',
+  'temporary QA artifacts',
   'npm run audit:mobile',
   'Known QA Limits',
 ]);

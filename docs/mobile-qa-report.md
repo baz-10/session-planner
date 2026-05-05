@@ -7,9 +7,10 @@ mobile-first update.
 
 ## Visual Checks
 
-Local 393 x 852 captures were inspected for the core iPhone flows:
+Local 393 x 852 captures were inspected for the core iPhone flows. The PNGs
+were treated as temporary QA artifacts and are not committed:
 
-- Dashboard: `session-planner-mobile-dashboard-fixed.png`
+- Dashboard: `session-planner-mobile-dashboard-final.png`
 - New session builder: `session-planner-mobile-builder.png`
 - Existing session edit: `session-planner-mobile-session-edit.png`
 - Run Live: `session-planner-mobile-run-live.png`
@@ -28,6 +29,9 @@ Observed pass criteria:
   control obvious.
 - Events exposes the Next Event card, RSVP summary, attendance trend surface,
   and bottom navigation on mobile.
+- Final dashboard follow-up confirmed the greeting fits at 393 px width and the
+  Upcoming stat counts future sessions rather than only sessions in the current
+  week.
 
 ## Automated Checks
 
