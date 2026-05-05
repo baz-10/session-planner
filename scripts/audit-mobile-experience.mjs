@@ -96,6 +96,18 @@ addCheck('mobile more route', 'src/app/dashboard/more/page.tsx', [
   'Sign Out',
 ]);
 
+addCheck('mobile team management', 'src/app/dashboard/team/page.tsx', [
+  'MobilePageShell',
+  'MobileHeader',
+  'Team Settings',
+  'Team Invite Code',
+  'Share Invite',
+  'Copy Invite Link',
+  'Send Email Invite',
+  'Team Members',
+  'min-h-12',
+]);
+
 addCheck('mobile sessions page shell', 'src/app/dashboard/sessions/page.tsx', [
   'MobilePageShell',
   'MobileHeader',

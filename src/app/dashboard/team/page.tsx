@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
-import Link from 'next/link';
+import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
 
 export default function TeamSettingsPage() {
   const { currentTeam, teamMemberships } = useAuth();
@@ -176,14 +176,14 @@ export default function TeamSettingsPage() {
 
   if (!currentTeam) {
     return (
-      <div className="p-6 md:p-8 max-w-2xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-navy mb-2">Team Setup</h1>
-          <p className="text-text-secondary">Create a new team or join an existing one</p>
-        </div>
+      <MobilePageShell contentClassName="md:max-w-2xl">
+        <MobileHeader
+          title="Team Setup"
+          subtitle="Create a new team or join an existing one"
+        />
 
         {formError && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             {formError}
           </div>
         )}
@@ -193,7 +193,7 @@ export default function TeamSettingsPage() {
             {/* Create Team Option */}
             <button
               onClick={() => { setShowCreateForm(true); setFormError(''); }}
-              className="card p-6 text-left hover:shadow-md hover:border-teal transition-all"
+              className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
               <div className="w-12 h-12 bg-teal-glow rounded-xl flex items-center justify-center mb-4">
                 <svg className="w-6 h-6 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,7 +207,7 @@ export default function TeamSettingsPage() {
             {/* Join Team Option */}
             <button
               onClick={() => { setShowJoinForm(true); setFormError(''); }}
-              className="card p-6 text-left hover:shadow-md hover:border-teal transition-all"
+              className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
               <div className="w-12 h-12 bg-navy/10 rounded-xl flex items-center justify-center mb-4">
                 <svg className="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,7 +222,7 @@ export default function TeamSettingsPage() {
 
         {/* Create Team Form */}
         {showCreateForm && (
-          <div className="card p-6">
+          <MobileListCard>
             <h3 className="text-lg font-semibold text-navy mb-4">Create Your Team</h3>
             <form onSubmit={handleCreateTeam} className="space-y-4">
               <div className="form-group">
@@ -260,25 +260,25 @@ export default function TeamSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary min-h-12 flex-1"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="btn-accent flex-1"
+                  className="btn-accent min-h-12 flex-1"
                 >
                   {isSubmitting ? 'Creating...' : 'Create Team'}
                 </button>
               </div>
             </form>
-          </div>
+          </MobileListCard>
         )}
 
         {/* Join Team Form */}
         {showJoinForm && (
-          <div className="card p-6">
+          <MobileListCard>
             <h3 className="text-lg font-semibold text-navy mb-4">Join a Team</h3>
             <form onSubmit={handleJoinTeam} className="space-y-4">
               <div className="form-group">
@@ -311,35 +311,34 @@ export default function TeamSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setShowJoinForm(false)}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary min-h-12 flex-1"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || joinCode.length !== 6}
-                  className="btn-accent flex-1"
+                  className="btn-accent min-h-12 flex-1"
                 >
                   {isSubmitting ? 'Joining...' : 'Join Team'}
                 </button>
               </div>
             </form>
-          </div>
+          </MobileListCard>
         )}
-      </div>
+      </MobilePageShell>
     );
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-navy mb-2">Team Settings</h1>
-        <p className="text-text-secondary">Manage your team and invite players</p>
-      </div>
+    <MobilePageShell contentClassName="md:max-w-4xl">
+      <MobileHeader
+        title="Team Settings"
+        subtitle="Manage your team and invite players"
+      />
 
       {/* Team Info Card */}
-      <div className="card p-6 mb-6">
+      <MobileListCard className="mb-5">
         <div className="flex items-center gap-4 mb-6">
           <div className="w-16 h-16 bg-navy rounded-xl flex items-center justify-center">
             <span className="text-2xl font-bold text-white">
@@ -351,11 +350,11 @@ export default function TeamSettingsPage() {
             <p className="text-text-secondary capitalize">{currentTeam.sport || 'Basketball'}</p>
           </div>
         </div>
-      </div>
+      </MobileListCard>
 
       {/* Invite Section - Only for coaches/admins */}
       {isCoachOrAdmin && (
-        <div className="card p-6 mb-6">
+        <MobileListCard className="mb-5">
           <h3 className="text-lg font-semibold text-navy mb-4 flex items-center gap-2">
             <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -364,17 +363,17 @@ export default function TeamSettingsPage() {
           </h3>
 
           {/* Team Code Display */}
-          <div className="bg-whisper rounded-xl p-6 mb-6">
+          <div className="mb-6 rounded-[20px] bg-whisper p-5">
             <p className="text-sm text-text-secondary mb-2">Team Invite Code</p>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <span className="text-3xl md:text-4xl font-mono font-bold text-navy tracking-widest">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <span className="break-all font-mono text-3xl font-bold tracking-widest text-navy md:text-4xl">
                   {currentTeam.team_code}
                 </span>
               </div>
               <button
                 onClick={copyCode}
-                className={`btn ${copied ? 'btn-accent' : 'btn-secondary'} min-w-[100px]`}
+                className={`btn min-h-12 justify-center ${copied ? 'btn-accent' : 'btn-secondary'} sm:min-w-[112px]`}
               >
                 {copied ? (
                   <>
@@ -402,7 +401,7 @@ export default function TeamSettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
               onClick={shareInvite}
-              className="btn-primary py-3 justify-center"
+              className="btn-primary min-h-12 justify-center py-3"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -411,7 +410,7 @@ export default function TeamSettingsPage() {
             </button>
             <button
               onClick={copyLink}
-              className={`${linkCopied ? 'btn-accent' : 'btn-secondary'} py-3 justify-center`}
+              className={`${linkCopied ? 'btn-accent' : 'btn-secondary'} min-h-12 justify-center py-3`}
             >
               {linkCopied ? (
                 <>
@@ -466,11 +465,11 @@ export default function TeamSettingsPage() {
               </p>
             )}
           </div>
-        </div>
+        </MobileListCard>
       )}
 
       {/* Team Members */}
-      <div className="card p-6">
+      <MobileListCard>
         <h3 className="text-lg font-semibold text-navy mb-4 flex items-center gap-2">
           <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -491,7 +490,7 @@ export default function TeamSettingsPage() {
             {members.map((member) => (
               <div
                 key={member.id}
-                className="flex items-center gap-4 p-4 bg-whisper rounded-lg"
+                className="flex items-center gap-3 rounded-2xl bg-whisper p-3 sm:gap-4 sm:p-4"
               >
                 <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
                   <span className="text-sm font-semibold text-teal-dark">
@@ -518,7 +517,7 @@ export default function TeamSettingsPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </MobileListCard>
+    </MobilePageShell>
   );
 }
