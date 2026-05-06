@@ -16,6 +16,7 @@ interface DrillSelectorModalProps {
   onAddCustom: (name: string, duration: number, categoryId?: string) => void;
   categories: DrillCategory[];
   mode?: 'single' | 'multiple';
+  initialTab?: 'library' | 'custom';
 }
 
 export function DrillSelectorModal({
@@ -26,6 +27,7 @@ export function DrillSelectorModal({
   onAddCustom,
   categories,
   mode = 'single',
+  initialTab = 'library',
 }: DrillSelectorModalProps) {
   const { getDrills, searchDrills } = useDrills();
   const [drills, setDrills] = useState<DrillWithCategory[]>([]);
@@ -53,9 +55,10 @@ export function DrillSelectorModal({
     if (isOpen) {
       setSelectedDrills(new Map());
       setSelectedTag('');
+      setActiveTab(mode === 'multiple' ? 'library' : initialTab);
       loadDrills();
     }
-  }, [isOpen, mode, loadDrills]);
+  }, [isOpen, mode, initialTab, loadDrills]);
 
   // Handle search
   useEffect(() => {
@@ -100,7 +103,7 @@ export function DrillSelectorModal({
 
     onAddCustom(
       customName.trim(),
-      parseInt(customDuration) || 10,
+      Math.max(1, parseInt(customDuration, 10) || 10),
       customCategoryId || undefined
     );
 

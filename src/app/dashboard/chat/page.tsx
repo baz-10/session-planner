@@ -67,7 +67,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex">
+    <div className="flex h-[calc(100dvh-96px)] min-h-[560px] md:h-[calc(100vh-64px)]">
       {/* Conversation list - hidden on mobile when chat is open */}
       <div
         className={`${

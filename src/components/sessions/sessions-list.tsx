@@ -23,7 +23,7 @@ export function SessionsList() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
-  const canCreateSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   // Reload sessions when currentTeam changes
   useEffect(() => {
@@ -43,21 +43,35 @@ export function SessionsList() {
   };
 
   const handleDelete = async (id: string, name: string) => {
+    if (!canManageSessions) {
+      alert('Only coaches or admins can delete session plans for this team.');
+      return;
+    }
+
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
 
     const result = await deleteSession(id);
     if (result.success) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
+    } else {
+      alert(`Failed to delete plan: ${result.error || 'Please try again.'}`);
     }
   };
 
   const handleDuplicate = async (id: string, name: string) => {
+    if (!canManageSessions) {
+      alert('Only coaches or admins can duplicate session plans for this team.');
+      return;
+    }
+
     const newName = prompt('Enter name for the copy:', `${name} (Copy)`);
     if (!newName) return;
 
     const result = await duplicateSession(id, newName);
     if (result.success) {
       loadSessions();
+    } else {
+      alert(`Failed to duplicate plan: ${result.error || 'Please try again.'}`);
     }
   };
 
@@ -97,7 +111,7 @@ export function SessionsList() {
         title="No practice plans yet"
         description="Create your first practice plan to start organizing your sessions with timed activities."
         action={
-          canCreateSessions ? (
+          canManageSessions ? (
             <Link href="/dashboard/sessions/new" className="btn-accent">
               Create Your First Plan
             </Link>
@@ -118,7 +132,11 @@ export function SessionsList() {
           <MobileListCard key={session.id}>
             <div className="flex items-start gap-3">
               <Link
-                href={`/dashboard/sessions/${session.id}`}
+                href={
+                  canManageSessions
+                    ? `/dashboard/sessions/${session.id}`
+                    : `/dashboard/sessions/${session.id}/run`
+                }
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light"
                 aria-label={`Edit ${session.name}`}
               >
@@ -126,7 +144,11 @@ export function SessionsList() {
               </Link>
               <div className="min-w-0 flex-1">
                 <Link
-                  href={`/dashboard/sessions/${session.id}`}
+                  href={
+                    canManageSessions
+                      ? `/dashboard/sessions/${session.id}`
+                      : `/dashboard/sessions/${session.id}/run`
+                  }
                   className="line-clamp-2 text-[17px] font-extrabold leading-5 text-navy"
                 >
                   {session.name}
@@ -156,7 +178,11 @@ export function SessionsList() {
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+            <div
+              className={`mt-4 grid gap-2 ${
+                canManageSessions ? 'grid-cols-[1fr_auto_auto_auto]' : 'grid-cols-1'
+              }`}
+            >
               <Link
                 href={`/dashboard/sessions/${session.id}/run`}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
@@ -164,29 +190,33 @@ export function SessionsList() {
                 <PlayCircle className="h-4 w-4" />
                 Run live
               </Link>
-              <Link
-                href={`/dashboard/sessions/${session.id}`}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
-                aria-label={`Edit ${session.name}`}
-              >
-                <Edit3 className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => handleDuplicate(session.id, session.name)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
-                aria-label={`Duplicate ${session.name}`}
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(session.id, session.name)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600"
-                aria-label={`Delete ${session.name}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canManageSessions && (
+                <>
+                  <Link
+                    href={`/dashboard/sessions/${session.id}`}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                    aria-label={`Edit ${session.name}`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleDuplicate(session.id, session.name)}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                    aria-label={`Duplicate ${session.name}`}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(session.id, session.name)}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600"
+                    aria-label={`Delete ${session.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
             </div>
           </MobileListCard>
         ))}
@@ -221,7 +251,11 @@ export function SessionsList() {
             <tr key={session.id} className="hover:bg-whisper transition-colors">
               <td className="px-6 py-4 whitespace-nowrap">
                 <Link
-                  href={`/dashboard/sessions/${session.id}`}
+                  href={
+                    canManageSessions
+                      ? `/dashboard/sessions/${session.id}`
+                      : `/dashboard/sessions/${session.id}/run`
+                  }
                   className="text-navy hover:text-teal font-medium transition-colors"
                 >
                   {session.name}
@@ -255,33 +289,37 @@ export function SessionsList() {
                   >
                     <PlayCircle className="h-5 w-5" />
                   </Link>
-                  <Link
-                    href={`/dashboard/sessions/${session.id}`}
-                    className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
-                    title="Edit"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </Link>
-                  <button
-                    onClick={() => handleDuplicate(session.id, session.name)}
-                    className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
-                    title="Duplicate"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(session.id, session.name)}
-                    className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                    title="Delete"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  {canManageSessions && (
+                    <>
+                      <Link
+                        href={`/dashboard/sessions/${session.id}`}
+                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
+                        title="Edit"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </Link>
+                      <button
+                        onClick={() => handleDuplicate(session.id, session.name)}
+                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
+                        title="Duplicate"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(session.id, session.name)}
+                        className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        title="Delete"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
                 </div>
               </td>
             </tr>

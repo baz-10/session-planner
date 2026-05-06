@@ -67,11 +67,11 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
   }, [conversation.id, loadMessages, subscribeToMessages, markAsRead]);
 
   const handleSendMessage = async (content: string) => {
-    await sendMessage({ conversation_id: conversation.id, content });
+    return sendMessage({ conversation_id: conversation.id, content });
   };
 
   const handleSendFile = async (file: File) => {
-    await sendFileMessage(conversation.id, file);
+    return sendFileMessage(conversation.id, file);
   };
 
   return (

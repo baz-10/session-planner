@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 
 function sanitizeNextPath(nextValue: string | null): string {
-  if (!nextValue || !nextValue.startsWith('/')) {
+  if (!nextValue || !nextValue.startsWith('/') || nextValue.startsWith('//')) {
     return '/onboarding';
   }
   return nextValue;
@@ -37,9 +37,9 @@ export function CallbackHandler() {
               .eq('id', user.id)
               .single();
 
-            // If onboarding is complete, go to dashboard
+            // If onboarding is complete, honor safe invite/deep-link redirects.
             if (profile?.onboarding_completed) {
-              router.push('/dashboard');
+              router.push(next === '/onboarding' ? '/dashboard' : next);
               return;
             }
           }

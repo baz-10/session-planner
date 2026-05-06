@@ -32,6 +32,7 @@ import { PlaySelectorModal } from './play-selector-modal';
 import { SessionAutopilotPanel } from './session-autopilot-panel';
 import { Button } from '@/components/ui/button';
 import {
+  MobileEmptyState,
   MobileListCard,
   MobileStickyActionBar,
 } from '@/components/mobile';
@@ -114,6 +115,10 @@ function toInputDate(value?: string | null): string {
   return value || '';
 }
 
+function clampActivityDuration(value: number): number {
+  return Math.max(1, Math.round(Number.isFinite(value) ? value : 10));
+}
+
 const normalizeActivitySortOrder = (
   activities: ActivityWithCategory[]
 ): ActivityWithCategory[] =>
@@ -153,8 +158,6 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const { getPlays, getPlay } = usePlays();
   const { getTeamPlayers } = usePlayers();
   const { theme: playTheme } = usePlayEditorTheme();
-  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
-  const canManagePlayLinks = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   // Session state
   const [session, setSession] = useState<Partial<SessionWithActivities>>({
@@ -186,6 +189,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const [playerLabelsById, setPlayerLabelsById] = useState<Record<string, string>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showAutopilot, setShowAutopilot] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [drillModalInitialTab, setDrillModalInitialTab] = useState<'library' | 'custom'>('library');
+  const activeTeamId = session.team_id || currentTeam?.id;
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === activeTeamId);
+  const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const canManagePlayLinks = canManageSessions;
 
   // Load session data if editing
   useEffect(() => {
@@ -200,6 +209,9 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     const data = await getSession(sessionId);
     if (data) {
       setSession(data);
+      setLoadError('');
+    } else {
+      setLoadError('Session not found, or you do not have access to this plan.');
     }
     setIsLoading(false);
   };
@@ -303,13 +315,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
   // Handle metadata changes
   const handleMetadataChange = useCallback((updates: Partial<Session>) => {
+    if (!canManageSessions) return;
     setSession((prev) => ({ ...prev, ...updates }));
     setHasUnsavedChanges(true);
-  }, []);
+  }, [canManageSessions]);
 
   // Handle activity changes
   const handleActivityUpdate = useCallback(
     async (activityId: string, updates: Partial<SessionActivity>) => {
+      if (!canManageSessions) return;
+
       const resolvedCategoryId =
         updates.category_id !== undefined ? updates.category_id : null;
       const resolvedCategory =
@@ -325,10 +340,14 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           : undefined;
       const normalizedUpdates: Partial<SessionActivity> = {
         ...updates,
+        ...(updates.duration !== undefined
+          ? { duration: clampActivityDuration(Number(updates.duration)) }
+          : {}),
         ...(normalizedAdditionalCategoryIds !== undefined
           ? { additional_category_ids: normalizedAdditionalCategoryIds }
           : {}),
       };
+      const previousActivities = session.activities || [];
 
       // Update local state immediately for responsiveness
       setSession((prev) => ({
@@ -346,16 +365,30 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       // If session is saved, persist to database
       if (session.id) {
-        await updateActivity(activityId, normalizedUpdates);
+        const result = await updateActivity(activityId, normalizedUpdates);
+        if (!result.success) {
+          setSession((prev) => ({ ...prev, activities: previousActivities }));
+          alert(`Failed to save activity changes: ${result.error || 'Please try again.'}`);
+        }
       } else {
         setHasUnsavedChanges(true);
       }
     },
-    [session.id, updateActivity, categories]
+    [canManageSessions, session.activities, session.id, updateActivity, categories]
   );
 
   const handleActivityDelete = useCallback(
     async (activityId: string) => {
+      if (!canManageSessions) return;
+
+      if (session.id) {
+        const result = await deleteActivity(activityId);
+        if (!result.success) {
+          alert(`Failed to delete activity: ${result.error || 'Please try again.'}`);
+          return;
+        }
+      }
+
       // Update local state
       setSession((prev) => {
         const remainingActivities = (prev.activities || []).filter((a) => a.id !== activityId);
@@ -365,20 +398,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         };
       });
 
-      // If session is saved, delete from database
-      if (session.id) {
-        await deleteActivity(activityId);
-      } else {
+      if (!session.id) {
         setHasUnsavedChanges(true);
       }
     },
-    [session.id, deleteActivity]
+    [canManageSessions, session.id, deleteActivity]
   );
 
   const handleReorder = useCallback(
     async (activityIds: string[]) => {
+      if (!canManageSessions) return;
+
       // Update local state
       const activities = session.activities || [];
+      const previousActivities = activities;
       const reorderedActivities = normalizeActivitySortOrder(
         activityIds
           .map((id) => activities.find((a) => a.id === id))
@@ -392,27 +425,34 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       // If session is saved, persist to database
       if (session.id) {
-        await reorderActivities(session.id, activityIds);
+        const result = await reorderActivities(session.id, activityIds);
+        if (!result.success) {
+          setSession((prev) => ({ ...prev, activities: previousActivities }));
+          alert(`Failed to reorder activities: ${result.error || 'Please try again.'}`);
+        }
       } else {
         setHasUnsavedChanges(true);
       }
     },
-    [session.id, session.activities, reorderActivities]
+    [canManageSessions, session.id, session.activities, reorderActivities]
   );
 
   // Add activity from drill library
   const handleAddDrill = useCallback(
     async (drill: DrillWithCategory) => {
+      if (!canManageSessions) return;
+
       const additionalCategoryIds = normalizeAdditionalCategoryIds(
         getAdditionalCategoryIdsFromTags(drill.tags),
         drill.category_id
       );
+      const duration = clampActivityDuration(drill.default_duration);
 
       const newActivity: Partial<SessionActivity> = {
         id: `temp-${Date.now()}`,
         drill_id: drill.id,
         name: drill.name,
-        duration: drill.default_duration,
+        duration,
         category_id: drill.category_id,
         additional_category_ids: additionalCategoryIds,
         notes: drill.description || '',
@@ -432,7 +472,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           drill_id: drill.id,
           sort_order: session.activities?.length || 0,
           name: drill.name,
-          duration: drill.default_duration,
+          duration,
           category_id: drill.category_id || undefined,
           additional_category_ids: additionalCategoryIds,
           notes: drill.description || undefined,
@@ -446,6 +486,9 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               { ...result.activity, category: drill.category } as ActivityWithCategory,
             ],
           }));
+        } else {
+          alert(`Failed to add activity: ${result.error || 'Please try again.'}`);
+          return;
         }
       } else {
         // Add to local state with category attached
@@ -464,17 +507,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories]
   );
 
   // Add multiple drills at once
   const handleAddMultipleDrills = useCallback(
     async (drills: DrillWithCategory[]) => {
+      if (!canManageSessions) return;
+
       const currentActivitiesCount = session.activities?.length || 0;
 
       if (session.id) {
         // If session is saved, add each drill to database
         const newActivities: ActivityWithCategory[] = [];
+        let failedCount = 0;
 
         for (let i = 0; i < drills.length; i++) {
           const drill = drills[i];
@@ -487,7 +533,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             drill_id: drill.id,
             sort_order: currentActivitiesCount + i,
             name: drill.name,
-            duration: drill.default_duration,
+            duration: clampActivityDuration(drill.default_duration),
             category_id: drill.category_id || undefined,
             additional_category_ids: additionalCategoryIds,
             notes: drill.description || undefined,
@@ -498,6 +544,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               ...result.activity,
               category: drill.category,
             } as ActivityWithCategory);
+          } else {
+            failedCount += 1;
           }
         }
 
@@ -505,6 +553,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           ...prev,
           activities: [...(prev.activities || []), ...newActivities],
         }));
+
+        if (failedCount > 0) {
+          alert(`${failedCount} activit${failedCount === 1 ? 'y' : 'ies'} failed to add. Please try again.`);
+        }
       } else {
         // Add to local state
         const newActivities: ActivityWithCategory[] = drills.map((drill, index) => ({
@@ -516,7 +568,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           session_id: '',
           drill_id: drill.id,
           name: drill.name,
-          duration: drill.default_duration,
+          duration: clampActivityDuration(drill.default_duration),
           category_id: drill.category_id,
           notes: drill.description || null,
           sort_order: currentActivitiesCount + index,
@@ -540,20 +592,23 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories]
   );
 
   // Add custom activity
   const handleAddCustomActivity = useCallback(
     async (name: string, duration: number, categoryId?: string) => {
+      if (!canManageSessions) return;
+
       const category = categories.find((c) => c.id === categoryId);
+      const safeDuration = clampActivityDuration(duration);
 
       if (session.id) {
         const result = await addActivity({
           session_id: session.id,
           sort_order: session.activities?.length || 0,
           name,
-          duration,
+          duration: safeDuration,
           category_id: categoryId,
           additional_category_ids: [],
         });
@@ -566,6 +621,9 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               { ...result.activity, category } as ActivityWithCategory,
             ],
           }));
+        } else {
+          alert(`Failed to add custom activity: ${result.error || 'Please try again.'}`);
+          return;
         }
       } else {
         const newActivity: ActivityWithCategory = {
@@ -573,7 +631,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           session_id: '',
           drill_id: null,
           name,
-          duration,
+          duration: safeDuration,
           category_id: categoryId || null,
           additional_category_ids: [],
           notes: null,
@@ -598,25 +656,27 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories]
   );
 
   // Open drill modal in single mode
   const openSingleDrillModal = useCallback(() => {
     setDrillModalMode('single');
+    setDrillModalInitialTab('library');
     setIsDrillModalOpen(true);
   }, []);
 
-  // Open drill modal in multi mode
-  const openMultipleDrillModal = useCallback(() => {
-    setDrillModalMode('multiple');
+  const openCustomActivityModal = useCallback(() => {
+    setDrillModalMode('single');
+    setDrillModalInitialTab('custom');
     setIsDrillModalOpen(true);
   }, []);
 
   const openPlayModalForActivity = useCallback((activityId: string) => {
+    if (!canManagePlayLinks) return;
     setTargetPlayActivityId(activityId);
     setIsPlayModalOpen(true);
-  }, []);
+  }, [canManagePlayLinks]);
 
   const closePlayModal = useCallback(() => {
     setTargetPlayActivityId(null);
@@ -626,6 +686,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const handleAttachPlayToActivity = useCallback(
     async (play: Play) => {
       if (!targetPlayActivityId) return;
+      if (!canManagePlayLinks) return;
 
       await handleActivityUpdate(targetPlayActivityId, {
         linked_play_id: play.id,
@@ -642,11 +703,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       closePlayModal();
     },
-    [targetPlayActivityId, handleActivityUpdate, closePlayModal]
+    [canManagePlayLinks, targetPlayActivityId, handleActivityUpdate, closePlayModal]
   );
 
   const handleClearLinkedPlay = useCallback(
     async (activityId: string) => {
+      if (!canManagePlayLinks) return;
       await handleActivityUpdate(activityId, {
         linked_play_id: null,
         linked_play_name_snapshot: null,
@@ -655,11 +717,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         linked_play_thumbnail_data_url: null,
       });
     },
-    [handleActivityUpdate]
+    [canManagePlayLinks, handleActivityUpdate]
   );
 
   const handleRefreshPlaySnapshot = useCallback(
     async (activityId: string) => {
+      if (!canManagePlayLinks) return;
       const activity = (session.activities || []).find((item) => item.id === activityId);
       if (!activity?.linked_play_id) return;
 
@@ -682,7 +745,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         [latestPlay.id]: latestPlay,
       }));
     },
-    [session.activities, getPlay, playsById, handleActivityUpdate]
+    [canManagePlayLinks, session.activities, getPlay, playsById, handleActivityUpdate]
   );
 
   const handleViewLinkedPlay = useCallback(
@@ -707,7 +770,76 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Apply an autopilot-generated variant (replace existing activities)
   const handleApplyAutopilotVariant = useCallback(
     async (variant: SessionAutopilotVariant) => {
+      if (!canManageSessions) return;
+
       const existingActivities = session.activities || [];
+      if (session.id && existingActivities.length > 0) {
+        const shouldCreateDraft = confirm(
+          `Apply ${variant.label} as a new draft plan? Your current saved plan will stay unchanged.`
+        );
+        if (!shouldCreateDraft) {
+          return;
+        }
+
+        const targetTeamId = session.team_id || currentTeam?.id;
+        if (!targetTeamId) {
+          alert('No team selected. Please select a team before applying Autopilot.');
+          return;
+        }
+
+        setIsSaving(true);
+        const draftResult = await createSession({
+          team_id: targetTeamId,
+          name: `${session.name || 'Session'} · ${variant.label}`,
+          date: session.date || undefined,
+          start_time: session.start_time || undefined,
+          duration: session.duration || undefined,
+          location: session.location || undefined,
+          defensive_emphasis: session.defensive_emphasis || undefined,
+          offensive_emphasis: session.offensive_emphasis || undefined,
+          quote: session.quote || undefined,
+          announcements: session.announcements || undefined,
+        });
+
+        if (!draftResult.success || !draftResult.session) {
+          setIsSaving(false);
+          alert(`Failed to create Autopilot draft: ${draftResult.error || 'Please try again.'}`);
+          return;
+        }
+
+        let failedCount = 0;
+        for (let index = 0; index < variant.activities.length; index += 1) {
+          const generated = variant.activities[index];
+          const additionalCategoryIds = normalizeAdditionalCategoryIds(
+            generated.drillId ? drillCategoryIdsByDrillId[generated.drillId] || [] : [],
+            generated.categoryId || null
+          );
+          const insertResult = await addActivity({
+            session_id: draftResult.session.id,
+            drill_id: generated.drillId,
+            sort_order: index,
+            name: generated.name,
+            duration: clampActivityDuration(generated.duration),
+            category_id: generated.categoryId,
+            additional_category_ids: additionalCategoryIds,
+            notes: generated.notes,
+          });
+
+          if (!insertResult.success) {
+            failedCount += 1;
+          }
+        }
+
+        setIsSaving(false);
+        if (failedCount > 0) {
+          alert(
+            `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`
+          );
+        }
+        router.push(`/dashboard/sessions/${draftResult.session.id}`);
+        return;
+      }
+
       if (existingActivities.length > 0) {
         const shouldReplace = confirm(
           `Apply ${variant.label}? This will replace ${existingActivities.length} existing activities in this plan.`
@@ -718,15 +850,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }
 
       if (session.id) {
-        // Persisted session: replace activities in the database.
+        // Empty persisted session: insert the generated plan directly.
         let didPersistAllChanges = true;
-
-        for (const existing of existingActivities) {
-          const deleteResult = await deleteActivity(existing.id);
-          if (!deleteResult.success) {
-            didPersistAllChanges = false;
-          }
-        }
 
         const persistedActivities: ActivityWithCategory[] = [];
         for (let index = 0; index < variant.activities.length; index += 1) {
@@ -740,7 +865,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             drill_id: generated.drillId,
             sort_order: index,
             name: generated.name,
-            duration: generated.duration,
+            duration: clampActivityDuration(generated.duration),
             category_id: generated.categoryId,
             additional_category_ids: additionalCategoryIds,
             notes: generated.notes,
@@ -766,7 +891,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         if (!didPersistAllChanges) {
           alert(
-            'Autopilot plan was partially applied. Some activity inserts failed. Please review and save again.'
+            'Autopilot plan was partially applied. Some activity inserts failed. Please review the plan before sharing.'
           );
           setHasUnsavedChanges(true);
         }
@@ -783,7 +908,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         session_id: '',
         drill_id: generated.drillId || null,
         name: generated.name,
-        duration: generated.duration,
+        duration: clampActivityDuration(generated.duration),
         category_id: generated.categoryId || null,
         notes: generated.notes || null,
         sort_order: index,
@@ -811,7 +936,27 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }));
       setHasUnsavedChanges(true);
     },
-    [session.activities, session.id, categories, deleteActivity, addActivity, drillCategoryIdsByDrillId]
+    [
+      canManageSessions,
+      session.activities,
+      session.announcements,
+      session.date,
+      session.defensive_emphasis,
+      session.duration,
+      session.id,
+      session.location,
+      session.name,
+      session.offensive_emphasis,
+      session.quote,
+      session.start_time,
+      session.team_id,
+      categories,
+      addActivity,
+      createSession,
+      currentTeam?.id,
+      drillCategoryIdsByDrillId,
+      router,
+    ]
   );
 
   // Save session
@@ -844,7 +989,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           drill_id: activity.drill_id || undefined,
           sort_order: activity.sort_order,
           name: activity.name,
-          duration: activity.duration,
+          duration: clampActivityDuration(activity.duration),
           category_id: activity.category_id || undefined,
           additional_category_ids: activity.additional_category_ids || [],
           notes: activity.notes || undefined,
@@ -884,6 +1029,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const handleSave = useCallback(async () => {
     if (!session.name?.trim()) {
       alert('Please enter a session name');
+      return;
+    }
+
+    if (!canManageSessions) {
+      alert('Only coaches or admins can save session plans for this team.');
       return;
     }
 
@@ -980,10 +1130,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     } finally {
       setIsSaving(false);
     }
-  }, [session, currentTeam, createSession, updateSession, persistUnsavedActivities, router]);
+  }, [session, currentTeam, canManageSessions, createSession, updateSession, persistUnsavedActivities, router]);
 
   // Save as new (duplicate)
   const handleSaveAsNew = useCallback(async () => {
+    if (!canManageSessions) {
+      alert('Only coaches or admins can duplicate session plans for this team.');
+      return;
+    }
+
     const newName = prompt('Enter name for the new plan:', `${session.name} (Copy)`);
     if (!newName) return;
 
@@ -992,10 +1147,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       const result = await duplicateSession(session.id, newName);
       if (result.success && result.session) {
         router.push(`/dashboard/sessions/${result.session.id}`);
+      } else {
+        alert(`Failed to duplicate plan: ${result.error || 'Please try again.'}`);
       }
       setIsSaving(false);
     }
-  }, [session.id, session.name, duplicateSession, router]);
+  }, [canManageSessions, session.id, session.name, duplicateSession, router]);
 
   // Print session
   const handlePrint = useCallback(() => {
@@ -1008,6 +1165,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName]);
 
   const handleSaveActivitiesToLibrary = useCallback(async () => {
+    if (!canManageSessions) return;
+
     const activities = (session.activities || []) as ActivityWithCategory[];
     if (activities.length === 0) {
       alert('No activities to save yet.');
@@ -1040,7 +1199,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         const createResult = await createDrill({
           name: activity.name.trim(),
           category_id: activity.category_id || undefined,
-          default_duration: activity.duration,
+          default_duration: clampActivityDuration(activity.duration),
           description: activity.notes || undefined,
           notes: activity.notes || undefined,
           tags: buildDrillTags([], activity.additional_category_ids || []),
@@ -1099,10 +1258,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     } finally {
       setIsSavingActivitiesToLibrary(false);
     }
-  }, [session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext]);
+  }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext]);
 
   // Clear form
   const handleClear = useCallback(() => {
+    if (!canManageSessions) return;
+
     if (hasUnsavedChanges) {
       if (!confirm('Are you sure you want to clear the form? Unsaved changes will be lost.')) {
         return;
@@ -1122,7 +1283,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       activities: [],
     });
     setHasUnsavedChanges(false);
-  }, [hasUnsavedChanges]);
+  }, [canManageSessions, hasUnsavedChanges]);
 
   const activities = (session.activities || []) as ActivityWithCategory[];
   const sessionStartTime = session.start_time || '17:00';
@@ -1162,6 +1323,22 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="bg-[#f8fafc] p-4 md:p-8">
+        <MobileEmptyState
+          title="Session unavailable"
+          description={loadError}
+          action={
+            <Link href="/dashboard/sessions" className="btn-accent">
+              Back to Sessions
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 bg-[#f8fafc] p-4 pb-40 md:p-6 xl:p-8">
       <div className="space-y-4 md:hidden">
@@ -1194,7 +1371,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 type="text"
                 value={session.name || ''}
                 onChange={(event) => handleMetadataChange({ name: event.target.value })}
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="mt-1 w-full border-0 bg-transparent text-[20px] font-extrabold leading-6 text-navy outline-none placeholder:text-slate-400"
                 placeholder="New practice plan"
               />
@@ -1209,7 +1386,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 type="date"
                 value={toInputDate(session.date)}
                 onChange={(event) => handleMetadataChange({ date: event.target.value || null })}
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
               />
             </label>
@@ -1220,7 +1397,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 type="time"
                 value={sessionStartTime}
                 onChange={(event) => handleMetadataChange({ start_time: event.target.value || null })}
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
               />
             </label>
@@ -1234,7 +1411,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                     duration: Number.parseInt(event.target.value, 10) || 90,
                   })
                 }
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none"
                 aria-label="Session duration"
               >
@@ -1252,7 +1429,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 type="text"
                 value={session.location || ''}
                 onChange={(event) => handleMetadataChange({ location: event.target.value || null })}
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="min-w-0 bg-transparent text-right text-base font-bold text-slate-700 outline-none placeholder:text-slate-400"
                 placeholder="Add location"
               />
@@ -1273,7 +1450,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 onChange={(event) =>
                   handleMetadataChange({ offensive_emphasis: event.target.value || null })
                 }
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="mt-1 w-full bg-transparent text-sm font-extrabold text-navy outline-none placeholder:text-slate-400"
                 placeholder="Set focus"
               />
@@ -1292,7 +1469,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 onChange={(event) =>
                   handleMetadataChange({ defensive_emphasis: event.target.value || null })
                 }
-                disabled={isSaving}
+                disabled={isSaving || !canManageSessions}
                 className="mt-1 w-full bg-transparent text-sm font-extrabold text-navy outline-none placeholder:text-slate-400"
                 placeholder="Set focus"
               />
@@ -1336,7 +1513,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                   onChange={(event) =>
                     handleMetadataChange({ name: event.target.value })
                   }
-                  disabled={isSaving}
+                  disabled={isSaving || !canManageSessions}
                   className="w-full min-w-0 bg-transparent text-[28px] font-bold tracking-[-0.04em] text-white outline-none placeholder:text-white/50 md:text-[30px] xl:max-w-[780px]"
                   placeholder="Tuesday Practice · Ball-screen emphasis"
                 />
@@ -1356,7 +1533,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                     onChange={(event) =>
                       handleMetadataChange({ date: event.target.value || null })
                     }
-                    disabled={isSaving}
+                    disabled={isSaving || !canManageSessions}
                     className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
                   />
                 </label>
@@ -1369,7 +1546,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                     onChange={(event) =>
                       handleMetadataChange({ start_time: event.target.value || null })
                     }
-                    disabled={isSaving}
+                    disabled={isSaving || !canManageSessions}
                     className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
                   />
                 </label>
@@ -1383,7 +1560,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                         duration: Number.parseInt(event.target.value, 10) || 90,
                       })
                     }
-                    disabled={isSaving}
+                    disabled={isSaving || !canManageSessions}
                     className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
                     aria-label="Session duration"
                   >
@@ -1403,7 +1580,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                     onChange={(event) =>
                       handleMetadataChange({ location: event.target.value || null })
                     }
-                    disabled={isSaving}
+                    disabled={isSaving || !canManageSessions}
                     className="w-full bg-transparent text-white outline-none placeholder:text-white/45"
                     placeholder="Main gym"
                   />
@@ -1441,7 +1618,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                   Run live
                 </Button>
               )}
-              {session.id && (
+              {session.id && canManageSessions && (
                 <Button
                   variant="outline"
                   onClick={handleSaveAsNew}
@@ -1463,7 +1640,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               <Button
                 variant="accent"
                 onClick={handleSave}
-                disabled={isSaving || !session.name?.trim()}
+                disabled={isSaving || !session.name?.trim() || !canManageSessions}
                 isLoading={isSaving}
                 className="bg-teal px-5 text-white hover:bg-teal-dark"
               >
@@ -1575,7 +1752,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 offensive_emphasis: event.target.value || null,
               })
             }
-            disabled={isSaving}
+            disabled={isSaving || !canManageSessions}
             className="w-full border-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
             placeholder="Horns, ball-screen reads"
           />
@@ -1593,7 +1770,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 defensive_emphasis: event.target.value || null,
               })
             }
-            disabled={isSaving}
+            disabled={isSaving || !canManageSessions}
             className="w-full border-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
             placeholder="Drop coverage against PnR"
           />
@@ -1611,7 +1788,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 announcements: event.target.value || null,
               })
             }
-            disabled={isSaving}
+            disabled={isSaving || !canManageSessions}
             rows={4}
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none focus:border-teal"
             placeholder="General reminders, constraints, and coaching cues..."
@@ -1630,7 +1807,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 quote: event.target.value || null,
               })
             }
-            disabled={isSaving}
+            disabled={isSaving || !canManageSessions}
             rows={4}
             className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none focus:border-teal"
             placeholder="Lock into the details and the scoreboard takes care of itself."
@@ -1651,6 +1828,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             </p>
           </div>
 
+          {canManageSessions && (
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -1662,7 +1840,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             </Button>
             <Button
               variant="outline"
-              onClick={openMultipleDrillModal}
+              onClick={openCustomActivityModal}
               disabled={isSaving}
             >
               + Custom
@@ -1677,9 +1855,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               Autopilot
             </Button>
           </div>
+          )}
         </div>
 
-        {showAutopilot && (
+        {!canManageSessions && (
+          <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm">
+            This is a view-only plan for your team role. Coaches and admins can edit the schedule.
+          </div>
+        )}
+
+        {canManageSessions && showAutopilot && (
           <SessionAutopilotPanel
             teamId={currentTeam?.id}
             sessionContext={{
@@ -1708,9 +1893,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           onActivityDelete={handleActivityDelete}
           onReorder={handleReorder}
           onAddDrillClick={openSingleDrillModal}
-          onAddMultipleDrillsClick={openMultipleDrillModal}
+          onAddCustomActivityClick={openCustomActivityModal}
           onManageCategoriesClick={() => setIsCategoryManagerOpen(true)}
-          onSaveActivitiesToLibrary={handleSaveActivitiesToLibrary}
+          onSaveActivitiesToLibrary={
+            canManageSessions ? handleSaveActivitiesToLibrary : undefined
+          }
           isSavingActivitiesToLibrary={isSavingActivitiesToLibrary}
           canManagePlayLinks={Boolean(canManagePlayLinks)}
           onAttachPlayClick={canManagePlayLinks ? openPlayModalForActivity : undefined}
@@ -1720,10 +1907,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           }
           onViewLinkedPlayClick={handleViewLinkedPlay}
           linkedPlayIsStale={isLinkedPlayStale}
-          disabled={isSaving}
+          disabled={isSaving || !canManageSessions}
         />
       </section>
 
+      {canManageSessions && (
       <div className="hidden flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex">
         <Button variant="outline" onClick={handleClear} disabled={isSaving}>
           Clear form
@@ -1739,7 +1927,9 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           </span>
         </div>
       </div>
+      )}
 
+      {canManageSessions && (
       <MobileStickyActionBar>
         <button
           type="button"
@@ -1759,6 +1949,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           {isSaving ? 'Saving' : 'Save Plan'}
         </button>
       </MobileStickyActionBar>
+      )}
 
       {/* Drill Selector Modal */}
       <DrillSelectorModal
@@ -1769,6 +1960,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         onAddCustom={handleAddCustomActivity}
         categories={categories}
         mode={drillModalMode}
+        initialTab={drillModalInitialTab}
       />
 
       <PlaySelectorModal

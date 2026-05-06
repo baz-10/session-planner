@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
@@ -27,14 +27,16 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadMembers();
-  }, [currentTeam?.id]);
+  const loadMembers = useCallback(async () => {
+    if (!currentTeam) {
+      setMembers([]);
+      setIsLoading(false);
+      return;
+    }
 
-  const loadMembers = async () => {
-    if (!currentTeam) return;
-
+    setIsLoading(true);
     const { data, error } = await supabase
       .from('team_members')
       .select(`
@@ -48,7 +50,11 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
       setMembers(data as TeamMemberWithProfile[]);
     }
     setIsLoading(false);
-  };
+  }, [currentTeam, supabase, user?.id]);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
 
   const filteredMembers = members.filter((m) =>
     m.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -68,25 +74,36 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
     if (selectedIds.length === 0) return;
 
     setIsCreating(true);
+    setError('');
 
     if (mode === 'dm') {
       const conv = await getOrCreateDM(selectedIds[0]);
       if (conv) {
         onConversationCreated(conv.id);
+        setIsCreating(false);
+        onClose();
+      } else {
+        setError('Failed to create direct message. Please try again.');
+        setIsCreating(false);
       }
+      return;
     } else {
       if (!groupName.trim()) {
+        setError('Enter a group name before creating the chat.');
         setIsCreating(false);
         return;
       }
       const result = await createGroupChat(groupName.trim(), selectedIds);
       if (result.success && result.conversation) {
         onConversationCreated(result.conversation.id);
+        setIsCreating(false);
+        onClose();
+      } else {
+        setError(result.error || 'Failed to create group chat. Please try again.');
+        setIsCreating(false);
       }
+      return;
     }
-
-    setIsCreating(false);
-    onClose();
   };
 
   return (
@@ -104,6 +121,12 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             </svg>
           </button>
         </div>
+
+        {error && (
+          <div className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* Mode toggle */}
         <div className="px-4 py-3 border-b border-gray-100">

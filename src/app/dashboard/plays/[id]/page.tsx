@@ -7,11 +7,12 @@ export async function generateStaticParams() {
 export const dynamicParams = true;
 
 interface PlayPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function PlayPage({ params }: PlayPageProps) {
-  return <PlayDetailClient playId={params.id} />;
+export default async function PlayPage({ params }: PlayPageProps) {
+  const { id } = await params;
+  return <PlayDetailClient playId={id} />;
 }

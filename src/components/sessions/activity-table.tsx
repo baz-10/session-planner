@@ -37,7 +37,7 @@ interface ActivityTableProps {
   onActivityDelete: (id: string) => void;
   onReorder: (activityIds: string[]) => void;
   onAddDrillClick: () => void;
-  onAddMultipleDrillsClick?: () => void;
+  onAddCustomActivityClick?: () => void;
   onManageCategoriesClick?: () => void;
   onSaveActivitiesToLibrary?: () => void;
   isSavingActivitiesToLibrary?: boolean;
@@ -61,7 +61,7 @@ export function ActivityTable({
   onActivityDelete,
   onReorder,
   onAddDrillClick,
-  onAddMultipleDrillsClick,
+  onAddCustomActivityClick,
   onManageCategoriesClick,
   onSaveActivitiesToLibrary,
   isSavingActivitiesToLibrary = false,
@@ -107,6 +107,8 @@ export function ActivityTable({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      if (disabled) return;
+
       const { active, over } = event;
 
       if (over && active.id !== over.id) {
@@ -118,7 +120,7 @@ export function ActivityTable({
         onReorder(nextOrder.map((activity) => activity.id));
       }
     },
-    [localActivities, onReorder]
+    [disabled, localActivities, onReorder]
   );
 
   const totalAllocated = useMemo(
@@ -144,26 +146,28 @@ export function ActivityTable({
               <div className="rounded-[20px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-900">No activities yet</h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  Add drills, custom blocks, or let autopilot sketch the run of show.
+                  {disabled
+                    ? 'No activities are scheduled for this plan yet.'
+                    : 'Add drills, custom blocks, or let autopilot sketch the run of show.'}
                 </p>
+                {!disabled && (
                 <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
                   <button
                     onClick={onAddDrillClick}
-                    disabled={disabled}
                     className="inline-flex items-center gap-2 rounded-xl border border-teal px-4 py-2 text-sm font-semibold text-teal transition-colors hover:bg-teal/5 disabled:opacity-50"
                   >
                     <LibraryBig className="h-4 w-4" />
                     Add from library
                   </button>
                   <button
-                    onClick={onAddMultipleDrillsClick || onAddDrillClick}
-                    disabled={disabled}
+                    onClick={onAddCustomActivityClick || onAddDrillClick}
                     className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
                   >
                     <Plus className="h-4 w-4" />
                     Add custom block
                   </button>
                 </div>
+                )}
               </div>
             ) : (
               localActivities.map((activity, index) => (
@@ -221,6 +225,7 @@ export function ActivityTable({
         </SortableContext>
       </DndContext>
 
+      {!disabled && (
       <div className="hidden flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm md:flex">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -232,7 +237,7 @@ export function ActivityTable({
             Add from library
           </button>
           <button
-            onClick={onAddMultipleDrillsClick || onAddDrillClick}
+            onClick={onAddCustomActivityClick || onAddDrillClick}
             disabled={disabled}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
           >
@@ -281,6 +286,7 @@ export function ActivityTable({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

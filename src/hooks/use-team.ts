@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 import type { Team, TeamRole, CreateTeamInput } from '@/types/database';
 
+const PUBLIC_INVITE_ROLES = new Set<TeamRole>(['player', 'parent']);
+
 interface JoinTeamResult {
   success: boolean;
   team?: Team;
@@ -30,48 +32,37 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in to join a team' };
       }
 
-      // Find team by code
-      const { data: team, error: findError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('team_code', teamCode.toUpperCase())
-        .single();
-
-      if (findError || !team) {
-        return { success: false, error: 'Invalid team code. Please check and try again.' };
+      if (!PUBLIC_INVITE_ROLES.has(role)) {
+        return {
+          success: false,
+          error: 'Invite codes can only add players or parents. Ask a team admin to promote coaches.',
+        };
       }
 
-      // Check if already a member
-      const { data: existingMember } = await supabase
-        .from('team_members')
-        .select('id')
-        .eq('team_id', team.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existingMember) {
-        return { success: false, error: 'You are already a member of this team.' };
-      }
-
-      // Add user as team member
-      const { error: joinError } = await supabase.from('team_members').insert({
-        team_id: team.id,
-        user_id: user.id,
-        role,
-        status: 'active',
+      const { data: team, error: joinError } = await supabase.rpc('join_team_by_code', {
+        invite_code: teamCode.toUpperCase(),
+        requested_role: role,
       });
 
       if (joinError) {
         console.error('Error joining team:', joinError);
+        const message = joinError.message || '';
+        if (message.toLowerCase().includes('invalid team code')) {
+          return { success: false, error: 'Invalid team code. Please check and try again.' };
+        }
+        if (message.toLowerCase().includes('invite codes can only add')) {
+          return { success: false, error: message };
+        }
         return { success: false, error: 'Failed to join team. Please try again.' };
       }
 
       // Refresh team memberships
       await refreshTeamMemberships();
+      setCurrentTeam(team as Team);
 
       return { success: true, team: team as Team };
     },
-    [user, supabase, refreshTeamMemberships]
+    [user, supabase, refreshTeamMemberships, setCurrentTeam]
   );
 
   /**

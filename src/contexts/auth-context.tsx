@@ -129,10 +129,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     logAuth('[Auth] refreshTeamMemberships: Fetching for user', state.user.id);
 
-    // Debug: Check what auth.uid() returns from Supabase's perspective
-    const { data: debugAuth, error: debugError } = await supabase.rpc('debug_auth');
-    logAuth('[Auth] debug_auth result:', debugAuth, debugError);
-
     const { data, error } = await supabase
       .from('team_members')
       .select(`
