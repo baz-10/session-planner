@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -347,6 +348,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
 
   const activeActivity = runState ? activities[runState.activeIndex] || null : null;
   const nextActivity = runState ? activities[runState.activeIndex + 1] || null : null;
+  const runStatus = runState?.status;
   const completedCount = runState?.completedActivityIds.length || 0;
   const totalPlannedSeconds = activities.reduce(
     (sum, activity) => sum + secondsForActivity(activity),
@@ -375,7 +377,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   }, [runState]);
 
   useEffect(() => {
-    if (!runState || runState.status !== 'running') {
+    if (runStatus !== 'running') {
       lastTickRef.current = null;
       return;
     }
@@ -394,7 +396,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [activities, runState?.status]);
+  }, [activities, runStatus]);
 
   useEffect(() => {
     if (copyStatus === 'idle') return;
@@ -986,10 +988,13 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                         href={`/dashboard/plays/${activeActivity.linked_play_id}`}
                         className="block overflow-hidden rounded-2xl border border-slate-200 bg-white transition-colors hover:border-teal"
                       >
-                        <img
+                        <Image
                           src={activeActivity.linked_play_thumbnail_data_url}
                           alt={activeActivity.linked_play_name_snapshot || 'Linked play'}
+                          width={640}
+                          height={360}
                           className="h-40 w-full object-cover"
+                          unoptimized
                         />
                         <div className="p-3 text-sm font-semibold text-slate-800">
                           {activeActivity.linked_play_name_snapshot || 'View linked play'}

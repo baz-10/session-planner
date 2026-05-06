@@ -2,15 +2,33 @@
 
 import { useState, useRef, useCallback } from 'react';
 
+type SendResult = void | { success: boolean; error?: string };
+const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_CHAT_ATTACHMENT_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx']);
+
+function validateAttachment(file: File) {
+  if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+    return 'Attachments must be 10 MB or smaller.';
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  if (!file.type.startsWith('image/') && !ALLOWED_CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
+    return 'Choose an image, PDF, Word document, or document file.';
+  }
+
+  return '';
+}
+
 interface MessageInputProps {
-  onSendMessage: (content: string) => Promise<void>;
-  onSendFile: (file: File) => Promise<void>;
+  onSendMessage: (content: string) => Promise<SendResult>;
+  onSendFile: (file: File) => Promise<SendResult>;
   disabled?: boolean;
 }
 
 export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -19,9 +37,21 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
     if (!message.trim() || isSending || disabled) return;
 
     setIsSending(true);
-    await onSendMessage(message.trim());
-    setMessage('');
-    setIsSending(false);
+    setError('');
+
+    try {
+      const result = await onSendMessage(message.trim());
+      if (result && !result.success) {
+        setError(result.error || 'Message failed to send. Please try again.');
+        return;
+      }
+      setMessage('');
+    } catch (sendError) {
+      console.error('Message send failed:', sendError);
+      setError('Message failed to send. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
 
     // Focus back on textarea
     textareaRef.current?.focus();
@@ -38,9 +68,29 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const validationError = validateAttachment(file);
+    if (validationError) {
+      setError(validationError);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setIsSending(true);
-    await onSendFile(file);
-    setIsSending(false);
+    setError('');
+
+    try {
+      const result = await onSendFile(file);
+      if (result && !result.success) {
+        setError(result.error || 'File failed to send. Please try again.');
+      }
+    } catch (sendError) {
+      console.error('File send failed:', sendError);
+      setError('File failed to send. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
 
     // Clear file input
     if (fileInputRef.current) {
@@ -57,7 +107,12 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
   }, []);
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white">
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4">
+      {error && (
+        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
       <div className="flex items-end gap-2">
         {/* File upload */}
         <input

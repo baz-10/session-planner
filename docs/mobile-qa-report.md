@@ -55,6 +55,8 @@ markers:
 - Run Live current activity, timer, controls, notes, progress, and sticky actions
 - Events/RSVP mobile cards
 - Capacitor hosted Next.js build path and documentation
+- Native sync fails fast unless `CAPACITOR_SERVER_URL` is set, with an explicit
+  placeholder-only override for local shell validation.
 
 ## Known QA Limits
 

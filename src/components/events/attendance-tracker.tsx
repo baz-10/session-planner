@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
@@ -46,9 +46,31 @@ export function AttendanceTracker({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  const loadPlayers = useCallback(async () => {
+    if (!currentTeam) {
+      setPlayers([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    const { data } = await supabase
+      .from('players')
+      .select('*')
+      .eq('team_id', currentTeam.id)
+      .eq('status', 'active')
+      .order('last_name');
+
+    if (data) {
+      setPlayers(data as Player[]);
+    }
+    setIsLoading(false);
+  }, [currentTeam, supabase]);
+
   useEffect(() => {
-    loadPlayers();
-  }, [currentTeam?.id]);
+    void loadPlayers();
+  }, [loadPlayers]);
 
   useEffect(() => {
     // Initialize attendance from existing records
@@ -67,22 +89,6 @@ export function AttendanceTracker({
 
     setAttendance(map);
   }, [players, existingRecords]);
-
-  const loadPlayers = async () => {
-    if (!currentTeam) return;
-
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('team_id', currentTeam.id)
-      .eq('status', 'active')
-      .order('last_name');
-
-    if (data) {
-      setPlayers(data as Player[]);
-    }
-    setIsLoading(false);
-  };
 
   const updatePlayerStatus = (playerId: string, status: AttendanceStatus) => {
     setAttendance((prev) => {

@@ -273,6 +273,7 @@ export function SignupForm() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     required
+                    autoComplete="name"
                     className="input"
                     placeholder="John Doe"
                   />
@@ -286,6 +287,7 @@ export function SignupForm() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     className="input"
                     placeholder="coach@team.com"
                   />
@@ -300,6 +302,7 @@ export function SignupForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
+                    autoComplete="new-password"
                     className="input"
                     placeholder="••••••••"
                   />
@@ -314,6 +317,7 @@ export function SignupForm() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                     className="input"
                     placeholder="••••••••"
                   />

@@ -23,15 +23,6 @@ export function useAISettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load settings from profile on mount
-  useEffect(() => {
-    if (user) {
-      loadSettings();
-    } else {
-      setIsLoading(false);
-    }
-  }, [user]);
-
   const loadSettings = useCallback(async () => {
     if (!user) return;
 
@@ -59,6 +50,15 @@ export function useAISettings() {
       setIsLoading(false);
     }
   }, [user, supabase]);
+
+  // Load settings from profile on mount
+  useEffect(() => {
+    if (user) {
+      void loadSettings();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user, loadSettings]);
 
   const saveSettings = useCallback(
     async (newSettings: Partial<AISettings>): Promise<{ success: boolean; error?: string }> => {

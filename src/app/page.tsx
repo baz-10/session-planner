@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 
 // Feature data
 const features = [
@@ -83,7 +83,7 @@ export default function HomePage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const supabase = createBrowserSupabaseClient();
+        const supabase = getBrowserSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           router.push('/dashboard');

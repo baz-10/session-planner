@@ -40,13 +40,12 @@ export function PostFeed() {
     (teamMembership?.role === 'player' && currentTeam?.settings?.allow_player_posts) ||
     (teamMembership?.role === 'parent' && currentTeam?.settings?.allow_parent_posts);
 
-  const loadPosts = useCallback(async (reset = false) => {
+  const loadPosts = useCallback(async (nextOffset = 0, reset = false) => {
     if (!currentTeam) return;
 
-    const newOffset = reset ? 0 : offset;
     setIsLoading(true);
 
-    const data = await getPosts(LIMIT, newOffset);
+    const data = await getPosts(LIMIT, nextOffset);
 
     if (reset) {
       setPosts(data);
@@ -55,22 +54,21 @@ export function PostFeed() {
     }
 
     setHasMore(data.length === LIMIT);
-    setOffset(newOffset + data.length);
+    setOffset(nextOffset + data.length);
     setIsLoading(false);
-  }, [currentTeam, getPosts, offset]);
+  }, [currentTeam, getPosts]);
 
   useEffect(() => {
-    loadPosts(true);
-  }, [currentTeam?.id]);
+    void loadPosts(0, true);
+  }, [currentTeam?.id, loadPosts]);
 
   const handleRefresh = () => {
-    setOffset(0);
-    loadPosts(true);
+    void loadPosts(0, true);
   };
 
   const handleLoadMore = () => {
     if (!isLoading && hasMore) {
-      loadPosts(false);
+      void loadPosts(offset, false);
     }
   };
 

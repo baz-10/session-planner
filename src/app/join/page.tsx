@@ -7,17 +7,31 @@ import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import type { TeamRole } from '@/types/database';
 
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
+const INVITE_JOIN_ROLES = new Set<string>(['player', 'parent']);
+
+function getRoleFromUrl(value: string | null): InviteJoinRole {
+  return INVITE_JOIN_ROLES.has(value || '') ? (value as InviteJoinRole) : 'player';
+}
+
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get('code');
-  const joinRedirectTarget = codeFromUrl ? `/join?code=${codeFromUrl}` : '/join';
+  const roleFromUrl = getRoleFromUrl(searchParams.get('role'));
+  const joinRedirectTarget = (() => {
+    const params = new URLSearchParams();
+    if (codeFromUrl) params.set('code', codeFromUrl);
+    if (roleFromUrl !== 'player') params.set('role', roleFromUrl);
+    const query = params.toString();
+    return query ? `/join?${query}` : '/join';
+  })();
 
   const { user, isLoading: authLoading } = useAuth();
   const { joinTeamByCode } = useTeam();
 
   const [teamCode, setTeamCode] = useState(codeFromUrl || '');
-  const [role, setRole] = useState<TeamRole>('player');
+  const [role, setRole] = useState<InviteJoinRole>(roleFromUrl);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +42,10 @@ function JoinPageContent() {
       setTeamCode(codeFromUrl.toUpperCase());
     }
   }, [codeFromUrl]);
+
+  useEffect(() => {
+    setRole(roleFromUrl);
+  }, [roleFromUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +102,11 @@ function JoinPageContent() {
               <div className="bg-teal-glow rounded-lg p-4 mb-6">
                 <p className="text-sm text-teal-dark">Team code ready:</p>
                 <p className="text-2xl font-mono font-bold text-navy tracking-widest">{codeFromUrl}</p>
+                {roleFromUrl === 'parent' && (
+                  <p className="mt-2 text-sm font-semibold text-teal-dark">
+                    Parent / Guardian invite
+                  </p>
+                )}
               </div>
             )}
 
@@ -158,7 +181,7 @@ function JoinPageContent() {
               <select
                 id="role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as TeamRole)}
+                onChange={(e) => setRole(e.target.value as InviteJoinRole)}
                 className="input"
               >
                 <option value="player">Player</option>

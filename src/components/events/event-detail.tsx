@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { format, isPast } from 'date-fns';
 import { PlayCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
@@ -76,11 +77,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
   const isEventPast = event ? isPast(new Date(event.start_time)) : false;
 
-  useEffect(() => {
-    loadEvent();
-  }, [eventId]);
-
-  const loadEvent = async () => {
+  const loadEvent = useCallback(async () => {
     setIsLoading(true);
     const data = await getEvent(eventId);
     setEvent(data);
@@ -92,7 +89,11 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
     }
 
     setIsLoading(false);
-  };
+  }, [eventId, getEvent, getSession]);
+
+  useEffect(() => {
+    void loadEvent();
+  }, [loadEvent]);
 
   const handleDelete = async () => {
     if (!event) return;
@@ -373,10 +374,13 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
                             {activity.linked_play_id ? (
                               <div className="flex items-center gap-2">
                                 {activity.linked_play_thumbnail_data_url ? (
-                                  <img
+                                  <Image
                                     src={activity.linked_play_thumbnail_data_url}
                                     alt={activity.linked_play_name_snapshot || 'Linked play'}
+                                    width={48}
+                                    height={32}
                                     className="h-8 w-12 rounded border border-gray-200 object-cover"
+                                    unoptimized
                                   />
                                 ) : (
                                   <span className="inline-block h-8 w-12 rounded border border-gray-200 bg-gray-100" />

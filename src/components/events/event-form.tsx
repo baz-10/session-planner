@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
@@ -46,14 +46,14 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
 
   const isEditing = !!event;
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     const data = await getSessions();
     setSessions(data);
-  };
+  }, [getSessions]);
+
+  useEffect(() => {
+    void loadSessions();
+  }, [loadSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
@@ -27,11 +27,11 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     const data = await getConversations();
     setConversations(data);
     setIsLoading(false);
-  };
+  }, [getConversations]);
 
   useEffect(() => {
     loadConversations();
@@ -42,7 +42,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
     });
 
     return unsubscribe;
-  }, []);
+  }, [loadConversations, subscribeToConversations]);
 
   const getConversationName = (conv: ConversationWithDetails) => {
     if (conv.name) return conv.name;

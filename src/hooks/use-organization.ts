@@ -60,20 +60,7 @@ export function useOrganization() {
         return { success: false, error: 'Failed to create organization. Please try again.' };
       }
 
-      // Add user as admin member
-      const { error: memberError } = await supabase.from('organization_members').insert({
-        organization_id: org.id,
-        user_id: user.id,
-        role: 'admin',
-      });
-
-      if (memberError) {
-        console.error('Error adding admin member:', memberError);
-        // Try to clean up the organization
-        await supabase.from('organizations').delete().eq('id', org.id);
-        return { success: false, error: 'Failed to set up organization membership.' };
-      }
-
+      // The database trigger adds the creator as an organization admin.
       await refreshOrganizationMemberships();
 
       return { success: true, organization: org as Organization };
@@ -82,47 +69,25 @@ export function useOrganization() {
   );
 
   /**
-   * Join an organization by invite (for now, direct join by org ID - can be extended for invite codes)
+   * Join an organization by invite code. Invite codes add members only; admins
+   * can promote trusted users after they join.
    */
   const joinOrganization = useCallback(
-    async (organizationId: string, role: OrgRole = 'member'): Promise<JoinOrganizationResult> => {
+    async (inviteCode: string): Promise<JoinOrganizationResult> => {
       if (!user) {
         return { success: false, error: 'You must be logged in to join an organization' };
       }
 
-      // Check if organization exists
-      const { data: org, error: findError } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', organizationId)
-        .single();
-
-      if (findError || !org) {
-        return { success: false, error: 'Organization not found.' };
-      }
-
-      // Check if already a member
-      const { data: existingMember } = await supabase
-        .from('organization_members')
-        .select('id')
-        .eq('organization_id', organizationId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existingMember) {
-        return { success: false, error: 'You are already a member of this organization.' };
-      }
-
-      // Add user as member
-      const { error: joinError } = await supabase.from('organization_members').insert({
-        organization_id: organizationId,
-        user_id: user.id,
-        role,
+      const { data: org, error: joinError } = await supabase.rpc('join_organization_by_code', {
+        invite_code: inviteCode.toUpperCase(),
       });
 
       if (joinError) {
         console.error('Error joining organization:', joinError);
-        return { success: false, error: 'Failed to join organization. Please try again.' };
+        return {
+          success: false,
+          error: joinError.message || 'Failed to join organization. Please check the invite code.',
+        };
       }
 
       await refreshOrganizationMemberships();
@@ -281,24 +246,6 @@ export function useOrganization() {
     [supabase]
   );
 
-  /**
-   * Invite a member by email (sends email invite)
-   */
-  const inviteMember = useCallback(
-    async (
-      organizationId: string,
-      email: string,
-      role: OrgRole = 'member'
-    ): Promise<{ success: boolean; error?: string }> => {
-      // For now, this is a placeholder. In a full implementation,
-      // you would create an invitation record and send an email.
-      // The invited user would then be added when they accept.
-      console.log('Invite member:', { organizationId, email, role });
-      return { success: true };
-    },
-    []
-  );
-
   return {
     createOrganization,
     joinOrganization,
@@ -308,6 +255,5 @@ export function useOrganization() {
     getOrganizationTeams,
     updateMemberRole,
     removeMember,
-    inviteMember,
   };
 }

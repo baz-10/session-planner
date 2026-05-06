@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDrills } from '@/hooks/use-drills';
 import { DrillForm } from './drill-form';
 import { CategoryManager } from './category-manager';
@@ -29,17 +29,43 @@ export function DrillLibrary() {
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingDrill, setEditingDrill] = useState<DrillWithDetails | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const loadCategories = useCallback(async () => {
+    const data = await getCategories();
+    setCategories(data);
+  }, [getCategories]);
+
+  const loadDrills = useCallback(async () => {
+    const data = await getDrills(selectedCategoryId || undefined);
+    setDrills(data);
+  }, [getDrills, selectedCategoryId]);
+
+  const handleSearch = useCallback(async () => {
+    const results = await searchDrills(searchQuery);
+    // Filter by category if selected
+    if (selectedCategoryId) {
+      setDrills(results.filter((d) => d.category_id === selectedCategoryId));
+    } else {
+      setDrills(results);
+    }
+  }, [searchDrills, searchQuery, selectedCategoryId]);
 
   useEffect(() => {
-    if (searchQuery.trim()) {
-      handleSearch();
-    } else {
-      loadDrills();
+    void loadCategories();
+  }, [loadCategories]);
+
+  useEffect(() => {
+    async function loadVisibleDrills() {
+      setIsLoading(true);
+      if (searchQuery.trim()) {
+        await handleSearch();
+      } else {
+        await loadDrills();
+      }
+      setIsLoading(false);
     }
-  }, [searchQuery, selectedCategoryId]);
+
+    void loadVisibleDrills();
+  }, [handleSearch, loadDrills, searchQuery]);
 
   const availableTags = useMemo(() => {
     const tags = drills.flatMap((drill) => drill.tags || []);
@@ -56,32 +82,6 @@ export function DrillLibrary() {
       setSelectedTag('');
     }
   }, [availableTags, selectedTag]);
-
-  const loadData = async () => {
-    setIsLoading(true);
-    await Promise.all([loadDrills(), loadCategories()]);
-    setIsLoading(false);
-  };
-
-  const loadDrills = async () => {
-    const data = await getDrills(selectedCategoryId || undefined);
-    setDrills(data);
-  };
-
-  const loadCategories = async () => {
-    const data = await getCategories();
-    setCategories(data);
-  };
-
-  const handleSearch = async () => {
-    const results = await searchDrills(searchQuery);
-    // Filter by category if selected
-    if (selectedCategoryId) {
-      setDrills(results.filter((d) => d.category_id === selectedCategoryId));
-    } else {
-      setDrills(results);
-    }
-  };
 
   const handleDelete = async (drill: DrillWithDetails) => {
     if (!confirm(`Are you sure you want to delete "${drill.name}"?`)) return;
@@ -103,7 +103,7 @@ export function DrillLibrary() {
   };
 
   const handleFormSuccess = () => {
-    loadDrills();
+    void loadDrills();
     handleFormClose();
   };
 

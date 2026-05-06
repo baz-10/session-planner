@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { useOrganization } from '@/hooks/use-organization';
 import type { Team, OrgRole } from '@/types/database';
@@ -28,11 +29,10 @@ export default function OrganizationSettingsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<OrgRole>('member');
-  const [inviteSent, setInviteSent] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const inviteTimerRef = useRef<NodeJS.Timeout>();
+  const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isAdmin = currentOrganizationRole === 'admin';
 
@@ -75,17 +75,25 @@ export default function OrganizationSettingsPage() {
     e.preventDefault();
     if (!currentOrganization) return;
 
-    const roleText = inviteRole === 'admin' ? 'as an Admin' : 'as a Member';
+    const inviteCode = currentOrganization.organization_code;
+    if (!inviteCode) {
+      setError('Organization invite code is unavailable. Apply the latest database migrations first.');
+      return;
+    }
+
+    const inviteLink = `${window.location.origin}/dashboard/organization/setup?code=${encodeURIComponent(inviteCode)}`;
     const subject = encodeURIComponent(`Join ${currentOrganization.name} on Session Planner`);
     const body = encodeURIComponent(
-      `Hi!\n\nYou've been invited to join ${currentOrganization.name} on Session Planner ${roleText}.\n\n` +
-        `Please sign up or log in to Session Planner to join the organization.\n\n` +
+      `Hi!\n\nYou've been invited to join ${currentOrganization.name} on Session Planner.\n\n` +
+        `Join using this link: ${inviteLink}\n\n` +
+        `Invite code: ${inviteCode}\n\n` +
+        `New organization members join as members. An admin can promote trusted users after they join.\n\n` +
         `See you soon!`
     );
     window.open(`mailto:${inviteEmail}?subject=${subject}&body=${body}`);
-    setInviteSent(true);
+    setInviteFeedback('Email client opened with a member invite link.');
     setInviteEmail('');
-    inviteTimerRef.current = setTimeout(() => setInviteSent(false), 3000);
+    inviteTimerRef.current = setTimeout(() => setInviteFeedback(''), 3000);
   };
 
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
@@ -182,10 +190,13 @@ export default function OrganizationSettingsPage() {
         <div className="flex items-center gap-4 mb-4">
           <div className="w-16 h-16 bg-navy rounded-xl flex items-center justify-center">
             {currentOrganization.logo_url ? (
-              <img
+              <Image
                 src={currentOrganization.logo_url}
                 alt={currentOrganization.name}
+                width={56}
+                height={56}
                 className="w-14 h-14 rounded-lg object-cover"
+                unoptimized
               />
             ) : (
               <span className="text-2xl font-bold text-white">
@@ -200,6 +211,19 @@ export default function OrganizationSettingsPage() {
             </span>
           </div>
         </div>
+        {isAdmin && (
+          <div className="mt-4 rounded-lg bg-whisper p-4">
+            <p className="text-xs font-semibold uppercase text-text-muted mb-1">Organization Invite Code</p>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="font-mono text-lg font-bold tracking-wider text-navy">
+                {currentOrganization.organization_code || 'Unavailable'}
+              </span>
+              <p className="text-sm text-text-secondary">
+                Share this code with organization members. Promote admins after they join.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Teams Section */}
@@ -259,6 +283,10 @@ export default function OrganizationSettingsPage() {
             Invite Members
           </h3>
 
+          <p className="text-sm text-text-secondary mb-4">
+            Invited people join as members. Use the member list below to promote admins after they join.
+          </p>
+
           <form onSubmit={sendEmailInvite} className="flex flex-col sm:flex-row gap-3">
             <input
               type="email"
@@ -269,15 +297,6 @@ export default function OrganizationSettingsPage() {
               aria-label="Email address to invite"
               className="input flex-1"
             />
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as OrgRole)}
-              aria-label="Role for invited person"
-              className="input sm:w-32"
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
             <button type="submit" className="btn-accent whitespace-nowrap">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -290,8 +309,8 @@ export default function OrganizationSettingsPage() {
               Send Invite
             </button>
           </form>
-          {inviteSent && (
-            <p className="text-sm text-teal mt-2 animate-fade-in">Email client opened with invite!</p>
+          {inviteFeedback && (
+            <p className="text-sm text-teal mt-2 animate-fade-in">{inviteFeedback}</p>
           )}
         </div>
       )}

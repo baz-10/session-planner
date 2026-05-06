@@ -17,11 +17,13 @@ interface ConversationWithDetails extends Conversation {
 }
 
 export default function ChatPage() {
-  const { currentTeam } = useAuth();
+  const { currentTeam, teamMemberships } = useAuth();
   const { getTeamChat, getConversations } = useChat();
   const [selectedConversation, setSelectedConversation] = useState<ConversationWithDetails | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canUseCoachesChat = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   useEffect(() => {
     const handleResize = () => {
@@ -51,6 +53,17 @@ export default function ChatPage() {
     setSelectedConversation(null);
   };
 
+  const openTeamConversation = async (type: 'team' | 'coaches') => {
+    const teamChat = await getTeamChat(type);
+    if (!teamChat) return;
+
+    const conversations = await getConversations();
+    const conversation = conversations.find((item) => item.id === teamChat.id);
+    if (conversation) {
+      setSelectedConversation(conversation);
+    }
+  };
+
   if (!currentTeam) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-100px)]">
@@ -67,7 +80,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex">
+    <div className="flex h-[calc(100dvh-96px)] min-h-[560px] md:h-[calc(100vh-64px)]">
       {/* Conversation list - hidden on mobile when chat is open */}
       <div
         className={`${
@@ -88,17 +101,10 @@ export default function ChatPage() {
           </button>
         </div>
 
-        {/* Quick access - Team chat */}
-        <div className="p-2 border-b border-border">
+        {/* Quick access - Team chats */}
+        <div className="space-y-1 p-2 border-b border-border">
           <button
-            onClick={async () => {
-              const teamChat = await getTeamChat('team');
-              if (teamChat) {
-                const conversations = await getConversations();
-                const conv = conversations.find((c) => c.id === teamChat.id);
-                if (conv) setSelectedConversation(conv);
-              }
-            }}
+            onClick={() => openTeamConversation('team')}
             className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors"
           >
             <div className="w-10 h-10 rounded-full bg-teal-glow text-teal flex items-center justify-center">
@@ -111,6 +117,22 @@ export default function ChatPage() {
               <div className="text-sm text-text-secondary">Message everyone</div>
             </div>
           </button>
+          {canUseCoachesChat && (
+            <button
+              onClick={() => openTeamConversation('coaches')}
+              className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors"
+            >
+              <div className="w-10 h-10 rounded-full bg-navy/10 text-navy flex items-center justify-center">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6l7 4-7 4-7-4 7-4zm0 8l7 4-7 4-7-4 7-4z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <div className="font-medium text-navy">Coaches Chat</div>
+                <div className="text-sm text-text-secondary">Coach/admin thread</div>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* Conversations */}

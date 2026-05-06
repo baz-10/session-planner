@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useOrganization } from '@/hooks/use-organization';
@@ -20,7 +20,15 @@ export default function OrganizationSetupPage() {
   const [logoUrl, setLogoUrl] = useState('');
 
   // Join form state
-  const [organizationId, setOrganizationId] = useState('');
+  const [organizationCode, setOrganizationCode] = useState('');
+
+  useEffect(() => {
+    const inviteCode = new URLSearchParams(window.location.search).get('code');
+    if (!inviteCode) return;
+
+    setOrganizationCode(inviteCode.trim().toUpperCase());
+    setMode('join');
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,15 +52,15 @@ export default function OrganizationSetupPage() {
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organizationId.trim()) {
-      setError('Please enter an organization ID');
+    if (!organizationCode.trim()) {
+      setError('Please enter an organization invite code');
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    const result = await joinOrganization(organizationId.trim());
+    const result = await joinOrganization(organizationCode.trim());
 
     if (result.success) {
       router.push('/dashboard/organization');
@@ -93,7 +101,7 @@ export default function OrganizationSetupPage() {
             </div>
             <h3 className="text-lg font-semibold text-navy mb-2">Create Organization</h3>
             <p className="text-text-secondary text-sm">
-              Start a new organization and invite others to join. Perfect for clubs, leagues, or schools.
+              Start a new organization and invite others with a member-only invite code.
             </p>
           </button>
 
@@ -114,7 +122,7 @@ export default function OrganizationSetupPage() {
             </div>
             <h3 className="text-lg font-semibold text-navy mb-2">Join Organization</h3>
             <p className="text-text-secondary text-sm">
-              Join an existing organization with an invite. Ask your admin for the organization ID.
+              Join an existing organization with an invite code from an admin.
             </p>
           </button>
         </div>
@@ -234,7 +242,7 @@ export default function OrganizationSetupPage() {
           Back
         </button>
         <h1 className="text-2xl md:text-3xl font-bold text-navy mb-2">Join Organization</h1>
-        <p className="text-text-secondary">Enter the organization ID provided by your admin.</p>
+        <p className="text-text-secondary">Enter the organization invite code provided by your admin.</p>
       </div>
 
       {error && (
@@ -245,21 +253,23 @@ export default function OrganizationSetupPage() {
 
       <form onSubmit={handleJoin} className="card p-6">
         <div className="form-group">
-          <label htmlFor="organizationId" className="label">
-            Organization ID *
+          <label htmlFor="organizationCode" className="label">
+            Organization Invite Code *
           </label>
           <input
-            id="organizationId"
+            id="organizationCode"
             type="text"
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            placeholder="e.g., abc123-def456-..."
+            value={organizationCode}
+            onChange={(e) => setOrganizationCode(e.target.value.toUpperCase())}
+            placeholder="e.g., A1B2C3D4"
             required
-            className="input font-mono text-sm"
+            autoCapitalize="characters"
+            autoComplete="off"
+            className="input font-mono text-sm uppercase tracking-wider"
             disabled={isLoading}
           />
           <p className="text-xs text-text-muted mt-1">
-            Ask your organization admin for this ID.
+            New users join as members. An admin can promote you later if needed.
           </p>
         </div>
 

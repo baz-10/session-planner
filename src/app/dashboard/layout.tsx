@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import Image from 'next/image';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useBranding } from '@/hooks/use-branding';
 import { CalendarDays, ClipboardCheck, Home, MoreHorizontal, Users } from 'lucide-react';
@@ -133,8 +135,30 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, profile, signOut, teamMemberships, currentTeam, organizationMemberships } = useAuth();
+  const router = useRouter();
+  const { user, profile, signOut, teamMemberships, currentTeam, organizationMemberships, isLoading } = useAuth();
   const { displayName, logoUrl } = useBranding();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      const redirectTarget =
+        typeof window !== 'undefined'
+          ? `${window.location.pathname}${window.location.search}`
+          : pathname;
+      router.replace(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
+    }
+  }, [isLoading, pathname, router, user]);
+
+  if (isLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-teal border-t-transparent" />
+          <p className="text-text-secondary">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Check if user belongs to an organization
   const hasOrganization = organizationMemberships.length > 0;
@@ -201,9 +225,16 @@ export default function DashboardLayout({
         {/* Logo */}
         <div className="p-6 border-b border-border flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-navy rounded-lg flex items-center justify-center">
+            <div className="relative w-10 h-10 bg-navy rounded-lg flex items-center justify-center overflow-hidden">
               {logoUrl ? (
-                <img src={logoUrl} alt={displayName} className="w-full h-full rounded-lg object-cover" />
+                <Image
+                  src={logoUrl}
+                  alt={displayName}
+                  fill
+                  sizes="40px"
+                  className="rounded-lg object-cover"
+                  unoptimized
+                />
               ) : (
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />

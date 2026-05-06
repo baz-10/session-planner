@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
@@ -37,13 +37,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
 
   const isParent = teamMembership?.role === 'parent';
 
-  useEffect(() => {
-    if (isParent) {
-      loadLinkedPlayers();
-    }
-  }, [isParent]);
-
-  const loadLinkedPlayers = async () => {
+  const loadLinkedPlayers = useCallback(async () => {
     if (!user) return;
 
     const { data } = await supabase
@@ -58,7 +52,15 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
     if (data) {
       setLinkedPlayers(data as LinkedPlayer[]);
     }
-  };
+  }, [supabase, user]);
+
+  useEffect(() => {
+    if (isParent) {
+      void loadLinkedPlayers();
+    } else {
+      setLinkedPlayers([]);
+    }
+  }, [isParent, loadLinkedPlayers]);
 
   const handleRsvp = async (status: RsvpStatus, playerId?: string) => {
     setIsSubmitting(true);

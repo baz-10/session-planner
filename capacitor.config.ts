@@ -46,7 +46,7 @@ const config: CapacitorConfig = {
   },
   android: {
     backgroundColor: '#ffffff',
-    allowMixedContent: true,
+    allowMixedContent: isDevelopment,
     captureInput: true,
     webContentsDebuggingEnabled: process.env.NODE_ENV === 'development',
   },

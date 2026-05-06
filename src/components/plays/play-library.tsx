@@ -13,6 +13,7 @@ import type { Play } from '@/types/database';
 export function PlayLibrary() {
   const router = useRouter();
   const { currentTeam, teamMemberships } = useAuth();
+  const currentTeamId = currentTeam?.id;
   const { getPlays, duplicatePlay, deletePlay, searchPlays } = usePlays();
   const { theme } = usePlayEditorTheme();
 
@@ -24,7 +25,7 @@ export function PlayLibrary() {
   const [selectedTag, setSelectedTag] = useState('');
   const [tagOptions, setTagOptions] = useState<string[]>([]);
 
-  const membership = teamMemberships.find((item) => item.team.id === currentTeam?.id);
+  const membership = teamMemberships.find((item) => item.team.id === currentTeamId);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
 
   const loadPlays = useCallback(async () => {
@@ -39,7 +40,7 @@ export function PlayLibrary() {
   }, [courtTemplate, getPlays, playType, selectedTag]);
 
   const loadTagOptions = useCallback(async () => {
-    if (!currentTeam) {
+    if (!currentTeamId) {
       setTagOptions([]);
       return;
     }
@@ -49,10 +50,10 @@ export function PlayLibrary() {
       a.localeCompare(b)
     );
     setTagOptions(tags);
-  }, [currentTeam, getPlays]);
+  }, [currentTeamId, getPlays]);
 
   useEffect(() => {
-    if (!currentTeam) {
+    if (!currentTeamId) {
       setIsLoading(false);
       setPlays([]);
       setTagOptions([]);
@@ -60,7 +61,7 @@ export function PlayLibrary() {
     }
     void loadPlays();
     void loadTagOptions();
-  }, [currentTeam?.id, loadPlays, loadTagOptions]);
+  }, [currentTeamId, loadPlays, loadTagOptions]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -120,7 +121,7 @@ export function PlayLibrary() {
     );
   }
 
-  if (!currentTeam) {
+  if (!currentTeamId) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-600">
         Select a team to access plays.

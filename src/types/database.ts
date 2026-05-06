@@ -45,6 +45,7 @@ export interface Profile {
 export interface Organization {
   id: string;
   name: string;
+  organization_code: string;
   logo_url: string | null;
   settings: Record<string, unknown>;
   created_by: string | null;
@@ -728,7 +729,9 @@ export interface Database {
       };
       organizations: {
         Row: Organization;
-        Insert: Omit<Organization, 'id' | 'created_at' | 'updated_at'>;
+        Insert: Omit<Organization, 'id' | 'organization_code' | 'created_at' | 'updated_at'> & {
+          organization_code?: string;
+        };
         Update: Partial<Omit<Organization, 'id' | 'created_at'>>;
       };
       organization_subscriptions: {
@@ -910,6 +913,14 @@ export interface Database {
       get_or_create_dm: {
         Args: { other_user_id: string };
         Returns: string;
+      };
+      join_team_by_code: {
+        Args: { invite_code: string; requested_role?: TeamRole };
+        Returns: Team;
+      };
+      join_organization_by_code: {
+        Args: { invite_code: string };
+        Returns: Organization;
       };
       refresh_invoice_status: {
         Args: { invoice_uuid: string };

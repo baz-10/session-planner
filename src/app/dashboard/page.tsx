@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -168,9 +169,16 @@ export default function DashboardPage() {
   return (
     <MobilePageShell>
       <header className="mb-6 flex items-center gap-3">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
+        <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
           {logoUrl ? (
-            <img src={logoUrl} alt={displayName} className="h-full w-full object-cover" />
+            <Image
+              src={logoUrl}
+              alt={displayName}
+              fill
+              sizes="64px"
+              className="object-cover"
+              unoptimized
+            />
           ) : (
             <ClipboardList className="h-8 w-8" />
           )}

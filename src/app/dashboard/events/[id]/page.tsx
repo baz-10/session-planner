@@ -10,11 +10,12 @@ export async function generateStaticParams() {
 export const dynamicParams = true;
 
 interface EventPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function EventPage({ params }: EventPageProps) {
-  return <EventDetailClient eventId={params.id} />;
+export default async function EventPage({ params }: EventPageProps) {
+  const { id } = await params;
+  return <EventDetailClient eventId={id} />;
 }

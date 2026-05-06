@@ -58,8 +58,10 @@ current native build should point Capacitor at the deployed web app:
 CAPACITOR_SERVER_URL=https://your-session-planner-domain.example npm run build:mobile
 ```
 
-Without `CAPACITOR_SERVER_URL`, Capacitor syncs a lightweight placeholder shell.
-That is useful for native project validation, but it is not the full live app.
+Without `CAPACITOR_SERVER_URL`, the mobile build now fails before `npx cap sync`
+so a placeholder shell is not accidentally shipped. For local native project
+validation only, set `CAPACITOR_ALLOW_PLACEHOLDER_WEBDIR=1` to prepare the
+lightweight placeholder shell.
 
 ### 3. Open in Xcode
 

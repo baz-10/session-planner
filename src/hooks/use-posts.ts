@@ -142,6 +142,62 @@ export function usePosts() {
   );
 
   /**
+   * Upload an attachment to a post
+   */
+  const uploadAttachment = useCallback(
+    async (
+      postId: string,
+      file: File
+    ): Promise<{ success: boolean; attachment?: PostAttachment; error?: string }> => {
+      if (!user || !currentTeam) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${currentTeam.id}/posts/${postId}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Error uploading file:', uploadError);
+        return { success: false, error: 'Failed to upload file' };
+      }
+
+      const { data: publicUrl } = supabase.storage
+        .from('attachments')
+        .getPublicUrl(filePath);
+
+      // Determine attachment type
+      let attachmentType: AttachmentType = 'document';
+      if (file.type.startsWith('image/')) attachmentType = 'image';
+      else if (file.type.startsWith('video/')) attachmentType = 'video';
+      else if (file.type.startsWith('audio/')) attachmentType = 'audio';
+
+      const { data: attachment, error } = await supabase
+        .from('post_attachments')
+        .insert({
+          post_id: postId,
+          type: attachmentType,
+          url: publicUrl.publicUrl,
+          filename: file.name,
+          size_bytes: file.size,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving attachment:', error);
+        return { success: false, error: 'Failed to save attachment record' };
+      }
+
+      return { success: true, attachment: attachment as PostAttachment };
+    },
+    [user, currentTeam, supabase]
+  );
+
+  /**
    * Create a new post
    */
   const createPost = useCallback(
@@ -182,7 +238,7 @@ export function usePosts() {
       setIsLoading(false);
       return { success: true, post: post as Post };
     },
-    [user, currentTeam, supabase]
+    [user, currentTeam, supabase, uploadAttachment]
   );
 
   /**
@@ -249,62 +305,6 @@ export function usePosts() {
       return { success: true };
     },
     [supabase]
-  );
-
-  /**
-   * Upload an attachment to a post
-   */
-  const uploadAttachment = useCallback(
-    async (
-      postId: string,
-      file: File
-    ): Promise<{ success: boolean; attachment?: PostAttachment; error?: string }> => {
-      if (!user || !currentTeam) {
-        return { success: false, error: 'Not authenticated' };
-      }
-
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${currentTeam.id}/posts/${postId}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        console.error('Error uploading file:', uploadError);
-        return { success: false, error: 'Failed to upload file' };
-      }
-
-      const { data: publicUrl } = supabase.storage
-        .from('attachments')
-        .getPublicUrl(filePath);
-
-      // Determine attachment type
-      let attachmentType: AttachmentType = 'document';
-      if (file.type.startsWith('image/')) attachmentType = 'image';
-      else if (file.type.startsWith('video/')) attachmentType = 'video';
-      else if (file.type.startsWith('audio/')) attachmentType = 'audio';
-
-      const { data: attachment, error } = await supabase
-        .from('post_attachments')
-        .insert({
-          post_id: postId,
-          type: attachmentType,
-          url: publicUrl.publicUrl,
-          filename: file.name,
-          size_bytes: file.size,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error saving attachment:', error);
-        return { success: false, error: 'Failed to save attachment record' };
-      }
-
-      return { success: true, attachment: attachment as PostAttachment };
-    },
-    [user, currentTeam, supabase]
   );
 
   /**

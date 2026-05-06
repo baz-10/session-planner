@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -95,10 +96,13 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
                   >
                     {previews[index] ? (
                       <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
-                        <img
+                        <Image
                           src={previews[index]}
                           alt={file.name}
+                          width={80}
+                          height={80}
                           className="w-full h-full object-cover"
+                          unoptimized
                         />
                       </div>
                     ) : (

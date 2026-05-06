@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import type { Message, Profile } from '@/types/database';
@@ -119,11 +120,14 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
                   {message.type === 'image' && message.metadata?.file_url && (
                     <div className="max-w-xs">
-                      <img
+                      <Image
                         src={message.metadata.file_url}
                         alt="Shared image"
-                        className="rounded-lg max-h-64 cursor-pointer"
+                        width={320}
+                        height={256}
+                        className="h-auto max-h-64 w-auto cursor-pointer rounded-lg object-contain"
                         onClick={() => window.open(message.metadata.file_url, '_blank')}
+                        unoptimized
                       />
                     </div>
                   )}

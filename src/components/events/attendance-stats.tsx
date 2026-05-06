@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useEvents } from '@/hooks/use-events';
 import type { EventType } from '@/types/database';
@@ -42,11 +42,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
   const [dateRange, setDateRange] = useState<'month' | '3months' | 'season'>('month');
   const [view, setView] = useState<'players' | 'events'>('players');
 
-  useEffect(() => {
-    loadStats();
-  }, [filterType, dateRange]);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     setIsLoading(true);
 
     let startDate: string | undefined;
@@ -69,7 +65,11 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
 
     setStats(data);
     setIsLoading(false);
-  };
+  }, [dateRange, filterType, getAttendanceStats]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   const getAttendanceColor = (rate: number) => {
     if (rate >= 90) return 'text-green-600';
