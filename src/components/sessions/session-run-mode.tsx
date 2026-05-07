@@ -271,7 +271,7 @@ function buildRunSummary(session: SessionWithActivities, activities: RunActivity
 }
 
 export function SessionRunMode({ sessionId }: SessionRunModeProps) {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, teamMemberships } = useAuth();
   const { getSession } = useSessions();
   const [session, setSession] = useState<SessionWithActivities | null>(null);
   const [runState, setRunState] = useState<RunState | null>(null);
@@ -345,6 +345,20 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
       };
     });
   }, [session]);
+  const canManageSession = useMemo(
+    () =>
+      Boolean(
+        session?.team_id &&
+          teamMemberships.some(
+            (membership) =>
+              membership.team.id === session.team_id &&
+              (membership.role === 'admin' || membership.role === 'coach')
+          )
+      ),
+    [session?.team_id, teamMemberships]
+  );
+  const planBackHref = canManageSession && session?.id ? `/dashboard/sessions/${session.id}` : '/dashboard/sessions';
+  const planBackLabel = canManageSession ? 'Back to plan' : 'Back to sessions';
 
   const activeActivity = runState ? activities[runState.activeIndex] || null : null;
   const nextActivity = runState ? activities[runState.activeIndex + 1] || null : null;
@@ -581,10 +595,14 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-slate-950">No activities to run yet</h1>
           <p className="mt-2 text-sm text-slate-500">
-            Add at least one activity to this practice plan before opening live mode.
+            {canManageSession
+              ? 'Add at least one activity to this practice plan before opening live mode.'
+              : 'This practice plan does not have activities yet. Ask a coach or admin to update it.'}
           </p>
           <Button asChild className="mt-5">
-            <Link href={`/dashboard/sessions/${session.id}`}>Edit session plan</Link>
+            <Link href={canManageSession ? `/dashboard/sessions/${session.id}` : '/dashboard/sessions'}>
+              {canManageSession ? 'Edit session plan' : 'Back to sessions'}
+            </Link>
           </Button>
         </div>
       </div>
@@ -612,9 +630,9 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
       <div className="min-h-full bg-[#f7f9fc] p-4 pb-40 md:hidden">
         <header className="mb-5 flex items-center gap-3">
           <Link
-            href={`/dashboard/sessions/${session.id}`}
+            href={planBackHref}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-navy shadow-sm"
-            aria-label="Back to plan"
+            aria-label={planBackLabel}
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
@@ -783,11 +801,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           <ChevronRight className="h-5 w-5" />
         </button>
         <Link
-          href={`/dashboard/sessions/${session.id}`}
+          href={planBackHref}
           className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-base font-extrabold text-navy"
         >
-          <Edit3 className="h-5 w-5" />
-          Edit
+          {canManageSession ? <Edit3 className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
+          {canManageSession ? 'Edit' : 'Sessions'}
         </Link>
       </MobileStickyActionBar>
 
@@ -797,11 +815,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <Link
-                href={`/dashboard/sessions/${session.id}`}
+                href={planBackHref}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-teal-light hover:text-white"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to plan
+                {planBackLabel}
               </Link>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <h1 className="min-w-0 text-2xl font-bold text-white md:text-3xl">
