@@ -31,6 +31,9 @@ interface JoinOrganizationResult {
   error?: string;
 }
 
+const STALE_ORG_MEMBER_ERROR =
+  'This organization member could not be updated. They may have been removed or your access may have changed.';
+
 export function useOrganization() {
   const { user, refreshOrganizationMemberships } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -134,15 +137,19 @@ export function useOrganization() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('organization_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('organization_id', organizationId)
         .eq('user_id', user.id);
 
       if (error) {
         console.error('Error leaving organization:', error);
         return { success: false, error: 'Failed to leave organization.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_ORG_MEMBER_ERROR };
       }
 
       await refreshOrganizationMemberships();
@@ -209,9 +216,9 @@ export function useOrganization() {
       memberId: string,
       role: OrgRole
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('organization_members')
-        .update({ role })
+        .update({ role }, { count: 'exact' })
         .eq('organization_id', organizationId)
         .eq('id', memberId);
 
@@ -220,9 +227,14 @@ export function useOrganization() {
         return { success: false, error: 'Failed to update member role.' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_ORG_MEMBER_ERROR };
+      }
+
+      await refreshOrganizationMemberships();
       return { success: true };
     },
-    [supabase]
+    [supabase, refreshOrganizationMemberships]
   );
 
   /**
@@ -230,9 +242,9 @@ export function useOrganization() {
    */
   const removeMember = useCallback(
     async (organizationId: string, memberId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('organization_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('organization_id', organizationId)
         .eq('id', memberId);
 
@@ -241,9 +253,14 @@ export function useOrganization() {
         return { success: false, error: 'Failed to remove member.' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_ORG_MEMBER_ERROR };
+      }
+
+      await refreshOrganizationMemberships();
       return { success: true };
     },
-    [supabase]
+    [supabase, refreshOrganizationMemberships]
   );
 
   return {

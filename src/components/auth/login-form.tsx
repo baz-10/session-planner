@@ -10,7 +10,7 @@ const OAUTH_TIMEOUT_MS = 20000;
 const SLOW_REQUEST_HINT_MS = 8000;
 
 function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/')) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
     return fallback;
   }
   return value;

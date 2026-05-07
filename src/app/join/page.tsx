@@ -63,7 +63,7 @@ function JoinPageContent() {
 
     setSuccess(`Successfully joined ${result.team?.name}! Redirecting...`);
     setTimeout(() => {
-      router.push('/dashboard');
+      router.push(role === 'parent' ? '/onboarding' : '/dashboard');
     }, 1500);
   };
 

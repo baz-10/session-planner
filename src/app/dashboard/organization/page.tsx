@@ -22,7 +22,7 @@ interface OrganizationMemberWithProfile {
 }
 
 export default function OrganizationSettingsPage() {
-  const { currentOrganization, currentOrganizationRole, organizationMemberships } = useAuth();
+  const { currentOrganization, currentOrganizationRole, organizationMemberships, user } = useAuth();
   const { getOrganizationMembers, getOrganizationTeams, updateMemberRole, removeMember } = useOrganization();
 
   const [members, setMembers] = useState<OrganizationMemberWithProfile[]>([]);
@@ -35,6 +35,7 @@ export default function OrganizationSettingsPage() {
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isAdmin = currentOrganizationRole === 'admin';
+  const adminCount = members.filter((member) => member.role === 'admin').length;
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -99,6 +100,12 @@ export default function OrganizationSettingsPage() {
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
     if (!currentOrganization) return;
 
+    const member = members.find((item) => item.id === memberId);
+    if (member?.role === 'admin' && newRole !== 'admin' && adminCount <= 1) {
+      setError('Add another admin before demoting the last organization admin.');
+      return;
+    }
+
     const result = await updateMemberRole(currentOrganization.id, memberId, newRole);
     if (result.success) {
       setMembers((prev) =>
@@ -111,6 +118,12 @@ export default function OrganizationSettingsPage() {
 
   const handleRemoveMember = async (memberId: string) => {
     if (!currentOrganization) return;
+    const member = members.find((item) => item.id === memberId);
+    if (member?.role === 'admin' && adminCount <= 1) {
+      setError('Add another admin before removing the last organization admin.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to remove this member?')) return;
 
     const result = await removeMember(currentOrganization.id, memberId);
@@ -339,7 +352,12 @@ export default function OrganizationSettingsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {members.map((member) => (
+            {members.map((member) => {
+              const isCurrentUser = member.user_id === user?.id;
+              const isLastAdmin = member.role === 'admin' && adminCount <= 1;
+              const memberName = member.profile?.full_name || member.profile?.email || 'Unknown member';
+
+              return (
               <div key={member.id} className="flex items-center gap-4 p-4 bg-whisper rounded-lg">
                 <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
                   <span className="text-sm font-semibold text-teal-dark">
@@ -349,6 +367,7 @@ export default function OrganizationSettingsPage() {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-navy truncate">
                     {member.profile?.full_name || 'Unknown'}
+                    {isCurrentUser && <span className="text-text-muted"> (you)</span>}
                   </p>
                   <p className="text-sm text-text-muted truncate">{member.profile?.email}</p>
                 </div>
@@ -357,6 +376,8 @@ export default function OrganizationSettingsPage() {
                     <select
                       value={member.role}
                       onChange={(e) => handleRoleChange(member.id, e.target.value as OrgRole)}
+                      disabled={isLastAdmin}
+                      aria-label={`Change organization role for ${memberName}`}
                       className="input py-1.5 px-2 text-sm"
                     >
                       <option value="member">Member</option>
@@ -364,8 +385,10 @@ export default function OrganizationSettingsPage() {
                     </select>
                     <button
                       onClick={() => handleRemoveMember(member.id)}
-                      className="btn-ghost text-error p-2"
-                      title="Remove member"
+                      disabled={isLastAdmin}
+                      className="btn-ghost text-error p-2 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={isLastAdmin ? 'Add another admin before removing this member' : 'Remove member'}
+                      aria-label={`Remove ${memberName} from organization`}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
@@ -383,7 +406,8 @@ export default function OrganizationSettingsPage() {
                   </span>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

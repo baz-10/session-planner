@@ -17,7 +17,7 @@ interface PlayerToAdd {
 
 export function OnboardingFlow() {
   const router = useRouter();
-  const { user, profile, updateProfile, refreshTeamMemberships } = useAuth();
+  const { user, profile, updateProfile, refreshTeamMemberships, teamMemberships, currentTeam } = useAuth();
   const { createTeam, joinTeamByCode } = useTeam();
   const { createPlayerWithLink } = usePlayers();
 
@@ -51,6 +51,16 @@ export function OnboardingFlow() {
     }
   }, [isParent]);
 
+  const getJoinedParentTeamId = () => {
+    if (currentTeam?.id && teamMemberships.some((membership) => (
+      membership.team.id === currentTeam.id && membership.role === 'parent'
+    ))) {
+      return currentTeam.id;
+    }
+
+    return teamMemberships.find((membership) => membership.role === 'parent')?.team.id || null;
+  };
+
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -67,7 +77,15 @@ export function OnboardingFlow() {
       return;
     }
 
+    const parentTeamId = isParent ? getJoinedParentTeamId() : null;
     setIsSubmitting(false);
+
+    if (parentTeamId) {
+      setJoinedTeamId(parentTeamId);
+      setStep('add-players');
+      return;
+    }
+
     setStep('team-choice');
   };
 

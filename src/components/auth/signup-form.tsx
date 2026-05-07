@@ -30,7 +30,7 @@ const userTypeInfo: Record<UserType, { label: string; description: string; icon:
 };
 
 function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/')) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
     return fallback;
   }
   return value;

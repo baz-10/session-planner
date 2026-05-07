@@ -155,12 +155,17 @@ export function DrillSelectorModal({
   const selectedCount = selectedDrills.size;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drill-selector-title"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">
+            <h2 id="drill-selector-title" className="text-xl font-semibold">
               {isMultiMode ? 'Add Multiple Drills' : 'Add Activity'}
             </h2>
             {isMultiMode && selectedCount > 0 && (
@@ -170,8 +175,10 @@ export function DrillSelectorModal({
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
+            aria-label="Close add activity dialog"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -184,7 +191,9 @@ export function DrillSelectorModal({
           <div className="px-6 pt-4 border-b border-gray-200">
             <div className="flex gap-4">
               <button
+                type="button"
                 onClick={() => setActiveTab('library')}
+                aria-pressed={activeTab === 'library'}
                 className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'library'
                     ? 'border-primary text-primary'
@@ -194,7 +203,9 @@ export function DrillSelectorModal({
                 From Library
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab('custom')}
+                aria-pressed={activeTab === 'custom'}
                 className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'custom'
                     ? 'border-primary text-primary'
@@ -208,24 +219,26 @@ export function DrillSelectorModal({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {(activeTab === 'library' || isMultiMode) ? (
             <div className="space-y-4">
               {/* Search and Filter */}
-              <div className="flex gap-3">
-                <div className="flex-1">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
+                <div className="min-w-0">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search drills..."
+                    aria-label="Search drills"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <select
                   value={selectedCategoryId}
                   onChange={(e) => setSelectedCategoryId(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  aria-label="Filter by category"
+                  className="min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">All Categories</option>
                   {categories.map((cat) => (
@@ -237,7 +250,8 @@ export function DrillSelectorModal({
                 <select
                   value={selectedTag}
                   onChange={(e) => setSelectedTag(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  aria-label="Filter by label"
+                  className="min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">All Labels</option>
                   {availableTags.map((tag) => (
@@ -253,6 +267,7 @@ export function DrillSelectorModal({
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       onClick={selectAll}
                       className="text-primary hover:underline"
                     >
@@ -262,6 +277,7 @@ export function DrillSelectorModal({
                       <>
                         <span className="text-gray-300">|</span>
                         <button
+                          type="button"
                           onClick={clearSelection}
                           className="text-gray-600 hover:underline"
                         >
@@ -283,9 +299,18 @@ export function DrillSelectorModal({
                 </div>
               ) : filteredDrills.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchQuery || selectedTag
-                    ? 'No drills found matching your filters'
-                    : 'No drills in your library yet'}
+                  <p>
+                    {searchQuery || selectedTag || selectedCategoryId
+                      ? 'No drills found matching your filters'
+                      : 'No drills in your library yet'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={loadDrills}
+                    className="mt-3 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-md"
+                  >
+                    Refresh library
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -294,6 +319,7 @@ export function DrillSelectorModal({
                     return (
                       <button
                         key={drill.id}
+                        type="button"
                         onClick={() => toggleDrillSelection(drill)}
                         className={`w-full p-3 border rounded-lg text-left transition-colors ${
                           isSelected
@@ -421,6 +447,7 @@ export function DrillSelectorModal({
               </div>
 
               <button
+                type="button"
                 onClick={handleAddCustom}
                 disabled={!customName.trim()}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
@@ -435,12 +462,14 @@ export function DrillSelectorModal({
         {isMultiMode && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleAddSelected}
               disabled={selectedCount === 0}
               className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"

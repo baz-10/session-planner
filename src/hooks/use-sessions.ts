@@ -31,6 +31,9 @@ function isLegacySessionActivityColumnError(error: { message?: string | null } |
   );
 }
 
+const STALE_SESSION_ERROR = 'This plan could not be saved. It may have been deleted or your access may have changed.';
+const STALE_ACTIVITY_ERROR = 'This activity could not be saved. It may have been deleted or your access may have changed.';
+
 export function useSessions() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -213,9 +216,9 @@ export function useSessions() {
       updates: Partial<Session>
     ): Promise<{ success: boolean; error?: string }> => {
       setIsLoading(true);
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('sessions')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', sessionId);
 
       setIsLoading(false);
@@ -223,6 +226,10 @@ export function useSessions() {
       if (error) {
         console.error('Error updating session:', error);
         return { success: false, error: 'Failed to update session' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_SESSION_ERROR };
       }
 
       return { success: true };
@@ -235,11 +242,18 @@ export function useSessions() {
    */
   const deleteSession = useCallback(
     async (sessionId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
+      const { error, count } = await supabase
+        .from('sessions')
+        .delete({ count: 'exact' })
+        .eq('id', sessionId);
 
       if (error) {
         console.error('Error deleting session:', error);
         return { success: false, error: 'Failed to delete session' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: 'This plan was already deleted or you no longer have access.' };
       }
 
       return { success: true };
@@ -395,9 +409,9 @@ export function useSessions() {
       activityId: string,
       updates: Partial<SessionActivity>
     ): Promise<{ success: boolean; error?: string }> => {
-      let { error } = await supabase
+      let { error, count } = await supabase
         .from('session_activities')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', activityId);
 
       if (error && isLegacySessionActivityColumnError(error)) {
@@ -412,14 +426,19 @@ export function useSessions() {
         } = updates;
         const retryResult = await supabase
           .from('session_activities')
-          .update(legacyUpdates)
+          .update(legacyUpdates, { count: 'exact' })
           .eq('id', activityId);
         error = retryResult.error;
+        count = retryResult.count;
       }
 
       if (error) {
         console.error('Error updating activity:', error);
         return { success: false, error: 'Failed to update activity' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_ACTIVITY_ERROR };
       }
 
       return { success: true };
@@ -432,11 +451,18 @@ export function useSessions() {
    */
   const deleteActivity = useCallback(
     async (activityId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('session_activities').delete().eq('id', activityId);
+      const { error, count } = await supabase
+        .from('session_activities')
+        .delete({ count: 'exact' })
+        .eq('id', activityId);
 
       if (error) {
         console.error('Error deleting activity:', error);
         return { success: false, error: 'Failed to delete activity' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: 'This activity was already deleted or you no longer have access.' };
       }
 
       return { success: true };
@@ -462,17 +488,22 @@ export function useSessions() {
       const promises = updates.map(({ id, sort_order }) =>
         supabase
           .from('session_activities')
-          .update({ sort_order })
+          .update({ sort_order }, { count: 'exact' })
           .eq('id', id)
           .eq('session_id', sessionId)
       );
 
       const results = await Promise.all(promises);
       const hasError = results.some((r) => r.error);
+      const hasNoOp = results.some((r) => r.count === 0);
 
       if (hasError) {
         console.error('Error reordering activities');
         return { success: false, error: 'Failed to reorder activities' };
+      }
+
+      if (hasNoOp) {
+        return { success: false, error: STALE_ACTIVITY_ERROR };
       }
 
       return { success: true };
