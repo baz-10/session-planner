@@ -42,13 +42,23 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
   const [opponent, setOpponent] = useState(event?.opponent || '');
   const [sessionId, setSessionId] = useState(event?.session_id || '');
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionLoadError, setSessionLoadError] = useState('');
   const [error, setError] = useState('');
 
   const isEditing = !!event;
 
   const loadSessions = useCallback(async () => {
-    const data = await getSessions();
-    setSessions(data);
+    try {
+      setSessionLoadError('');
+      const data = await getSessions({ throwOnError: true });
+      setSessions(data);
+    } catch (loadError) {
+      console.error('Error loading practice plans for event form:', loadError);
+      setSessions([]);
+      setSessionLoadError(
+        'Practice plans could not load. You can still save this event without a linked plan.'
+      );
+    }
   }, [getSessions]);
 
   useEffect(() => {
@@ -270,6 +280,9 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               <p className="text-xs text-gray-500 mt-1">
                 Players can preview the practice plan when linked
               </p>
+              {sessionLoadError && (
+                <p className="mt-1 text-xs font-medium text-red-600">{sessionLoadError}</p>
+              )}
             </div>
           )}
 

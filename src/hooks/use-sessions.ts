@@ -33,6 +33,11 @@ function isLegacySessionActivityColumnError(error: { message?: string | null } |
 
 const STALE_SESSION_ERROR = 'This plan could not be saved. It may have been deleted or your access may have changed.';
 const STALE_ACTIVITY_ERROR = 'This activity could not be saved. It may have been deleted or your access may have changed.';
+const SESSION_LIST_LOAD_ERROR = 'Practice plans could not load. Check your connection and try again.';
+
+interface GetSessionsOptions {
+  throwOnError?: boolean;
+}
 
 export function useSessions() {
   const { user, currentTeam } = useAuth();
@@ -42,7 +47,7 @@ export function useSessions() {
   /**
    * Get all sessions for the current team
    */
-  const getSessions = useCallback(async () => {
+  const getSessions = useCallback(async (options: GetSessionsOptions = {}) => {
     if (!currentTeam) return [];
 
     const { data, error } = await supabase
@@ -53,6 +58,9 @@ export function useSessions() {
 
     if (error) {
       console.error('Error fetching sessions:', error);
+      if (options.throwOnError) {
+        throw new Error(SESSION_LIST_LOAD_ERROR);
+      }
       return [];
     }
 

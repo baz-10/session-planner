@@ -710,6 +710,24 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
               Complete
             </button>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => addTime(60)}
+              disabled={runState.status === 'complete'}
+              className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+            >
+              +1 min
+            </button>
+            <button
+              type="button"
+              onClick={() => addTime(-60)}
+              disabled={runState.status === 'complete'}
+              className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+            >
+              -1 min
+            </button>
+          </div>
         </MobileListCard>
 
         <MobileListCard className="mb-4">
@@ -762,6 +780,66 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           ) : (
             <p className="text-sm font-semibold text-slate-500">
               No saved coaching notes for this activity.
+            </p>
+          )}
+        </MobileListCard>
+
+        {activeActivity && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-navy">Block Notes</h2>
+              <StickyNote className="h-5 w-5 text-teal" />
+            </div>
+            <textarea
+              value={runState.activityNotes[activeActivity.id] || ''}
+              onChange={(event) => updateActivityNote(activeActivity.id, event.target.value)}
+              rows={5}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
+              placeholder="What worked, what dragged, who needs follow-up..."
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {QUICK_NOTE_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => appendQuickNote(activeActivity.id, prompt)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-600"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </MobileListCard>
+        )}
+
+        <MobileListCard className="mb-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-xl font-extrabold text-navy">Session Notes</h2>
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-teal px-3 text-sm font-extrabold text-teal"
+            >
+              <ClipboardCopy className="h-4 w-4" />
+              Copy
+            </button>
+          </div>
+          <textarea
+            value={runState.sessionNotes}
+            onChange={(event) => updateSessionNotes(event.target.value)}
+            rows={5}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
+            placeholder="Whole-practice observations, follow-ups, lineup notes..."
+          />
+          {copyStatus !== 'idle' && (
+            <p
+              className={`mt-2 text-sm font-extrabold ${
+                copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
+              }`}
+            >
+              {copyStatus === 'copied'
+                ? 'Summary copied.'
+                : 'Clipboard unavailable in this browser.'}
             </p>
           )}
         </MobileListCard>
@@ -898,7 +976,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   </div>
 
                   <div className="shrink-0 rounded-[24px] bg-slate-950 px-6 py-5 text-center text-white md:min-w-[260px]">
-                    <div className="font-mono text-[64px] font-bold leading-none tracking-[-0.04em]">
+                    <div className="font-mono text-[64px] font-bold leading-none tracking-normal">
                       {formatClock(runState.remainingSeconds)}
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">

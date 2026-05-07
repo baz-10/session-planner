@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
+  AlertCircle,
   CalendarDays,
   Clock3,
   Copy,
   Edit3,
   MapPin,
   PlayCircle,
+  RefreshCw,
   Trash2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
@@ -22,14 +24,28 @@ export function SessionsList() {
   const { getSessions, deleteSession, duplicateSession } = useSessions();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   const loadSessions = useCallback(async () => {
     setIsLoading(true);
-    const data = await getSessions();
-    setSessions(data);
-    setIsLoading(false);
+    setLoadError('');
+
+    try {
+      const data = await getSessions({ throwOnError: true });
+      setSessions(data);
+    } catch (error) {
+      console.error('Error loading practice plans:', error);
+      setSessions([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Practice plans could not load. Check your connection and try again.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }, [getSessions]);
 
   // Reload sessions when currentTeam changes
@@ -99,6 +115,26 @@ export function SessionsList() {
           <Link href="/dashboard/team" className="btn-accent">
             Go to Team Settings
           </Link>
+        }
+      />
+    );
+  }
+
+  if (loadError) {
+    return (
+      <MobileEmptyState
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Practice plans did not load"
+        description={loadError}
+        action={
+          <button
+            type="button"
+            onClick={() => void loadSessions()}
+            className="btn-accent inline-flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try again
+          </button>
         }
       />
     );

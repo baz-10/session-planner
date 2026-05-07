@@ -87,6 +87,7 @@ export default function DashboardPage() {
   const { getTeamMembers } = useTeam();
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState('');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -102,11 +103,13 @@ export default function DashboardPage() {
     async function loadDashboardSnapshot() {
       if (!currentTeam?.id) {
         setSnapshot(emptySnapshot);
+        setSnapshotError('');
         setIsDashboardLoading(false);
         return;
       }
 
       setIsDashboardLoading(true);
+      setSnapshotError('');
 
       try {
         const now = new Date();
@@ -144,6 +147,12 @@ export default function DashboardPage() {
           attendanceEvents: attendanceStats.overall.totalEvents,
           recentSessions: sessions.slice(0, 5),
         });
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error loading dashboard summary:', error);
+          setSnapshot(emptySnapshot);
+          setSnapshotError('Dashboard summary did not load. Refresh the page to try again.');
+        }
       } finally {
         if (!cancelled) {
           setIsDashboardLoading(false);
@@ -238,6 +247,12 @@ export default function DashboardPage() {
           tone="teal"
         />
       </section>
+
+      {snapshotError && (
+        <div className="mb-7 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {snapshotError}
+        </div>
+      )}
 
       <section className="mb-7">
         <h2 className="mb-4 text-[23px] font-extrabold text-navy">Quick Actions</h2>
