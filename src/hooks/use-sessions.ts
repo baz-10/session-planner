@@ -97,7 +97,7 @@ export function useSessions() {
 
         if (fallbackError) {
           console.error('Error fetching activities (fallback):', fallbackError);
-          return { ...session, activities: [] } as SessionWithActivities;
+          return null;
         }
 
         return {
