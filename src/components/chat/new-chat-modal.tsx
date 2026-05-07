@@ -27,16 +27,19 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [memberLoadError, setMemberLoadError] = useState('');
   const [error, setError] = useState('');
 
   const loadMembers = useCallback(async () => {
     if (!currentTeam) {
       setMembers([]);
+      setMemberLoadError('');
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    setMemberLoadError('');
     const { data, error } = await supabase
       .from('team_members')
       .select(`
@@ -46,7 +49,11 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
       .eq('team_id', currentTeam.id)
       .neq('user_id', user?.id);
 
-    if (!error && data) {
+    if (error) {
+      console.error('Error loading chat members:', error);
+      setMembers([]);
+      setMemberLoadError('Unable to load team members. Check your connection and try again.');
+    } else if (data) {
       setMembers(data as TeamMemberWithProfile[]);
     }
     setIsLoading(false);
@@ -56,9 +63,16 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
     loadMembers();
   }, [loadMembers]);
 
-  const filteredMembers = members.filter((m) =>
-    m.profile?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredMembers = members.filter((member) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    return [
+      member.profile?.full_name,
+      member.profile?.email,
+      member.role,
+    ].some((value) => value?.toLowerCase().includes(query));
+  });
 
   const toggleSelection = (userId: string) => {
     if (mode === 'dm') {
@@ -107,14 +121,21 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-conversation-title"
+      >
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">New Conversation</h2>
+          <h2 id="new-conversation-title" className="text-lg font-semibold">New Conversation</h2>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 text-gray-500 hover:text-gray-700 rounded"
+            aria-label="Close new conversation dialog"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -132,10 +153,12 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
         <div className="px-4 py-3 border-b border-gray-100">
           <div className="flex bg-gray-100 rounded-lg p-1">
             <button
+              type="button"
               onClick={() => {
                 setMode('dm');
                 setSelectedIds([]);
               }}
+              aria-pressed={mode === 'dm'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
                 mode === 'dm' ? 'bg-white shadow' : 'text-gray-500'
               }`}
@@ -143,10 +166,12 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
               Direct Message
             </button>
             <button
+              type="button"
               onClick={() => {
                 setMode('group');
                 setSelectedIds([]);
               }}
+              aria-pressed={mode === 'group'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
                 mode === 'group' ? 'bg-white shadow' : 'text-gray-500'
               }`}
@@ -164,6 +189,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="Group name"
+              aria-label="Group chat name"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
@@ -176,6 +202,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search team members..."
+            aria-label="Search team members"
             className="w-full px-3 py-2 bg-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -186,16 +213,30 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
             </div>
+          ) : memberLoadError ? (
+            <div className="px-4 py-8 text-center">
+              <p className="mb-3 text-sm font-medium text-red-700">{memberLoadError}</p>
+              <button
+                type="button"
+                onClick={loadMembers}
+                className="px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-md"
+              >
+                Try again
+              </button>
+            </div>
           ) : filteredMembers.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No members found
+              {members.length === 0 ? 'No other team members yet' : 'No matching members'}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {filteredMembers.map((member) => (
                 <button
                   key={member.id}
+                  type="button"
                   onClick={() => toggleSelection(member.user_id)}
+                  aria-pressed={selectedIds.includes(member.user_id)}
+                  aria-label={`Select ${member.profile?.full_name || member.profile?.email || 'team member'} for chat`}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
                 >
                   {/* Checkbox/Radio */}
@@ -218,11 +259,12 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
 
                   {/* Info */}
                   <div className="flex-1 text-left">
-                    <div className="font-medium text-gray-900">
+                    <div className="font-medium text-gray-900 truncate">
                       {member.profile?.full_name || 'Unknown'}
                     </div>
-                    <div className="text-sm text-gray-500 capitalize">
-                      {member.role}
+                    <div className="text-sm text-gray-500 truncate">
+                      <span className="capitalize">{member.role}</span>
+                      {member.profile?.email ? ` - ${member.profile.email}` : ''}
                     </div>
                   </div>
                 </button>
@@ -234,12 +276,14 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
         {/* Footer */}
         <div className="px-4 py-3 border-t border-gray-200 flex justify-end gap-2">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleCreate}
             disabled={
               selectedIds.length === 0 ||

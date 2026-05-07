@@ -44,14 +44,18 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
     return 'Conversation';
   };
 
-  const loadMessages = useCallback(async () => {
-    setIsLoading(true);
+  const loadMessages = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     const data = await getMessages(conversation.id);
     setMessages(data);
-    setIsLoading(false);
+    if (showLoading) {
+      setIsLoading(false);
+    }
 
     // Mark as read
-    markAsRead(conversation.id);
+    void markAsRead(conversation.id);
   }, [conversation.id, getMessages, markAsRead]);
 
   useEffect(() => {
@@ -59,19 +63,29 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
 
     // Subscribe to new messages
     const unsubscribe = subscribeToMessages(conversation.id, (newMessage) => {
-      setMessages((prev) => [...prev, newMessage]);
-      markAsRead(conversation.id);
+      setMessages((prev) => (
+        prev.some((message) => message.id === newMessage.id) ? prev : [...prev, newMessage]
+      ));
+      void markAsRead(conversation.id);
     });
 
     return unsubscribe;
   }, [conversation.id, loadMessages, subscribeToMessages, markAsRead]);
 
   const handleSendMessage = async (content: string) => {
-    return sendMessage({ conversation_id: conversation.id, content });
+    const result = await sendMessage({ conversation_id: conversation.id, content });
+    if (result.success) {
+      await loadMessages(false);
+    }
+    return result;
   };
 
   const handleSendFile = async (file: File) => {
-    return sendFileMessage(conversation.id, file);
+    const result = await sendFileMessage(conversation.id, file);
+    if (result.success) {
+      await loadMessages(false);
+    }
+    return result;
   };
 
   return (
@@ -80,8 +94,10 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
         {onBack && (
           <button
+            type="button"
             onClick={onBack}
             className="p-1 text-gray-500 hover:text-gray-700 rounded md:hidden"
+            aria-label="Back to conversations"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -112,7 +128,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
         </div>
 
         {/* Menu button */}
-        <button className="p-2 text-gray-400 hover:text-gray-600 rounded">
+        <button type="button" className="p-2 text-gray-400 hover:text-gray-600 rounded" aria-label="Conversation options">
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
           </svg>

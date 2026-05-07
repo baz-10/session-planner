@@ -42,6 +42,15 @@ function getSafeAttachmentExtension(file: File) {
   return ALLOWED_CHAT_ATTACHMENT_EXTENSIONS.has(extension) ? extension : 'bin';
 }
 
+function createAttachmentObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
+}
+
 function validateChatAttachment(file: File): string | null {
   if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
     return 'Attachments must be 10 MB or smaller.';
@@ -412,7 +421,7 @@ export function useChat() {
       }
 
       const fileExt = getSafeAttachmentExtension(file);
-      const filePath = `${currentTeam.id}/chat/${conversationId}/${Date.now()}.${fileExt}`;
+      const filePath = `${currentTeam.id}/chat/${conversationId}/${createAttachmentObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
         .from('attachments')
@@ -437,11 +446,17 @@ export function useChat() {
         file_size: file.size,
       };
 
-      return sendMessage({
+      const result = await sendMessage({
         conversation_id: conversationId,
         type: messageType,
         metadata,
       });
+
+      if (!result.success) {
+        await supabase.storage.from('attachments').remove([filePath]);
+      }
+
+      return result;
     },
     [user, currentTeam, supabase, sendMessage]
   );
