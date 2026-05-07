@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useTeam } from '@/hooks/use-team';
 import type { TeamRole, Team } from '@/types/database';
 
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
+
 interface JoinTeamFormProps {
   onSuccess?: (team: Team) => void;
   showRoleSelect?: boolean;
-  defaultRole?: TeamRole;
+  defaultRole?: InviteJoinRole;
 }
 
 export function JoinTeamForm({
@@ -18,7 +20,7 @@ export function JoinTeamForm({
   const { joinTeamByCode } = useTeam();
 
   const [teamCode, setTeamCode] = useState('');
-  const [role, setRole] = useState<TeamRole>(defaultRole);
+  const [role, setRole] = useState<InviteJoinRole>(defaultRole);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,13 +87,15 @@ export function JoinTeamForm({
           </label>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as TeamRole)}
+            onChange={(e) => setRole(e.target.value as InviteJoinRole)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="player">Player</option>
             <option value="parent">Parent</option>
-            <option value="coach">Coach</option>
           </select>
+          <p className="mt-1 text-sm text-gray-500">
+            Coaches should join as a player or parent first and ask a team admin to promote them.
+          </p>
         </div>
       )}
 

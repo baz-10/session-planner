@@ -32,7 +32,7 @@ export default function OrganizationSettingsPage() {
   const [inviteSent, setInviteSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const inviteTimerRef = useRef<NodeJS.Timeout>();
+  const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isAdmin = currentOrganizationRole === 'admin';
 

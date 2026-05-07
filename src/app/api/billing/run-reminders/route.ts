@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
-import { createAdminClient } from '@/lib/database/supabase';
 
 const DEFAULT_DAYS_AHEAD = 2;
 
@@ -36,7 +36,7 @@ async function runReminders(
     let scopedTeamIds: string[] = [];
 
     if (isCronRequest) {
-      supabase = createAdminClient();
+      supabase = createBillingAdminClient();
       if (teamId) {
         scopedTeamIds = [teamId];
       } else {
@@ -304,6 +304,22 @@ function buildReminderMessage(params: {
   }
 
   return `${params.invoiceTitle} installment (${amountText}) is due on ${dueDateText}. Open Billing to complete payment.`;
+}
+
+function createBillingAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase admin environment variables are not configured');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 function formatCentsAsUsd(amountCents: number): string {

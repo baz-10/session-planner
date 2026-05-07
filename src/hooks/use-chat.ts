@@ -67,9 +67,14 @@ export function useChat() {
       return [];
     }
 
+    const scopedConversations = (conversations || []).filter((conversation) => {
+      if (conversation.type === 'direct') return true;
+      return currentTeam ? conversation.team_id === currentTeam.id : false;
+    });
+
     // Get last message and unread count for each conversation
     const result = await Promise.all(
-      conversations.map(async (conv) => {
+      scopedConversations.map(async (conv) => {
         // Get last message
         const { data: lastMsg } = await supabase
           .from('messages')
@@ -115,11 +120,49 @@ export function useChat() {
     );
 
     return result as ConversationWithDetails[];
-  }, [user, supabase]);
+  }, [user, currentTeam, supabase]);
 
   /**
    * Get or create a team chat conversation
    */
+  const addTeamChatParticipants = useCallback(
+    async (conversationId: string, type: 'team' | 'coaches') => {
+      if (!currentTeam || !user) return;
+
+      const { data: members, error: membersError } = await supabase
+        .from('team_members')
+        .select('user_id, role')
+        .eq('team_id', currentTeam.id);
+
+      if (membersError) {
+        console.error('Error fetching team chat participants:', membersError);
+        return;
+      }
+
+      const participantIds = new Set<string>([user.id]);
+      for (const member of members || []) {
+        if (type === 'team' || member.role === 'admin' || member.role === 'coach') {
+          participantIds.add(member.user_id);
+        }
+      }
+
+      const { error: participantError } = await supabase
+        .from('conversation_participants')
+        .upsert(
+          Array.from(participantIds).map((userId) => ({
+            conversation_id: conversationId,
+            user_id: userId,
+          })),
+          { onConflict: 'conversation_id,user_id' }
+        );
+
+      if (participantError) {
+        console.error('Error adding team chat participants:', participantError);
+      }
+    },
+    [currentTeam, user, supabase]
+  );
+
   const getTeamChat = useCallback(
     async (type: 'team' | 'coaches' = 'team'): Promise<Conversation | null> => {
       if (!currentTeam || !user) return null;
@@ -132,7 +175,10 @@ export function useChat() {
         .eq('type', type)
         .single();
 
-      if (existing) return existing as Conversation;
+      if (existing) {
+        await addTeamChatParticipants(existing.id, type);
+        return existing as Conversation;
+      }
 
       // Create team chat
       const { data: conv, error: createError } = await supabase
@@ -147,19 +193,29 @@ export function useChat() {
         .single();
 
       if (createError) {
+        if (createError.code === '23505') {
+          const { data: existingAfterConflict } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('team_id', currentTeam.id)
+            .eq('type', type)
+            .single();
+
+          if (existingAfterConflict) {
+            await addTeamChatParticipants(existingAfterConflict.id, type);
+            return existingAfterConflict as Conversation;
+          }
+        }
+
         console.error('Error creating team chat:', createError);
         return null;
       }
 
-      // Add current user as participant
-      await supabase.from('conversation_participants').insert({
-        conversation_id: conv.id,
-        user_id: user.id,
-      });
+      await addTeamChatParticipants(conv.id, type);
 
       return conv as Conversation;
     },
-    [user, currentTeam, supabase]
+    [user, currentTeam, supabase, addTeamChatParticipants]
   );
 
   /**
@@ -225,7 +281,15 @@ export function useChat() {
         user_id: id,
       }));
 
-      await supabase.from('conversation_participants').insert(participants);
+      const { error: participantError } = await supabase
+        .from('conversation_participants')
+        .insert(participants);
+
+      if (participantError) {
+        console.error('Error adding group chat participants:', participantError);
+        await supabase.from('conversations').delete().eq('id', conv.id);
+        return { success: false, error: 'Failed to add group chat participants' };
+      }
 
       return { success: true, conversation: conv as Conversation };
     },

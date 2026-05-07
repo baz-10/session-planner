@@ -4,10 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
+import type { TeamRole } from '@/types/database';
+
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
+const MANAGED_TEAM_ROLES: TeamRole[] = ['admin', 'coach', 'player', 'parent'];
 
 export default function TeamSettingsPage() {
-  const { currentTeam, teamMemberships } = useAuth();
-  const { getTeamMembers, createTeam, joinTeamByCode } = useTeam();
+  const { currentTeam, teamMemberships, user } = useAuth();
+  const { getTeamMembers, createTeam, joinTeamByCode, updateMemberRole, removeMember } = useTeam();
 
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -16,6 +20,9 @@ export default function TeamSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'player' | 'parent'>('player');
   const [inviteSent, setInviteSent] = useState(false);
+  const [memberActionError, setMemberActionError] = useState('');
+  const [memberActionSuccess, setMemberActionSuccess] = useState('');
+  const [updatingMemberId, setUpdatingMemberId] = useState('');
 
   // Create/Join team state
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -23,13 +30,15 @@ export default function TeamSettingsPage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('basketball');
   const [joinCode, setJoinCode] = useState('');
-  const [joinRole, setJoinRole] = useState<'player' | 'coach'>('coach');
+  const [joinRole, setJoinRole] = useState<InviteJoinRole>('player');
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get current user's role in this team
   const currentMembership = teamMemberships.find(m => m.team.id === currentTeam?.id);
   const isCoachOrAdmin = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const canManageMembers = currentMembership?.role === 'admin';
+  const adminCount = members.filter((member) => member.role === 'admin').length;
 
   // Generate invite link
   const inviteLink = typeof window !== 'undefined'
@@ -37,9 +46,9 @@ export default function TeamSettingsPage() {
     : '';
 
   // Timer refs for cleanup
-  const copyTimerRef = useRef<NodeJS.Timeout>();
-  const linkTimerRef = useRef<NodeJS.Timeout>();
-  const inviteTimerRef = useRef<NodeJS.Timeout>();
+  const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const linkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -174,6 +183,73 @@ export default function TeamSettingsPage() {
     setJoinCode('');
   };
 
+  const handleMemberRoleChange = async (member: any, role: TeamRole) => {
+    if (!currentTeam?.id || !canManageMembers) return;
+
+    if (member.user_id === user?.id) {
+      setMemberActionError('You cannot change your own team role.');
+      setMemberActionSuccess('');
+      return;
+    }
+
+    if (member.role === 'admin' && role !== 'admin' && adminCount <= 1) {
+      setMemberActionError('Add another admin before changing the last admin role.');
+      setMemberActionSuccess('');
+      return;
+    }
+
+    setUpdatingMemberId(member.id);
+    setMemberActionError('');
+    setMemberActionSuccess('');
+
+    const result = await updateMemberRole(currentTeam.id, member.id, role);
+    setUpdatingMemberId('');
+
+    if (!result.success) {
+      setMemberActionError(result.error || 'Failed to update member role.');
+      return;
+    }
+
+    setMembers((prev) =>
+      prev.map((item) => (item.id === member.id ? { ...item, role } : item))
+    );
+    setMemberActionSuccess('Member role updated.');
+  };
+
+  const handleRemoveMember = async (member: any) => {
+    if (!currentTeam?.id || !canManageMembers) return;
+
+    if (member.user_id === user?.id) {
+      setMemberActionError('Use Leave Team to remove yourself from a team.');
+      setMemberActionSuccess('');
+      return;
+    }
+
+    if (member.role === 'admin' && adminCount <= 1) {
+      setMemberActionError('Add another admin before removing the last admin.');
+      setMemberActionSuccess('');
+      return;
+    }
+
+    const memberName = member.profile?.full_name || member.profile?.email || 'this member';
+    if (!confirm(`Remove ${memberName} from ${currentTeam.name}?`)) return;
+
+    setUpdatingMemberId(member.id);
+    setMemberActionError('');
+    setMemberActionSuccess('');
+
+    const result = await removeMember(currentTeam.id, member.id);
+    setUpdatingMemberId('');
+
+    if (!result.success) {
+      setMemberActionError(result.error || 'Failed to remove member.');
+      return;
+    }
+
+    setMembers((prev) => prev.filter((item) => item.id !== member.id));
+    setMemberActionSuccess('Member removed from team.');
+  };
+
   if (!currentTeam) {
     return (
       <MobilePageShell contentClassName="md:max-w-2xl">
@@ -300,12 +376,15 @@ export default function TeamSettingsPage() {
                 <select
                   id="role"
                   value={joinRole}
-                  onChange={(e) => setJoinRole(e.target.value as 'player' | 'coach')}
+                  onChange={(e) => setJoinRole(e.target.value as InviteJoinRole)}
                   className="input"
                 >
-                  <option value="coach">Coach</option>
                   <option value="player">Player</option>
+                  <option value="parent">Parent / Guardian</option>
                 </select>
+                <p className="text-xs text-text-muted mt-1">
+                  Coaches should join first and ask a team admin to promote them.
+                </p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -470,12 +549,34 @@ export default function TeamSettingsPage() {
 
       {/* Team Members */}
       <MobileListCard>
-        <h3 className="text-lg font-semibold text-navy mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-navy">
           <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
           Team Members ({members.length})
-        </h3>
+          </h3>
+          {canManageMembers ? (
+            <p className="text-sm font-medium text-text-muted">
+              Promote coaches and manage access here.
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-text-muted">
+              Admin role required to change member access.
+            </p>
+          )}
+        </div>
+
+        {memberActionError && (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {memberActionError}
+          </div>
+        )}
+        {memberActionSuccess && (
+          <div className="mb-4 rounded-2xl border border-teal/20 bg-teal-glow px-4 py-3 text-sm font-medium text-teal-dark">
+            {memberActionSuccess}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
@@ -487,34 +588,75 @@ export default function TeamSettingsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {members.map((member) => (
+            {members.map((member) => {
+              const isCurrentUser = member.user_id === user?.id;
+              const isLastAdmin = member.role === 'admin' && adminCount <= 1;
+              const isUpdating = updatingMemberId === member.id;
+              const controlsDisabled = isUpdating || isCurrentUser || isLastAdmin;
+
+              return (
               <div
                 key={member.id}
-                className="flex items-center gap-3 rounded-2xl bg-whisper p-3 sm:gap-4 sm:p-4"
+                className="flex flex-col gap-3 rounded-2xl bg-whisper p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
               >
-                <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
-                  <span className="text-sm font-semibold text-teal-dark">
-                    {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
+                    <span className="text-sm font-semibold text-teal-dark">
+                      {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-navy truncate">
+                      {member.profile?.full_name || 'Unknown'}
+                    </p>
+                    <p className="text-sm text-text-muted truncate">
+                      {member.profile?.email}
+                    </p>
+                    {(isCurrentUser || isLastAdmin) && (
+                      <p className="mt-1 text-xs font-semibold text-text-muted">
+                        {isCurrentUser ? 'You' : 'Last admin'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {canManageMembers ? (
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <select
+                      value={member.role}
+                      onChange={(event) => handleMemberRoleChange(member, event.target.value as TeamRole)}
+                      disabled={controlsDisabled}
+                      aria-label={`Role for ${member.profile?.full_name || member.profile?.email || 'member'}`}
+                      className="input min-h-11 flex-1 capitalize sm:w-32 sm:flex-none"
+                    >
+                      {MANAGED_TEAM_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMember(member)}
+                      disabled={controlsDisabled}
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-100 bg-white px-3 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isUpdating ? 'Saving' : 'Remove'}
+                    </button>
+                  </div>
+                ) : (
+                  <span className={`badge ${
+                    member.role === 'admin' ? 'badge-navy' :
+                    member.role === 'coach' ? 'badge-teal' :
+                    member.role === 'player' ? 'badge-success' :
+                    'badge-warning'
+                  }`}>
+                    {member.role}
                   </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-navy truncate">
-                    {member.profile?.full_name || 'Unknown'}
-                  </p>
-                  <p className="text-sm text-text-muted truncate">
-                    {member.profile?.email}
-                  </p>
-                </div>
-                <span className={`badge ${
-                  member.role === 'admin' ? 'badge-navy' :
-                  member.role === 'coach' ? 'badge-teal' :
-                  member.role === 'player' ? 'badge-success' :
-                  'badge-warning'
-                }`}>
-                  {member.role}
-                </span>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </MobileListCard>

@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import type { TeamRole } from '@/types/database';
 
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
+
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,7 +19,7 @@ function JoinPageContent() {
   const { joinTeamByCode } = useTeam();
 
   const [teamCode, setTeamCode] = useState(codeFromUrl || '');
-  const [role, setRole] = useState<TeamRole>('player');
+  const [role, setRole] = useState<InviteJoinRole>('player');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -158,7 +160,7 @@ function JoinPageContent() {
               <select
                 id="role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as TeamRole)}
+                onChange={(e) => setRole(e.target.value as InviteJoinRole)}
                 className="input"
               >
                 <option value="player">Player</option>

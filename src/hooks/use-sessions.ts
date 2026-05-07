@@ -295,7 +295,7 @@ export function useSessions() {
           linked_play_thumbnail_data_url: activity.linked_play_thumbnail_data_url || null,
         }));
 
-        const { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
+        let { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
         if (insertError && isLegacySessionActivityColumnError(insertError)) {
           const legacyActivitiesToInsert = activitiesToInsert.map((activity) => {
             // Remove columns unavailable in legacy schemas.
@@ -310,7 +310,17 @@ export function useSessions() {
             } = activity;
             return legacyActivity;
           });
-          await supabase.from('session_activities').insert(legacyActivitiesToInsert);
+          const retryResult = await supabase.from('session_activities').insert(legacyActivitiesToInsert);
+          insertError = retryResult.error;
+        }
+
+        if (insertError) {
+          console.error('Error duplicating session activities:', insertError);
+          await supabase.from('sessions').delete().eq('id', result.session.id);
+          return {
+            success: false,
+            error: insertError.message || 'Failed to duplicate session activities',
+          };
         }
       }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
@@ -8,6 +8,7 @@ import { usePlayers } from '@/hooks/use-players';
 import type { TeamRole, RelationshipType } from '@/types/database';
 
 type OnboardingStep = 'profile' | 'team-choice' | 'create-team' | 'join-team' | 'add-players' | 'complete';
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
 
 interface PlayerToAdd {
   firstName: string;
@@ -31,19 +32,24 @@ export function OnboardingFlow() {
   // Team creation state
   const [teamName, setTeamName] = useState('');
   const [sport, setSport] = useState('basketball');
+  const userType = user?.user_metadata?.user_type as string | undefined;
+  const isParent = userType === 'parent';
+  const isCoach = userType === 'coach';
 
   // Team join state
   const [teamCode, setTeamCode] = useState('');
-  const [joinRole, setJoinRole] = useState<TeamRole>('player');
+  const [joinRole, setJoinRole] = useState<InviteJoinRole>(isParent ? 'parent' : 'player');
 
   // Parent - add players state
   const [playersToAdd, setPlayersToAdd] = useState<PlayerToAdd[]>([{ firstName: '', lastName: '' }]);
   const [relationship, setRelationship] = useState<RelationshipType>('parent');
   const [joinedTeamId, setJoinedTeamId] = useState<string | null>(null);
 
-  const userType = user?.user_metadata?.user_type as string | undefined;
-  const isParent = userType === 'parent';
-  const isCoach = userType === 'coach';
+  useEffect(() => {
+    if (isParent) {
+      setJoinRole('parent');
+    }
+  }, [isParent]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -348,12 +354,15 @@ export function OnboardingFlow() {
                   </label>
                   <select
                     value={joinRole}
-                    onChange={(e) => setJoinRole(e.target.value as TeamRole)}
+                    onChange={(e) => setJoinRole(e.target.value as InviteJoinRole)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="player">Player</option>
-                    <option value="coach">Coach</option>
+                    <option value="parent">Parent / Guardian</option>
                   </select>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Coaches should join as a player or parent first and ask a team admin to promote them.
+                  </p>
                 </div>
               )}
               <button

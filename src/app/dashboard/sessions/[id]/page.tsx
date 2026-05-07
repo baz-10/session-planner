@@ -10,11 +10,12 @@ export async function generateStaticParams() {
 export const dynamicParams = true;
 
 interface SessionPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function SessionPage({ params }: SessionPageProps) {
-  return <SessionDetailClient sessionId={params.id} />;
+export default async function SessionPage({ params }: SessionPageProps) {
+  const { id } = await params;
+  return <SessionDetailClient sessionId={id} />;
 }
