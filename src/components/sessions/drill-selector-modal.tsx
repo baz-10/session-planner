@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDrills } from '@/hooks/use-drills';
+import { drillMatchesCategory, getVisibleLabelTags } from '@/lib/utils/drill-tags';
 import type { Drill, DrillCategory } from '@/types/database';
 
 interface DrillWithCategory extends Drill {
@@ -70,7 +71,7 @@ export function DrillSelectorModal({
         const results = await searchDrills(searchQuery);
         // Filter by category if selected
         if (selectedCategoryId) {
-          setDrills(results.filter(d => d.category_id === selectedCategoryId));
+          setDrills(results.filter((drill) => drillMatchesCategory(drill, selectedCategoryId)));
         } else {
           setDrills(results);
         }
@@ -83,13 +84,13 @@ export function DrillSelectorModal({
   }, [searchQuery, selectedCategoryId, isOpen, loadDrills, searchDrills]);
 
   const availableTags = useMemo(() => {
-    const tags = drills.flatMap((drill) => drill.tags || []);
+    const tags = drills.flatMap((drill) => getVisibleLabelTags(drill.tags));
     return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
   }, [drills]);
 
   const filteredDrills = useMemo(() => {
     if (!selectedTag) return drills;
-    return drills.filter((drill) => (drill.tags || []).includes(selectedTag));
+    return drills.filter((drill) => getVisibleLabelTags(drill.tags).includes(selectedTag));
   }, [drills, selectedTag]);
 
   useEffect(() => {
@@ -316,6 +317,7 @@ export function DrillSelectorModal({
                 <div className="space-y-2">
                   {filteredDrills.map((drill) => {
                     const isSelected = selectedDrills.has(drill.id);
+                    const visibleTags = getVisibleLabelTags(drill.tags);
                     return (
                       <button
                         key={drill.id}
@@ -357,9 +359,9 @@ export function DrillSelectorModal({
                                 )}
                                 <span>{drill.default_duration} min</span>
                               </div>
-                              {drill.tags && drill.tags.length > 0 && (
+                              {visibleTags.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">
-                                  {drill.tags.map((tag) => (
+                                  {visibleTags.map((tag) => (
                                     <span
                                       key={`${drill.id}-${tag}`}
                                       className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs"
