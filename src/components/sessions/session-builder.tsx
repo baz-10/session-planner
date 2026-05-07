@@ -883,7 +883,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
   const handleSave = useCallback(async () => {
     if (!session.name?.trim()) {
-      alert('Please enter a session name');
+      alert('Please enter a session name before saving.');
       return;
     }
 
@@ -1338,7 +1338,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                   }
                   disabled={isSaving}
                   className="w-full min-w-0 bg-transparent text-[28px] font-bold tracking-[-0.04em] text-white outline-none placeholder:text-white/50 md:text-[30px] xl:max-w-[780px]"
-                  placeholder="Tuesday Practice · Ball-screen emphasis"
+                  placeholder="Enter session name"
                 />
                 {hasUnsavedChanges && (
                   <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
@@ -1463,7 +1463,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               <Button
                 variant="accent"
                 onClick={handleSave}
-                disabled={isSaving || !session.name?.trim()}
+                disabled={isSaving}
                 isLoading={isSaving}
                 className="bg-teal px-5 text-white hover:bg-teal-dark"
               >
@@ -1752,7 +1752,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         <button
           type="button"
           onClick={handleSave}
-          disabled={isSaving || !session.name?.trim()}
+          disabled={isSaving}
           className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-navy px-4 text-base font-extrabold text-white disabled:opacity-50"
         >
           <Save className="h-5 w-5" />
