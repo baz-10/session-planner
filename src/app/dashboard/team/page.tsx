@@ -6,6 +6,7 @@ import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
 import { useConfirmDialog } from '@/components/ui';
 import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
+import { openMailtoInvite } from '@/lib/utils/mailto';
 import type { TeamRole } from '@/types/database';
 
 type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
@@ -193,17 +194,24 @@ export default function TeamSettingsPage() {
 
   const sendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentTeam) return;
+
     // Include role suggestion in email
-    const roleText = inviteRole === 'player' ? 'as a Player' : inviteRole === 'parent' ? 'as a Parent/Guardian' : '';
-    const subject = encodeURIComponent(`Join ${currentTeam?.name} on Session Planner`);
+    const roleText = inviteRole === 'player' ? 'as a Player' : 'as a Parent/Guardian';
+    const subject = `Join ${currentTeam.name} on Session Planner`;
     const roleInviteLink = buildInviteLink(inviteRole);
-    const body = encodeURIComponent(
-      `Hi!\n\nYou've been invited to join ${currentTeam?.name} on Session Planner ${roleText}.\n\n` +
+    const body =
+      `Hi!\n\nYou've been invited to join ${currentTeam.name} on Session Planner ${roleText}.\n\n` +
       `Join using this link: ${roleInviteLink}\n\n` +
-      `Or enter this code in the app: ${currentTeam?.team_code}\n\n` +
-      `See you on the field!`
-    );
-    window.open(`mailto:${inviteEmail}?subject=${subject}&body=${body}`);
+      `Or enter this code in the app: ${currentTeam.team_code}\n\n` +
+      `See you on the field!`;
+
+    const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
+    if (!didOpen) {
+      showInviteFeedback({ type: 'error', text: 'Enter an email address before sending an invite.' });
+      return;
+    }
+
     setInviteSent(true);
     setInviteEmail('');
     inviteTimerRef.current = setTimeout(() => setInviteSent(false), 3000);

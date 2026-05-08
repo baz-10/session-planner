@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { useOrganization } from '@/hooks/use-organization';
 import { useConfirmDialog } from '@/components/ui';
+import { openMailtoInvite } from '@/lib/utils/mailto';
 import type { Team, OrgRole } from '@/types/database';
 
 interface OrganizationMemberWithProfile {
@@ -85,15 +86,20 @@ export default function OrganizationSettingsPage() {
     }
 
     const inviteLink = `${window.location.origin}/dashboard/organization/setup?code=${encodeURIComponent(inviteCode)}`;
-    const subject = encodeURIComponent(`Join ${currentOrganization.name} on Session Planner`);
-    const body = encodeURIComponent(
+    const subject = `Join ${currentOrganization.name} on Session Planner`;
+    const body =
       `Hi!\n\nYou've been invited to join ${currentOrganization.name} on Session Planner.\n\n` +
         `Join using this link: ${inviteLink}\n\n` +
         `Invite code: ${inviteCode}\n\n` +
         `New organization members join as members. An admin can promote trusted users after they join.\n\n` +
-        `See you soon!`
-    );
-    window.open(`mailto:${inviteEmail}?subject=${subject}&body=${body}`);
+        `See you soon!`;
+
+    const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
+    if (!didOpen) {
+      setError('Enter an email address before sending an invite.');
+      return;
+    }
+
     setInviteFeedback('Email client opened with a member invite link.');
     setInviteEmail('');
     inviteTimerRef.current = setTimeout(() => setInviteFeedback(''), 3000);
