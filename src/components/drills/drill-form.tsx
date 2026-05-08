@@ -109,9 +109,12 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   const handleDeleteMedia = async (mediaId: string) => {
     if (!confirm('Delete this media file?')) return;
 
+    setError('');
     const result = await deleteDrillMedia(mediaId);
     if (result.success) {
       setMedia((prev) => prev.filter((m) => m.id !== mediaId));
+    } else {
+      setError(result.error || 'Failed to delete media');
     }
   };
 

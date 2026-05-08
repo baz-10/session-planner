@@ -21,6 +21,10 @@ interface DrillReadOptions {
   throwOnError?: boolean;
 }
 
+const STALE_DRILL_ERROR = 'Drill access changed. Refresh the library and try again.';
+const STALE_CATEGORY_ERROR = 'Category access changed. Refresh categories and try again.';
+const STALE_MEDIA_ERROR = 'Media access changed. Refresh the drill and try again.';
+
 export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -165,12 +169,19 @@ export function useDrills() {
   const updateDrill = useCallback(
     async (drillId: string, updates: Partial<Drill>): Promise<{ success: boolean; error?: string }> => {
       setIsLoading(true);
-      const { error } = await supabase.from('drills').update(updates).eq('id', drillId);
+      const { error, count } = await supabase
+        .from('drills')
+        .update(updates, { count: 'exact' })
+        .eq('id', drillId);
       setIsLoading(false);
 
       if (error) {
         console.error('Error updating drill:', error);
         return { success: false, error: 'Failed to update drill' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_DRILL_ERROR };
       }
 
       return { success: true };
@@ -183,11 +194,18 @@ export function useDrills() {
    */
   const deleteDrill = useCallback(
     async (drillId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('drills').delete().eq('id', drillId);
+      const { error, count } = await supabase
+        .from('drills')
+        .delete({ count: 'exact' })
+        .eq('id', drillId);
 
       if (error) {
         console.error('Error deleting drill:', error);
         return { success: false, error: 'Failed to delete drill' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_DRILL_ERROR };
       }
 
       return { success: true };
@@ -271,11 +289,18 @@ export function useDrills() {
       }
 
       // Delete the record
-      const { error } = await supabase.from('drill_media').delete().eq('id', mediaId);
+      const { error, count } = await supabase
+        .from('drill_media')
+        .delete({ count: 'exact' })
+        .eq('id', mediaId);
 
       if (error) {
         console.error('Error deleting media:', error);
         return { success: false, error: 'Failed to delete media' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_MEDIA_ERROR };
       }
 
       return { success: true };
@@ -364,14 +389,18 @@ export function useDrills() {
       categoryId: string,
       updates: Partial<DrillCategory>
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('drill_categories')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', categoryId);
 
       if (error) {
         console.error('Error updating category:', error);
         return { success: false, error: 'Failed to update category' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_CATEGORY_ERROR };
       }
 
       return { success: true };
@@ -384,11 +413,18 @@ export function useDrills() {
    */
   const deleteCategory = useCallback(
     async (categoryId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('drill_categories').delete().eq('id', categoryId);
+      const { error, count } = await supabase
+        .from('drill_categories')
+        .delete({ count: 'exact' })
+        .eq('id', categoryId);
 
       if (error) {
         console.error('Error deleting category:', error);
         return { success: false, error: 'Failed to delete category' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_CATEGORY_ERROR };
       }
 
       return { success: true };

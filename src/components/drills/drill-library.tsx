@@ -28,6 +28,7 @@ export function DrillLibrary() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
@@ -103,10 +104,13 @@ export function DrillLibrary() {
   const handleDelete = async (drill: DrillWithDetails) => {
     if (!confirm(`Are you sure you want to delete "${drill.name}"?`)) return;
 
+    setActionError('');
     const result = await deleteDrill(drill.id);
     if (result.success) {
       setDrills((prev) => prev.filter((d) => d.id !== drill.id));
       setAllDrills((prev) => prev.filter((d) => d.id !== drill.id));
+    } else {
+      setActionError(result.error || 'Failed to delete drill.');
     }
   };
 
@@ -138,6 +142,11 @@ export function DrillLibrary() {
     <div className="space-y-6">
       {/* Toolbar */}
       <div className="bg-white rounded-lg shadow-md p-4">
+        {actionError && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-4">
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
