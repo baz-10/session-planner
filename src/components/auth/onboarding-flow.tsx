@@ -46,12 +46,6 @@ export function OnboardingFlow() {
   const [relationship, setRelationship] = useState<RelationshipType>('parent');
   const [joinedTeamId, setJoinedTeamId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isParent) {
-      setJoinRole('parent');
-    }
-  }, [isParent]);
-
   const getJoinedParentTeamId = () => {
     if (currentTeam?.id && teamMemberships.some((membership) => (
       membership.team.id === currentTeam.id && membership.role === 'parent'
@@ -61,6 +55,14 @@ export function OnboardingFlow() {
 
     return teamMemberships.find((membership) => membership.role === 'parent')?.team.id || null;
   };
+
+  const hasParentTeamMembership = Boolean(getJoinedParentTeamId());
+
+  useEffect(() => {
+    if (isParent || hasParentTeamMembership) {
+      setJoinRole('parent');
+    }
+  }, [isParent, hasParentTeamMembership]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +80,7 @@ export function OnboardingFlow() {
       return;
     }
 
-    const parentTeamId = isParent ? getJoinedParentTeamId() : null;
+    const parentTeamId = getJoinedParentTeamId();
     setIsSubmitting(false);
 
     if (parentTeamId) {
@@ -134,7 +136,7 @@ export function OnboardingFlow() {
     setIsSubmitting(false);
 
     // If parent, go to add players step
-    if (isParent && result.team) {
+    if (joinRole === 'parent' && result.team) {
       setStep('add-players');
     } else {
       setStep('complete');
