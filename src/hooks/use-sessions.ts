@@ -28,9 +28,29 @@ function isLegacyLinkedPlayColumnError(error: { message?: string | null } | null
   return message.includes('linked_play_') && message.includes('column');
 }
 
+interface MaybeLinkedPlayData {
+  linked_play_id?: unknown;
+  linked_play_name_snapshot?: unknown;
+  linked_play_version_snapshot?: unknown;
+  linked_play_snapshot?: unknown;
+  linked_play_thumbnail_data_url?: unknown;
+}
+
+function hasLinkedPlayData(value: MaybeLinkedPlayData): boolean {
+  return [
+    value.linked_play_id,
+    value.linked_play_name_snapshot,
+    value.linked_play_version_snapshot,
+    value.linked_play_snapshot,
+    value.linked_play_thumbnail_data_url,
+  ].some((item) => item !== null && item !== undefined && item !== '');
+}
+
 const STALE_SESSION_ERROR = 'This plan could not be saved. It may have been deleted or your access may have changed.';
 const STALE_ACTIVITY_ERROR = 'This activity could not be saved. It may have been deleted or your access may have changed.';
 const SESSION_LIST_LOAD_ERROR = 'Practice plans could not load. Check your connection and try again.';
+const LINKED_PLAY_MIGRATION_ERROR =
+  'Linked play attachments require the latest database migrations. Apply migrations and try again.';
 
 interface GetSessionsOptions {
   throwOnError?: boolean;
@@ -316,6 +336,15 @@ export function useSessions() {
 
         let { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
         if (insertError && isLegacyLinkedPlayColumnError(insertError)) {
+          if (activitiesToInsert.some(hasLinkedPlayData)) {
+            console.error('Linked play columns missing while duplicating session activities:', insertError);
+            await supabase.from('sessions').delete().eq('id', result.session.id);
+            return {
+              success: false,
+              error: LINKED_PLAY_MIGRATION_ERROR,
+            };
+          }
+
           const legacyActivitiesToInsert = activitiesToInsert.map((activity) => {
             // Remove columns unavailable in legacy schemas.
             const {
@@ -377,6 +406,11 @@ export function useSessions() {
         .single();
 
       if (error && isLegacyLinkedPlayColumnError(error)) {
+        if (hasLinkedPlayData(payload)) {
+          console.error('Linked play columns missing while adding session activity:', error);
+          return { success: false, error: LINKED_PLAY_MIGRATION_ERROR };
+        }
+
         const {
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
@@ -418,6 +452,11 @@ export function useSessions() {
         .eq('id', activityId);
 
       if (error && isLegacyLinkedPlayColumnError(error)) {
+        if (hasLinkedPlayData(updates)) {
+          console.error('Linked play columns missing while updating session activity:', error);
+          return { success: false, error: LINKED_PLAY_MIGRATION_ERROR };
+        }
+
         const {
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
