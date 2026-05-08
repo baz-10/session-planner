@@ -4,10 +4,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
+  AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Copy,
+  Info,
   ListChecks,
   MapPin,
   PlayCircle,
@@ -18,6 +22,7 @@ import {
   Shield,
   Timer,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
@@ -65,6 +70,34 @@ interface SessionWithActivities extends Session {
 interface DrillWithCategory extends Drill {
   category?: DrillCategory | null;
 }
+
+type SessionBuilderStatusType = 'success' | 'error' | 'warning' | 'info';
+
+interface SessionBuilderStatus {
+  type: SessionBuilderStatusType;
+  text: string;
+}
+
+const STATUS_BANNER_CLASSES: Record<SessionBuilderStatusType, string> = {
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  error: 'border-red-200 bg-red-50 text-red-950',
+  warning: 'border-amber-200 bg-amber-50 text-amber-950',
+  info: 'border-sky-200 bg-sky-50 text-sky-950',
+};
+
+const STATUS_ICON_CLASSES: Record<SessionBuilderStatusType, string> = {
+  success: 'text-emerald-600',
+  error: 'text-red-600',
+  warning: 'text-amber-600',
+  info: 'text-sky-600',
+};
+
+const STATUS_BANNER_ICONS = {
+  success: CheckCircle2,
+  error: AlertCircle,
+  warning: AlertTriangle,
+  info: Info,
+};
 
 const CATEGORY_FALLBACK_COLORS: Record<string, string> = {
   warmup: '#94a3b8',
@@ -190,11 +223,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showAutopilot, setShowAutopilot] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [statusMessage, setStatusMessage] = useState<SessionBuilderStatus | null>(null);
   const [drillModalInitialTab, setDrillModalInitialTab] = useState<'library' | 'custom'>('library');
   const activeTeamId = session.team_id || currentTeam?.id;
   const currentMembership = teamMemberships.find((membership) => membership.team.id === activeTeamId);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
   const canManagePlayLinks = canManageSessions;
+
+  const showStatus = useCallback((message: SessionBuilderStatus) => {
+    setStatusMessage(message);
+  }, []);
 
   const loadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -316,6 +354,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Handle metadata changes
   const handleMetadataChange = useCallback((updates: Partial<Session>) => {
     if (!canManageSessions) return;
+    setStatusMessage(null);
     setSession((prev) => ({ ...prev, ...updates }));
     setHasUnsavedChanges(true);
   }, [canManageSessions]);
@@ -368,13 +407,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         const result = await updateActivity(activityId, normalizedUpdates);
         if (!result.success) {
           setSession((prev) => ({ ...prev, activities: previousActivities }));
-          alert(`Failed to save activity changes: ${result.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to save activity changes: ${result.error || 'Please try again.'}`,
+          });
         }
       } else {
         setHasUnsavedChanges(true);
       }
     },
-    [canManageSessions, session.activities, session.id, updateActivity, categories]
+    [canManageSessions, session.activities, session.id, updateActivity, categories, showStatus]
   );
 
   const handleActivityDelete = useCallback(
@@ -384,7 +426,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       if (session.id) {
         const result = await deleteActivity(activityId);
         if (!result.success) {
-          alert(`Failed to delete activity: ${result.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to delete activity: ${result.error || 'Please try again.'}`,
+          });
           return;
         }
       }
@@ -402,7 +447,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         setHasUnsavedChanges(true);
       }
     },
-    [canManageSessions, session.id, deleteActivity]
+    [canManageSessions, session.id, deleteActivity, showStatus]
   );
 
   const handleReorder = useCallback(
@@ -428,13 +473,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         const result = await reorderActivities(session.id, activityIds);
         if (!result.success) {
           setSession((prev) => ({ ...prev, activities: previousActivities }));
-          alert(`Failed to reorder activities: ${result.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to reorder activities: ${result.error || 'Please try again.'}`,
+          });
         }
       } else {
         setHasUnsavedChanges(true);
       }
     },
-    [canManageSessions, session.id, session.activities, reorderActivities]
+    [canManageSessions, session.id, session.activities, reorderActivities, showStatus]
   );
 
   // Add activity from drill library
@@ -487,7 +535,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             ],
           }));
         } else {
-          alert(`Failed to add activity: ${result.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to add activity: ${result.error || 'Please try again.'}`,
+          });
           return;
         }
       } else {
@@ -507,7 +558,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [canManageSessions, session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories, showStatus]
   );
 
   // Add multiple drills at once
@@ -555,7 +606,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }));
 
         if (failedCount > 0) {
-          alert(`${failedCount} activit${failedCount === 1 ? 'y' : 'ies'} failed to add. Please try again.`);
+          showStatus({
+            type: 'warning',
+            text: `${failedCount} activit${failedCount === 1 ? 'y' : 'ies'} failed to add. Please try again.`,
+          });
         }
       } else {
         // Add to local state
@@ -592,7 +646,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [canManageSessions, session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories, showStatus]
   );
 
   // Add custom activity
@@ -622,7 +676,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             ],
           }));
         } else {
-          alert(`Failed to add custom activity: ${result.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to add custom activity: ${result.error || 'Please try again.'}`,
+          });
           return;
         }
       } else {
@@ -656,7 +713,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       setIsDrillModalOpen(false);
     },
-    [canManageSessions, session.id, session.activities, addActivity, categories]
+    [canManageSessions, session.id, session.activities, addActivity, categories, showStatus]
   );
 
   // Open drill modal in single mode
@@ -728,7 +785,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       const latestPlay = (await getPlay(activity.linked_play_id)) || playsById[activity.linked_play_id];
       if (!latestPlay) {
-        alert('The linked play no longer exists or cannot be accessed.');
+        showStatus({
+          type: 'error',
+          text: 'The linked play no longer exists or cannot be accessed.',
+        });
         return;
       }
 
@@ -745,7 +805,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         [latestPlay.id]: latestPlay,
       }));
     },
-    [canManagePlayLinks, session.activities, getPlay, playsById, handleActivityUpdate]
+    [canManagePlayLinks, session.activities, getPlay, playsById, handleActivityUpdate, showStatus]
   );
 
   const handleViewLinkedPlay = useCallback(
@@ -783,7 +843,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         const targetTeamId = session.team_id || currentTeam?.id;
         if (!targetTeamId) {
-          alert('No team selected. Please select a team before applying Autopilot.');
+          showStatus({
+            type: 'error',
+            text: 'No team selected. Please select a team before applying Autopilot.',
+          });
           return;
         }
 
@@ -803,7 +866,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         if (!draftResult.success || !draftResult.session) {
           setIsSaving(false);
-          alert(`Failed to create Autopilot draft: ${draftResult.error || 'Please try again.'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to create Autopilot draft: ${draftResult.error || 'Please try again.'}`,
+          });
           return;
         }
 
@@ -832,9 +898,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         setIsSaving(false);
         if (failedCount > 0) {
-          alert(
-            `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`
-          );
+          showStatus({
+            type: 'warning',
+            text: `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`,
+          });
         }
         router.push(`/dashboard/sessions/${draftResult.session.id}`);
         return;
@@ -890,9 +957,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }));
 
         if (!didPersistAllChanges) {
-          alert(
-            'Autopilot plan was partially applied. Some activity inserts failed. Please review the plan before sharing.'
-          );
+          showStatus({
+            type: 'warning',
+            text: 'Autopilot plan was partially applied. Some activity inserts failed. Please review the plan before sharing.',
+          });
           setHasUnsavedChanges(true);
         }
         return;
@@ -956,6 +1024,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       currentTeam?.id,
       drillCategoryIdsByDrillId,
       router,
+      showStatus,
     ]
   );
 
@@ -1028,17 +1097,26 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
   const handleSave = useCallback(async () => {
     if (!session.name?.trim()) {
-      alert('Please enter a session name before saving.');
+      showStatus({
+        type: 'error',
+        text: 'Please enter a session name before saving.',
+      });
       return;
     }
 
     if (!canManageSessions) {
-      alert('Only coaches or admins can save session plans for this team.');
+      showStatus({
+        type: 'error',
+        text: 'Only coaches or admins can save session plans for this team.',
+      });
       return;
     }
 
     if (!currentTeam?.id) {
-      alert('No team selected. Please select a team first.');
+      showStatus({
+        type: 'error',
+        text: 'No team selected. Please select a team first.',
+      });
       return;
     }
 
@@ -1063,7 +1141,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         });
 
         if (!updateResult.success) {
-          alert(`Failed to save: ${updateResult.error || 'Unknown error'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to save: ${updateResult.error || 'Unknown error'}`,
+          });
           setIsSaving(false);
           return;
         }
@@ -1085,7 +1166,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         });
 
         if (!result.success) {
-          alert(`Failed to create session: ${result.error || 'Unknown error'}`);
+          showStatus({
+            type: 'error',
+            text: `Failed to create session: ${result.error || 'Unknown error'}`,
+          });
           setIsSaving(false);
           return;
         }
@@ -1110,9 +1194,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }
 
       if (!didPersistAllChanges) {
-        alert(
-          'Session details were saved, but one or more activities failed to save. Your local activities were kept so you can retry Save Plan.'
-        );
+        showStatus({
+          type: 'warning',
+          text: 'Session details were saved, but one or more activities failed to save. Your local activities were kept so you can retry Save Plan.',
+        });
         setHasUnsavedChanges(true);
         return;
       }
@@ -1124,18 +1209,28 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }
 
       setHasUnsavedChanges(false);
+      showStatus({
+        type: 'success',
+        text: 'Plan saved.',
+      });
     } catch (error) {
       console.error('Save error:', error);
-      alert('An unexpected error occurred while saving. Check the console for details.');
+      showStatus({
+        type: 'error',
+        text: 'An unexpected error occurred while saving. Please try again.',
+      });
     } finally {
       setIsSaving(false);
     }
-  }, [session, currentTeam, canManageSessions, createSession, updateSession, persistUnsavedActivities, router]);
+  }, [session, currentTeam, canManageSessions, createSession, updateSession, persistUnsavedActivities, router, showStatus]);
 
   // Save as new (duplicate)
   const handleSaveAsNew = useCallback(async () => {
     if (!canManageSessions) {
-      alert('Only coaches or admins can duplicate session plans for this team.');
+      showStatus({
+        type: 'error',
+        text: 'Only coaches or admins can duplicate session plans for this team.',
+      });
       return;
     }
 
@@ -1148,11 +1243,14 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       if (result.success && result.session) {
         router.push(`/dashboard/sessions/${result.session.id}`);
       } else {
-        alert(`Failed to duplicate plan: ${result.error || 'Please try again.'}`);
+        showStatus({
+          type: 'error',
+          text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+        });
       }
       setIsSaving(false);
     }
-  }, [canManageSessions, session.id, session.name, duplicateSession, router]);
+  }, [canManageSessions, session.id, session.name, duplicateSession, router, showStatus]);
 
   // Print session
   const handlePrint = useCallback(() => {
@@ -1169,7 +1267,10 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
     const activities = (session.activities || []) as ActivityWithCategory[];
     if (activities.length === 0) {
-      alert('No activities to save yet.');
+      showStatus({
+        type: 'info',
+        text: 'No activities to save yet.',
+      });
       return;
     }
 
@@ -1251,14 +1352,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       await loadDrillCategoryContext();
 
-      alert(summaryParts.join(' '));
+      showStatus({
+        type: failedCreateCount > 0 ? 'warning' : 'success',
+        text: summaryParts.join(' '),
+      });
     } catch (error) {
       console.error('Failed to save activities to drill library:', error);
-      alert('Failed to save activities to Drill Library. Please try again.');
+      showStatus({
+        type: 'error',
+        text: 'Failed to save activities to Drill Library. Please try again.',
+      });
     } finally {
       setIsSavingActivitiesToLibrary(false);
     }
-  }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext]);
+  }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext, showStatus]);
 
   // Clear form
   const handleClear = useCallback(() => {
@@ -1317,6 +1424,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   }, [activities, sessionDuration, sessionStartTime]);
   const offenseFocus = session.offensive_emphasis?.trim() || 'Set offense focus';
   const defenseFocus = session.defensive_emphasis?.trim() || 'Set defense focus';
+  const StatusIcon = statusMessage ? STATUS_BANNER_ICONS[statusMessage.type] : Info;
 
   if (isLoading) {
     return (
@@ -1499,6 +1607,26 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           </div>
         </MobileListCard>
       </div>
+
+      {statusMessage && (
+        <div
+          role={statusMessage.type === 'error' ? 'alert' : 'status'}
+          className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-sm ${STATUS_BANNER_CLASSES[statusMessage.type]}`}
+        >
+          <StatusIcon
+            className={`mt-0.5 h-5 w-5 shrink-0 ${STATUS_ICON_CLASSES[statusMessage.type]}`}
+          />
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-6">{statusMessage.text}</p>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-current/70 transition hover:bg-black/5 hover:text-current focus:outline-none focus:ring-2 focus:ring-current/20"
+            aria-label="Dismiss status message"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <section className="hidden overflow-hidden rounded-[28px] bg-gradient-to-br from-[#1e3a5f] via-[#16314f] to-[#0f1f33] text-white shadow-[0_30px_80px_rgba(15,31,51,0.28)] md:block">
         <div className="relative overflow-hidden px-6 py-7 md:px-9">

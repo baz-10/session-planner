@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertCircle,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Copy,
   Edit3,
@@ -12,6 +13,7 @@ import {
   PlayCircle,
   RefreshCw,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
@@ -19,18 +21,25 @@ import { MobileEmptyState, MobileListCard, MobileLoadingState } from '@/componen
 import { formatDuration, formatTime12Hour } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
 
+type SessionListActionMessage = {
+  type: 'success' | 'error';
+  text: string;
+};
+
 export function SessionsList() {
   const { currentTeam, teamMemberships, isLoading: authLoading } = useAuth();
   const { getSessions, deleteSession, duplicateSession } = useSessions();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [actionMessage, setActionMessage] = useState<SessionListActionMessage | null>(null);
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   const loadSessions = useCallback(async () => {
     setIsLoading(true);
     setLoadError('');
+    setActionMessage(null);
 
     try {
       const data = await getSessions({ throwOnError: true });
@@ -60,7 +69,10 @@ export function SessionsList() {
 
   const handleDelete = async (id: string, name: string) => {
     if (!canManageSessions) {
-      alert('Only coaches or admins can delete session plans for this team.');
+      setActionMessage({
+        type: 'error',
+        text: 'Only coaches or admins can delete session plans for this team.',
+      });
       return;
     }
 
@@ -69,14 +81,24 @@ export function SessionsList() {
     const result = await deleteSession(id);
     if (result.success) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
+      setActionMessage({
+        type: 'success',
+        text: `"${name}" was deleted.`,
+      });
     } else {
-      alert(`Failed to delete plan: ${result.error || 'Please try again.'}`);
+      setActionMessage({
+        type: 'error',
+        text: `Failed to delete plan: ${result.error || 'Please try again.'}`,
+      });
     }
   };
 
   const handleDuplicate = async (id: string, name: string) => {
     if (!canManageSessions) {
-      alert('Only coaches or admins can duplicate session plans for this team.');
+      setActionMessage({
+        type: 'error',
+        text: 'Only coaches or admins can duplicate session plans for this team.',
+      });
       return;
     }
 
@@ -85,9 +107,16 @@ export function SessionsList() {
 
     const result = await duplicateSession(id, newName);
     if (result.success) {
-      void loadSessions();
+      await loadSessions();
+      setActionMessage({
+        type: 'success',
+        text: `"${newName}" was created.`,
+      });
     } else {
-      alert(`Failed to duplicate plan: ${result.error || 'Please try again.'}`);
+      setActionMessage({
+        type: 'error',
+        text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+      });
     }
   };
 
@@ -163,6 +192,34 @@ export function SessionsList() {
 
   return (
     <>
+      {actionMessage && (
+        <div
+          role={actionMessage.type === 'error' ? 'alert' : 'status'}
+          className={`mb-4 flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-sm ${
+            actionMessage.type === 'error'
+              ? 'border-red-200 bg-red-50 text-red-950'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-950'
+          }`}
+        >
+          {actionMessage.type === 'error' ? (
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+          )}
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-6">
+            {actionMessage.text}
+          </p>
+          <button
+            type="button"
+            onClick={() => setActionMessage(null)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-current/70 transition hover:bg-black/5 hover:text-current focus:outline-none focus:ring-2 focus:ring-current/20"
+            aria-label="Dismiss session list message"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="space-y-3 md:hidden">
         {sessions.map((session) => (
           <MobileListCard key={session.id}>
@@ -332,27 +389,21 @@ export function SessionsList() {
                         className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
                         title="Edit"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
+                        <Edit3 className="h-5 w-5" />
                       </Link>
                       <button
                         onClick={() => handleDuplicate(session.id, session.name)}
                         className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
                         title="Duplicate"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
+                        <Copy className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleDelete(session.id, session.name)}
                         className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         title="Delete"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <Trash2 className="h-5 w-5" />
                       </button>
                     </>
                   )}
