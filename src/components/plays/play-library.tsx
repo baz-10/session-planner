@@ -24,19 +24,33 @@ export function PlayLibrary() {
   const [courtTemplate, setCourtTemplate] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState('');
   const [tagOptions, setTagOptions] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   const membership = teamMemberships.find((item) => item.team.id === currentTeamId);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
 
   const loadPlays = useCallback(async () => {
     setIsLoading(true);
-    const data = await getPlays({
-      playType: (playType || undefined) as PlayType | undefined,
-      courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
-      tag: selectedTag || undefined,
-    });
-    setPlays(data);
-    setIsLoading(false);
+    setLoadError('');
+    try {
+      const data = await getPlays(
+        {
+          playType: (playType || undefined) as PlayType | undefined,
+          courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
+          tag: selectedTag || undefined,
+        },
+        { throwOnError: true }
+      );
+      setPlays(data);
+    } catch (error) {
+      console.error('Error loading play library:', error);
+      setPlays([]);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load play library.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [courtTemplate, getPlays, playType, selectedTag]);
 
   const loadTagOptions = useCallback(async () => {
@@ -45,11 +59,16 @@ export function PlayLibrary() {
       return;
     }
 
-    const data = await getPlays();
-    const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
-      a.localeCompare(b)
-    );
-    setTagOptions(tags);
+    try {
+      const data = await getPlays({}, { throwOnError: true });
+      const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
+        a.localeCompare(b)
+      );
+      setTagOptions(tags);
+    } catch (error) {
+      console.error('Error loading play tag options:', error);
+      setTagOptions([]);
+    }
   }, [currentTeamId, getPlays]);
 
   useEffect(() => {
@@ -61,7 +80,7 @@ export function PlayLibrary() {
     }
     void loadPlays();
     void loadTagOptions();
-  }, [currentTeamId, loadPlays, loadTagOptions]);
+  }, [currentTeamId, loadPlays, loadTagOptions, reloadKey]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -71,15 +90,23 @@ export function PlayLibrary() {
 
     const timeout = setTimeout(async () => {
       setIsLoading(true);
-      const result = await searchPlays(searchQuery);
-      const filtered = result.filter((play) => {
-        if (playType && play.play_type !== playType) return false;
-        if (courtTemplate && play.court_template !== courtTemplate) return false;
-        if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
-        return true;
-      });
-      setPlays(filtered);
-      setIsLoading(false);
+      setLoadError('');
+      try {
+        const result = await searchPlays(searchQuery, { throwOnError: true });
+        const filtered = result.filter((play) => {
+          if (playType && play.play_type !== playType) return false;
+          if (courtTemplate && play.court_template !== courtTemplate) return false;
+          if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
+          return true;
+        });
+        setPlays(filtered);
+      } catch (error) {
+        console.error('Error searching play library:', error);
+        setPlays([]);
+        setLoadError(error instanceof Error ? error.message : 'Failed to search play library.');
+      } finally {
+        setIsLoading(false);
+      }
     }, 250);
 
     return () => clearTimeout(timeout);
@@ -89,21 +116,23 @@ export function PlayLibrary() {
     const newName = prompt('Name for duplicate play:', `${play.name} (Copy)`);
     if (!newName) return;
 
+    setActionError('');
     const result = await duplicatePlay(play.id, newName);
     if (result.success) {
       await loadPlays();
     } else {
-      alert(result.error || 'Failed to duplicate play');
+      setActionError(result.error || 'Failed to duplicate play');
     }
   };
 
   const handleDelete = async (play: Play) => {
     if (!confirm(`Delete "${play.name}"?`)) return;
+    setActionError('');
     const result = await deletePlay(play.id);
     if (result.success) {
       setPlays((prev) => prev.filter((item) => item.id !== play.id));
     } else {
-      alert(result.error || 'Failed to delete play');
+      setActionError(result.error || 'Failed to delete play');
     }
   };
 
@@ -132,6 +161,11 @@ export function PlayLibrary() {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        {actionError && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Play Library</h2>
@@ -191,7 +225,19 @@ export function PlayLibrary() {
         </div>
       </div>
 
-      {plays.length === 0 ? (
+      {loadError ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Could not load plays</h3>
+          <p className="text-gray-600 mb-5">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((value) => value + 1)}
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+          >
+            Retry
+          </button>
+        </div>
+      ) : plays.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No plays found</h3>
           <p className="text-gray-600 mb-5">Create a play or adjust filters to see results.</p>

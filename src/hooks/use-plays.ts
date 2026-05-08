@@ -16,13 +16,19 @@ interface PlayFilters {
   tag?: string;
 }
 
+interface PlayReadOptions {
+  throwOnError?: boolean;
+}
+
+const STALE_PLAY_ERROR = 'Play access changed. Refresh the library and try again.';
+
 export function usePlays() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
   const getPlays = useCallback(
-    async (filters: PlayFilters = {}): Promise<Play[]> => {
+    async (filters: PlayFilters = {}, options: PlayReadOptions = {}): Promise<Play[]> => {
       if (!currentTeam) return [];
 
       let query = supabase
@@ -47,6 +53,9 @@ export function usePlays() {
 
       if (error) {
         console.error('Error fetching plays:', error);
+        if (options.throwOnError) {
+          throw new Error('Failed to load play library.');
+        }
         return [];
       }
 
@@ -112,15 +121,19 @@ export function usePlays() {
   const updatePlay = useCallback(
     async (playId: string, updates: UpdatePlayInput): Promise<{ success: boolean; error?: string }> => {
       setIsLoading(true);
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('plays')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', playId);
       setIsLoading(false);
 
       if (error) {
         console.error('Error updating play:', error);
         return { success: false, error: error.message || 'Failed to update play' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_PLAY_ERROR };
       }
 
       return { success: true };
@@ -130,14 +143,18 @@ export function usePlays() {
 
   const deletePlay = useCallback(
     async (playId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('plays')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', playId);
 
       if (error) {
         console.error('Error deleting play:', error);
         return { success: false, error: error.message || 'Failed to delete play' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_PLAY_ERROR };
       }
 
       return { success: true };
@@ -167,11 +184,11 @@ export function usePlays() {
   );
 
   const searchPlays = useCallback(
-    async (queryText: string): Promise<Play[]> => {
+    async (queryText: string, options: PlayReadOptions = {}): Promise<Play[]> => {
       const normalized = queryText.trim().toLowerCase();
       if (!normalized) return [];
 
-      const plays = await getPlays();
+      const plays = await getPlays({}, options);
       return plays.filter((play) => {
         const searchable = [play.name, play.description || '', (play.tags || []).join(' ')].join(' ').toLowerCase();
         return searchable.includes(normalized);
