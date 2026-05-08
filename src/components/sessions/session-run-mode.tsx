@@ -25,6 +25,7 @@ import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '@/components/ui';
 import { MobileListCard, MobileStickyActionBar } from '@/components/mobile';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import {
   calculateActivityTimings,
   formatTime12Hour,
@@ -553,12 +554,8 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const handleCopySummary = useCallback(async () => {
     if (!runSummary) return;
 
-    try {
-      await navigator.clipboard.writeText(runSummary);
-      setCopyStatus('copied');
-    } catch {
-      setCopyStatus('failed');
-    }
+    const didCopy = await copyTextToClipboard(runSummary);
+    setCopyStatus(didCopy ? 'copied' : 'failed');
   }, [runSummary]);
 
   if (authLoading || isLoading) {
