@@ -1282,12 +1282,19 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   // Print session
   const handlePrint = useCallback(() => {
     if (!session.name) return;
-    printSessionPlan(session as SessionWithActivities, currentTeam?.name || '', {
+    const result = printSessionPlan(session as SessionWithActivities, currentTeam?.name || '', {
       categories,
       drillCategoryIdsByDrillId,
       appName: displayName,
     });
-  }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName]);
+
+    if (!result.success) {
+      showStatus({
+        type: 'error',
+        text: result.error,
+      });
+    }
+  }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName, showStatus]);
 
   const handleSaveActivitiesToLibrary = useCallback(async () => {
     if (!canManageSessions) return;
