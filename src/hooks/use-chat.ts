@@ -153,6 +153,10 @@ export function useChat() {
 
     const scopedConversations = (conversations || []).filter((conversation) => {
       if (conversation.type === 'direct') {
+        if (conversation.team_id) {
+          return currentTeam ? conversation.team_id === currentTeam.id : false;
+        }
+
         if (!currentTeamMemberIds) return true;
 
         return conversation.participants.some(
@@ -336,11 +340,11 @@ export function useChat() {
    */
   const getOrCreateDM = useCallback(
     async (otherUserId: string): Promise<Conversation | null> => {
-      if (!user) return null;
+      if (!user || !currentTeam) return null;
 
-      // Try using the database function
       const { data: convId, error } = await supabase.rpc('get_or_create_dm', {
         other_user_id: otherUserId,
+        team_uuid: currentTeam.id,
       });
 
       if (error) {
@@ -357,7 +361,7 @@ export function useChat() {
 
       return conv as Conversation | null;
     },
-    [user, supabase]
+    [user, currentTeam, supabase]
   );
 
   /**

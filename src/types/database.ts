@@ -911,7 +911,7 @@ export interface Database {
         Returns: boolean;
       };
       get_or_create_dm: {
-        Args: { other_user_id: string };
+        Args: { other_user_id: string; team_uuid: string };
         Returns: string;
       };
       join_team_by_code: {
