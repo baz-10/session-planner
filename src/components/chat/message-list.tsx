@@ -120,15 +120,21 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
                   {message.type === 'image' && message.metadata?.file_url && (
                     <div className="max-w-xs">
-                      <Image
-                        src={message.metadata.file_url}
-                        alt="Shared image"
-                        width={320}
-                        height={256}
-                        className="h-auto max-h-64 w-auto cursor-pointer rounded-lg object-contain"
-                        onClick={() => window.open(message.metadata.file_url, '_blank')}
-                        unoptimized
-                      />
+                      <a
+                        href={message.metadata.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open shared image"
+                      >
+                        <Image
+                          src={message.metadata.file_url}
+                          alt="Shared image"
+                          width={320}
+                          height={256}
+                          className="h-auto max-h-64 w-auto cursor-pointer rounded-lg object-contain"
+                          unoptimized
+                        />
+                      </a>
                     </div>
                   )}
 
