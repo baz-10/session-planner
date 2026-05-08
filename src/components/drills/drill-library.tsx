@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDrills } from '@/hooks/use-drills';
 import { DrillForm } from './drill-form';
 import { CategoryManager } from './category-manager';
+import { drillMatchesCategory, getVisibleLabelTags } from '@/lib/utils/drill-tags';
 import type { Drill, DrillCategory, DrillMedia } from '@/types/database';
 
 interface DrillWithDetails extends Drill {
@@ -20,6 +21,7 @@ export function DrillLibrary() {
   } = useDrills();
 
   const [drills, setDrills] = useState<DrillWithDetails[]>([]);
+  const [allDrills, setAllDrills] = useState<DrillWithDetails[]>([]);
   const [categories, setCategories] = useState<DrillCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,11 +41,16 @@ export function DrillLibrary() {
     setDrills(data);
   }, [getDrills, selectedCategoryId]);
 
+  const loadAllDrills = useCallback(async () => {
+    const data = await getDrills();
+    setAllDrills(data);
+  }, [getDrills]);
+
   const handleSearch = useCallback(async () => {
     const results = await searchDrills(searchQuery);
     // Filter by category if selected
     if (selectedCategoryId) {
-      setDrills(results.filter((d) => d.category_id === selectedCategoryId));
+      setDrills(results.filter((drill) => drillMatchesCategory(drill, selectedCategoryId)));
     } else {
       setDrills(results);
     }
@@ -51,7 +58,8 @@ export function DrillLibrary() {
 
   useEffect(() => {
     void loadCategories();
-  }, [loadCategories]);
+    void loadAllDrills();
+  }, [loadCategories, loadAllDrills]);
 
   useEffect(() => {
     async function loadVisibleDrills() {
@@ -68,13 +76,13 @@ export function DrillLibrary() {
   }, [handleSearch, loadDrills, searchQuery]);
 
   const availableTags = useMemo(() => {
-    const tags = drills.flatMap((drill) => drill.tags || []);
+    const tags = allDrills.flatMap((drill) => getVisibleLabelTags(drill.tags));
     return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
-  }, [drills]);
+  }, [allDrills]);
 
   const visibleDrills = useMemo(() => {
     if (!selectedTag) return drills;
-    return drills.filter((drill) => (drill.tags || []).includes(selectedTag));
+    return drills.filter((drill) => getVisibleLabelTags(drill.tags).includes(selectedTag));
   }, [drills, selectedTag]);
 
   useEffect(() => {
@@ -89,6 +97,7 @@ export function DrillLibrary() {
     const result = await deleteDrill(drill.id);
     if (result.success) {
       setDrills((prev) => prev.filter((d) => d.id !== drill.id));
+      setAllDrills((prev) => prev.filter((d) => d.id !== drill.id));
     }
   };
 
@@ -104,6 +113,7 @@ export function DrillLibrary() {
 
   const handleFormSuccess = () => {
     void loadDrills();
+    void loadAllDrills();
     handleFormClose();
   };
 
@@ -225,105 +235,108 @@ export function DrillLibrary() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {visibleDrills.map((drill) => (
-                <tr key={drill.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {drill.category ? (
-                      <span
-                        className="px-2 py-1 text-xs text-white rounded"
-                        style={{ backgroundColor: drill.category.color }}
-                      >
-                        {drill.category.name}
+              {visibleDrills.map((drill) => {
+                const visibleTags = getVisibleLabelTags(drill.tags);
+                return (
+                  <tr key={drill.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {drill.category ? (
+                        <span
+                          className="px-2 py-1 text-xs text-white rounded"
+                          style={{ backgroundColor: drill.category.color }}
+                        >
+                          {drill.category.name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">{drill.name}</div>
+                      {drill.description && (
+                        <div className="text-sm text-gray-500 truncate max-w-xs">
+                          {drill.description}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                      {drill.default_duration} min
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-500 truncate block max-w-xs">
+                        {drill.notes || '-'}
                       </span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{drill.name}</div>
-                    {drill.description && (
-                      <div className="text-sm text-gray-500 truncate max-w-xs">
-                        {drill.description}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                    {drill.default_duration} min
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-gray-500 truncate block max-w-xs">
-                      {drill.notes || '-'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {drill.tags && drill.tags.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {drill.tags.map((tag) => (
-                          <span
-                            key={`${drill.id}-${tag}`}
-                            className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs"
+                    </td>
+                    <td className="px-6 py-4">
+                      {visibleTags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {visibleTags.map((tag) => (
+                            <span
+                              key={`${drill.id}-${tag}`}
+                              className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {drill.media && drill.media.length > 0 ? (
+                        <span className="text-primary">
+                          {drill.media.length} file{drill.media.length !== 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEdit(drill)}
+                          className="p-1 text-gray-600 hover:text-primary hover:bg-gray-100 rounded"
+                          title="Edit"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
                           >
-                            {tag}
-                          </span>
-                        ))}
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(drill)}
+                          className="p-1 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
                       </div>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {drill.media && drill.media.length > 0 ? (
-                      <span className="text-primary">
-                        {drill.media.length} file{drill.media.length !== 1 ? 's' : ''}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleEdit(drill)}
-                        className="p-1 text-gray-600 hover:text-primary hover:bg-gray-100 rounded"
-                        title="Edit"
-                      >
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleDelete(drill)}
-                        className="p-1 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded"
-                        title="Delete"
-                      >
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

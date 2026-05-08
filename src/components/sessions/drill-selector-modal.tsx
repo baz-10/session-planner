@@ -32,6 +32,7 @@ export function DrillSelectorModal({
 }: DrillSelectorModalProps) {
   const { getDrills, searchDrills } = useDrills();
   const [drills, setDrills] = useState<DrillWithCategory[]>([]);
+  const [allDrills, setAllDrills] = useState<DrillWithCategory[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string>('');
@@ -51,15 +52,20 @@ export function DrillSelectorModal({
     setIsLoading(false);
   }, [getDrills, selectedCategoryId]);
 
+  const loadAllDrills = useCallback(async () => {
+    const data = await getDrills();
+    setAllDrills(data);
+  }, [getDrills]);
+
   // Reset selections when modal opens/closes or mode changes
   useEffect(() => {
     if (isOpen) {
       setSelectedDrills(new Map());
       setSelectedTag('');
       setActiveTab(mode === 'multiple' ? 'library' : initialTab);
-      loadDrills();
+      void loadAllDrills();
     }
-  }, [isOpen, mode, initialTab, loadDrills]);
+  }, [isOpen, mode, initialTab, loadAllDrills]);
 
   // Handle search
   useEffect(() => {
@@ -84,9 +90,9 @@ export function DrillSelectorModal({
   }, [searchQuery, selectedCategoryId, isOpen, loadDrills, searchDrills]);
 
   const availableTags = useMemo(() => {
-    const tags = drills.flatMap((drill) => getVisibleLabelTags(drill.tags));
+    const tags = allDrills.flatMap((drill) => getVisibleLabelTags(drill.tags));
     return Array.from(new Set(tags)).sort((a, b) => a.localeCompare(b));
-  }, [drills]);
+  }, [allDrills]);
 
   const filteredDrills = useMemo(() => {
     if (!selectedTag) return drills;
