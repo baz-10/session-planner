@@ -1617,6 +1617,35 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const handleClear = useCallback(async () => {
     if (!canManageSessions) return;
 
+    if (session.id) {
+      if (!hasUnsavedChanges) {
+        showStatus({
+          type: 'info',
+          text: 'There are no unsaved changes to reset.',
+        });
+        return;
+      }
+
+      const shouldReset = await confirmAction({
+        title: 'Reset unsaved changes?',
+        description: 'The editor will reload the last saved version of this practice plan.',
+        confirmLabel: 'Reset changes',
+        confirmVariant: 'destructive',
+      });
+
+      if (!shouldReset) {
+        return;
+      }
+
+      await loadSession();
+      setHasUnsavedChanges(false);
+      showStatus({
+        type: 'info',
+        text: 'Unsaved changes were reset to the saved plan.',
+      });
+      return;
+    }
+
     if (hasUnsavedChanges) {
       const shouldClear = await confirmAction({
         title: 'Clear unsaved changes?',
@@ -1643,7 +1672,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       activities: [],
     });
     setHasUnsavedChanges(false);
-  }, [canManageSessions, confirmAction, hasUnsavedChanges]);
+  }, [canManageSessions, confirmAction, hasUnsavedChanges, loadSession, session.id, showStatus]);
 
   const activities = useMemo(
     () => (session.activities || []) as ActivityWithCategory[],
@@ -2298,8 +2327,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       {canManageSessions && (
       <div className="hidden flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex">
-        <Button variant="outline" onClick={handleClear} disabled={isSaving}>
-          Clear form
+        <Button
+          variant="outline"
+          onClick={handleClear}
+          disabled={isSaving || Boolean(session.id && !hasUnsavedChanges)}
+        >
+          {session.id ? 'Reset changes' : 'Clear form'}
         </Button>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-slate-500">
