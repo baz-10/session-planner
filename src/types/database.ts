@@ -916,7 +916,7 @@ export interface Database {
       };
       join_team_by_code: {
         Args: { invite_code: string; requested_role?: TeamRole };
-        Returns: Team;
+        Returns: Omit<Team, 'team_code'>;
       };
       get_team_invite_code: {
         Args: { team_uuid: string };
