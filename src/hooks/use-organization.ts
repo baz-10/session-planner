@@ -39,7 +39,7 @@ const STALE_ORG_MEMBER_ERROR =
   'This organization member could not be updated. They may have been removed or your access may have changed.';
 
 export function useOrganization() {
-  const { user, refreshOrganizationMemberships } = useAuth();
+  const { user, refreshOrganizationMemberships, setCurrentOrganization } = useAuth();
   const supabase = getBrowserSupabaseClient();
 
   /**
@@ -69,10 +69,11 @@ export function useOrganization() {
 
       // The database trigger adds the creator as an organization admin.
       await refreshOrganizationMemberships();
+      setCurrentOrganization(org as Organization);
 
       return { success: true, organization: org as Organization };
     },
-    [user, supabase, refreshOrganizationMemberships]
+    [user, supabase, refreshOrganizationMemberships, setCurrentOrganization]
   );
 
   /**
@@ -103,10 +104,11 @@ export function useOrganization() {
       }
 
       await refreshOrganizationMemberships();
+      setCurrentOrganization(org as Organization);
 
       return { success: true, organization: org as Organization };
     },
-    [user, supabase, refreshOrganizationMemberships]
+    [user, supabase, refreshOrganizationMemberships, setCurrentOrganization]
   );
 
   /**
