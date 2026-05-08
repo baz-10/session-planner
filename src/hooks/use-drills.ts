@@ -17,6 +17,10 @@ interface DrillWithDetails extends Drill {
   media?: DrillMedia[];
 }
 
+interface DrillReadOptions {
+  throwOnError?: boolean;
+}
+
 export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -36,7 +40,7 @@ export function useDrills() {
    * Get all drills for the current team
    */
   const getDrills = useCallback(
-    async (categoryId?: string): Promise<DrillWithDetails[]> => {
+    async (categoryId?: string, options: DrillReadOptions = {}): Promise<DrillWithDetails[]> => {
       if (!currentTeam) return [];
 
       let query = supabase
@@ -74,6 +78,9 @@ export function useDrills() {
 
         if (fallbackError) {
           console.error('Error fetching drills (fallback):', fallbackError);
+          if (options.throwOnError) {
+            throw new Error('Failed to load drill library.');
+          }
           return [];
         }
 
@@ -393,7 +400,7 @@ export function useDrills() {
    * Search drills
    */
   const searchDrills = useCallback(
-    async (query: string): Promise<DrillWithDetails[]> => {
+    async (query: string, options: DrillReadOptions = {}): Promise<DrillWithDetails[]> => {
       const normalizedQuery = query.trim().toLowerCase();
       if (!currentTeam || !normalizedQuery) return [];
 
@@ -420,6 +427,9 @@ export function useDrills() {
 
         if (fallbackError) {
           console.error('Error searching drills (fallback):', fallbackError);
+          if (options.throwOnError) {
+            throw new Error('Failed to search drill library.');
+          }
           return [];
         }
 

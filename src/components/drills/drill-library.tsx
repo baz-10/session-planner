@@ -27,6 +27,8 @@ export function DrillLibrary() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string>('');
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingDrill, setEditingDrill] = useState<DrillWithDetails | null>(null);
@@ -37,7 +39,7 @@ export function DrillLibrary() {
   }, [getCategories]);
 
   const loadDrills = useCallback(async () => {
-    const data = await getDrills(selectedCategoryId || undefined);
+    const data = await getDrills(selectedCategoryId || undefined, { throwOnError: true });
     setDrills(data);
   }, [getDrills, selectedCategoryId]);
 
@@ -47,7 +49,7 @@ export function DrillLibrary() {
   }, [getDrills]);
 
   const handleSearch = useCallback(async () => {
-    const results = await searchDrills(searchQuery);
+    const results = await searchDrills(searchQuery, { throwOnError: true });
     // Filter by category if selected
     if (selectedCategoryId) {
       setDrills(results.filter((drill) => drillMatchesCategory(drill, selectedCategoryId)));
@@ -64,16 +66,23 @@ export function DrillLibrary() {
   useEffect(() => {
     async function loadVisibleDrills() {
       setIsLoading(true);
-      if (searchQuery.trim()) {
-        await handleSearch();
-      } else {
-        await loadDrills();
+      setLoadError('');
+      try {
+        if (searchQuery.trim()) {
+          await handleSearch();
+        } else {
+          await loadDrills();
+        }
+      } catch (error) {
+        console.error('Error loading visible drills:', error);
+        setDrills([]);
+        setLoadError(error instanceof Error ? error.message : 'Failed to load drill library.');
       }
       setIsLoading(false);
     }
 
     void loadVisibleDrills();
-  }, [handleSearch, loadDrills, searchQuery]);
+  }, [handleSearch, loadDrills, reloadKey, searchQuery]);
 
   const availableTags = useMemo(() => {
     const tags = allDrills.flatMap((drill) => getVisibleLabelTags(drill.tags));
@@ -186,7 +195,20 @@ export function DrillLibrary() {
       </div>
 
       {/* Drill List */}
-      {visibleDrills.length === 0 ? (
+      {loadError ? (
+        <div className="bg-white rounded-lg shadow-md p-12 text-center">
+          <div className="text-6xl mb-4">!</div>
+          <h2 className="text-xl font-semibold mb-2">Could not load drills</h2>
+          <p className="text-gray-600 mb-6">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((value) => value + 1)}
+            className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+          >
+            Retry
+          </button>
+        </div>
+      ) : visibleDrills.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
           <div className="text-6xl mb-4">📚</div>
           <h2 className="text-xl font-semibold mb-2">

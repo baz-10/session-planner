@@ -37,6 +37,8 @@ export function DrillSelectorModal({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'library' | 'custom'>('library');
   const [selectedDrills, setSelectedDrills] = useState<Map<string, DrillWithCategory>>(new Map());
 
@@ -47,14 +49,27 @@ export function DrillSelectorModal({
 
   const loadDrills = useCallback(async () => {
     setIsLoading(true);
-    const data = await getDrills(selectedCategoryId || undefined);
-    setDrills(data);
-    setIsLoading(false);
+    setLoadError('');
+    try {
+      const data = await getDrills(selectedCategoryId || undefined, { throwOnError: true });
+      setDrills(data);
+    } catch (error) {
+      console.error('Error loading drill selector library:', error);
+      setDrills([]);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load drill library.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [getDrills, selectedCategoryId]);
 
   const loadAllDrills = useCallback(async () => {
-    const data = await getDrills();
-    setAllDrills(data);
+    try {
+      const data = await getDrills(undefined, { throwOnError: true });
+      setAllDrills(data);
+    } catch (error) {
+      console.error('Error loading drill selector labels:', error);
+      setAllDrills([]);
+    }
   }, [getDrills]);
 
   // Reset selections when modal opens/closes or mode changes
@@ -62,6 +77,7 @@ export function DrillSelectorModal({
     if (isOpen) {
       setSelectedDrills(new Map());
       setSelectedTag('');
+      setLoadError('');
       setActiveTab(mode === 'multiple' ? 'library' : initialTab);
       void loadAllDrills();
     }
@@ -74,20 +90,28 @@ export function DrillSelectorModal({
     if (searchQuery.trim()) {
       const timer = setTimeout(async () => {
         setIsLoading(true);
-        const results = await searchDrills(searchQuery);
-        // Filter by category if selected
-        if (selectedCategoryId) {
-          setDrills(results.filter((drill) => drillMatchesCategory(drill, selectedCategoryId)));
-        } else {
-          setDrills(results);
+        setLoadError('');
+        try {
+          const results = await searchDrills(searchQuery, { throwOnError: true });
+          // Filter by category if selected
+          if (selectedCategoryId) {
+            setDrills(results.filter((drill) => drillMatchesCategory(drill, selectedCategoryId)));
+          } else {
+            setDrills(results);
+          }
+        } catch (error) {
+          console.error('Error searching drill selector library:', error);
+          setDrills([]);
+          setLoadError(error instanceof Error ? error.message : 'Failed to search drill library.');
+        } finally {
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }, 300);
       return () => clearTimeout(timer);
     } else {
       loadDrills();
     }
-  }, [searchQuery, selectedCategoryId, isOpen, loadDrills, searchDrills]);
+  }, [searchQuery, selectedCategoryId, isOpen, loadDrills, reloadKey, searchDrills]);
 
   const availableTags = useMemo(() => {
     const tags = allDrills.flatMap((drill) => getVisibleLabelTags(drill.tags));
@@ -303,6 +327,17 @@ export function DrillSelectorModal({
               {isLoading ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : loadError ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>{loadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setReloadKey((value) => value + 1)}
+                    className="mt-3 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-md"
+                  >
+                    Retry library
+                  </button>
                 </div>
               ) : filteredDrills.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
