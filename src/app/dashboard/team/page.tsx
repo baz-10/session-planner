@@ -20,6 +20,8 @@ export default function TeamSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'player' | 'parent'>('player');
   const [inviteSent, setInviteSent] = useState(false);
+  const [membersLoadError, setMembersLoadError] = useState('');
+  const [membersReloadKey, setMembersReloadKey] = useState(0);
   const [memberActionError, setMemberActionError] = useState('');
   const [memberActionSuccess, setMemberActionSuccess] = useState('');
   const [updatingMemberId, setUpdatingMemberId] = useState('');
@@ -73,15 +75,19 @@ export default function TeamSettingsPage() {
     async function loadMembers() {
       if (!currentTeam?.id) return;
       setIsLoading(true);
+      setMembersLoadError('');
       const result = await getTeamMembers(currentTeam.id);
       if (!cancelled && result.success && result.members) {
         setMembers(result.members);
+      } else if (!cancelled) {
+        setMembers([]);
+        setMembersLoadError(result.error || 'Failed to load team members.');
       }
       if (!cancelled) setIsLoading(false);
     }
-    loadMembers();
+    void loadMembers();
     return () => { cancelled = true; };
-  }, [currentTeam?.id, getTeamMembers]);
+  }, [currentTeam?.id, getTeamMembers, membersReloadKey]);
 
   const copyCode = async () => {
     if (!currentTeam?.team_code) return;
@@ -591,6 +597,17 @@ export default function TeamSettingsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : membersLoadError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+            <p>{membersLoadError}</p>
+            <button
+              type="button"
+              onClick={() => setMembersReloadKey((value) => value + 1)}
+              className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-bold text-red-700 shadow-sm transition hover:bg-red-100"
+            >
+              Retry
+            </button>
           </div>
         ) : members.length === 0 ? (
           <div className="text-center py-8 text-text-secondary">

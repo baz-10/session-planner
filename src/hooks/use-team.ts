@@ -6,6 +6,8 @@ import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 import type { Team, TeamRole, CreateTeamInput } from '@/types/database';
 
 const PUBLIC_INVITE_ROLES = new Set<TeamRole>(['player', 'parent']);
+const STALE_TEAM_ERROR = 'Team access changed. Refresh and try again.';
+const STALE_TEAM_MEMBER_ERROR = 'Team member access changed. Refresh members and try again.';
 
 interface JoinTeamResult {
   success: boolean;
@@ -109,14 +111,18 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('teams')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', teamId);
 
       if (error) {
         console.error('Error updating team:', error);
         return { success: false, error: 'Failed to update team.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_ERROR };
       }
 
       await refreshTeamMemberships();
@@ -134,15 +140,19 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('team_id', teamId)
         .eq('user_id', user.id);
 
       if (error) {
         console.error('Error leaving team:', error);
         return { success: false, error: 'Failed to leave team.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       await refreshTeamMemberships();
@@ -184,15 +194,19 @@ export function useTeam() {
       memberId: string,
       role: TeamRole
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .update({ role })
+        .update({ role }, { count: 'exact' })
         .eq('team_id', teamId)
         .eq('id', memberId);
 
       if (error) {
         console.error('Error updating member role:', error);
         return { success: false, error: 'Failed to update member role.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       return { success: true };
@@ -205,15 +219,19 @@ export function useTeam() {
    */
   const removeMember = useCallback(
     async (teamId: string, memberId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('team_id', teamId)
         .eq('id', memberId);
 
       if (error) {
         console.error('Error removing member:', error);
         return { success: false, error: 'Failed to remove member.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       return { success: true };
