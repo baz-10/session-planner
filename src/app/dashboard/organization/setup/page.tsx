@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useOrganization } from '@/hooks/use-organization';
+import {
+  normalizeOrganizationCode,
+  ORGANIZATION_CODE_LENGTH,
+} from '@/lib/utils/organization-code';
 
 type SetupMode = 'choose' | 'create' | 'join';
 
@@ -26,7 +30,7 @@ export default function OrganizationSetupPage() {
     const inviteCode = new URLSearchParams(window.location.search).get('code');
     if (!inviteCode) return;
 
-    setOrganizationCode(inviteCode.trim().toUpperCase());
+    setOrganizationCode(normalizeOrganizationCode(inviteCode));
     setMode('join');
   }, []);
 
@@ -52,15 +56,16 @@ export default function OrganizationSetupPage() {
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organizationCode.trim()) {
-      setError('Please enter an organization invite code');
+    const normalizedCode = normalizeOrganizationCode(organizationCode);
+    if (normalizedCode.length !== ORGANIZATION_CODE_LENGTH) {
+      setError('Please enter a valid 8-character organization invite code');
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    const result = await joinOrganization(organizationCode.trim());
+    const result = await joinOrganization(normalizedCode);
 
     if (result.success) {
       router.push('/dashboard/organization');
@@ -260,7 +265,7 @@ export default function OrganizationSetupPage() {
             id="organizationCode"
             type="text"
             value={organizationCode}
-            onChange={(e) => setOrganizationCode(e.target.value.toUpperCase())}
+            onChange={(e) => setOrganizationCode(normalizeOrganizationCode(e.target.value))}
             placeholder="e.g., A1B2C3D4"
             required
             autoCapitalize="characters"
@@ -269,7 +274,7 @@ export default function OrganizationSetupPage() {
             disabled={isLoading}
           />
           <p className="text-xs text-text-muted mt-1">
-            New users join as members. An admin can promote you later if needed.
+            Enter the 8-character code from your admin. New users join as members.
           </p>
         </div>
 
@@ -285,7 +290,11 @@ export default function OrganizationSetupPage() {
           >
             Cancel
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={isLoading}>
+          <button
+            type="submit"
+            className="btn-primary flex-1"
+            disabled={isLoading || organizationCode.length !== ORGANIZATION_CODE_LENGTH}
+          >
             {isLoading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

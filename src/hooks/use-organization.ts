@@ -3,6 +3,10 @@
 import { useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  normalizeOrganizationCode,
+  ORGANIZATION_CODE_LENGTH,
+} from '@/lib/utils/organization-code';
 import type { Organization, OrgRole, Team } from '@/types/database';
 
 interface OrganizationMemberWithProfile {
@@ -81,8 +85,13 @@ export function useOrganization() {
         return { success: false, error: 'You must be logged in to join an organization' };
       }
 
+      const normalizedCode = normalizeOrganizationCode(inviteCode);
+      if (normalizedCode.length !== ORGANIZATION_CODE_LENGTH) {
+        return { success: false, error: 'Please enter a valid 8-character organization invite code.' };
+      }
+
       const { data: org, error: joinError } = await supabase.rpc('join_organization_by_code', {
-        invite_code: inviteCode.toUpperCase(),
+        invite_code: normalizedCode,
       });
 
       if (joinError) {
