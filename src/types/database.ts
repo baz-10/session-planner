@@ -92,7 +92,7 @@ export interface Team {
   id: string;
   organization_id: string | null;
   name: string;
-  team_code: string;
+  team_code: string | null;
   sport: string;
   logo_url: string | null;
   settings: TeamSettings;
@@ -917,6 +917,10 @@ export interface Database {
       join_team_by_code: {
         Args: { invite_code: string; requested_role?: TeamRole };
         Returns: Team;
+      };
+      get_team_invite_code: {
+        Args: { team_uuid: string };
+        Returns: string;
       };
       join_organization_by_code: {
         Args: { invite_code: string };

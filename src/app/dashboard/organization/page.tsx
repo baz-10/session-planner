@@ -290,7 +290,7 @@ export default function OrganizationSettingsPage() {
                   <p className="font-medium text-navy truncate">{team.name}</p>
                   <p className="text-sm text-text-muted capitalize">{team.sport || 'Basketball'}</p>
                 </div>
-                <span className="badge badge-navy">{team.team_code}</span>
+                {team.team_code && <span className="badge badge-navy">{team.team_code}</span>}
               </div>
             ))}
           </div>

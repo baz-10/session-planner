@@ -52,6 +52,7 @@ export default function TeamSettingsPage() {
   const isCoachOrAdmin = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
   const canManageMembers = currentMembership?.role === 'admin';
   const adminCount = members.filter((member) => member.role === 'admin').length;
+  const hasInviteCode = Boolean(currentTeam?.team_code);
 
   const buildInviteLink = (role?: InviteJoinRole) => {
     if (typeof window === 'undefined' || !currentTeam?.team_code) return '';
@@ -111,7 +112,13 @@ export default function TeamSettingsPage() {
   }, [currentTeam?.id, getTeamMembers, membersReloadKey]);
 
   const copyCode = async () => {
-    if (!currentTeam?.team_code) return;
+    if (!currentTeam?.team_code) {
+      showInviteFeedback({
+        type: 'error',
+        text: 'Team invite code is unavailable. Apply the latest database migrations and refresh.',
+      });
+      return;
+    }
 
     const didCopy = await copyTextToClipboard(currentTeam.team_code);
     if (didCopy) {
@@ -127,6 +134,14 @@ export default function TeamSettingsPage() {
   };
 
   const copyLink = async () => {
+    if (!inviteLink) {
+      showInviteFeedback({
+        type: 'error',
+        text: 'Team invite link is unavailable. Apply the latest database migrations and refresh.',
+      });
+      return false;
+    }
+
     const didCopy = await copyTextToClipboard(inviteLink);
     if (didCopy) {
       setLinkCopied(true);
@@ -142,6 +157,14 @@ export default function TeamSettingsPage() {
   };
 
   const shareInvite = async () => {
+    if (!currentTeam?.team_code || !inviteLink) {
+      showInviteFeedback({
+        type: 'error',
+        text: 'Team invite is unavailable. Apply the latest database migrations and refresh.',
+      });
+      return;
+    }
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -164,6 +187,13 @@ export default function TeamSettingsPage() {
   const sendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentTeam) return;
+    if (!currentTeam.team_code) {
+      showInviteFeedback({
+        type: 'error',
+        text: 'Team invite code is unavailable. Apply the latest database migrations and refresh.',
+      });
+      return;
+    }
 
     // Include role suggestion in email
     const roleText = inviteRole === 'player' ? 'as a Player' : 'as a Parent/Guardian';
@@ -522,11 +552,12 @@ export default function TeamSettingsPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <span className="break-all font-mono text-3xl font-bold tracking-widest text-navy md:text-4xl">
-                  {currentTeam.team_code}
+                  {currentTeam.team_code || 'Unavailable'}
                 </span>
               </div>
               <button
                 onClick={copyCode}
+                disabled={!hasInviteCode}
                 className={`btn min-h-12 justify-center ${copied ? 'btn-accent' : 'btn-secondary'} sm:min-w-[112px]`}
               >
                 {copied ? (
@@ -555,6 +586,7 @@ export default function TeamSettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
               onClick={shareInvite}
+              disabled={!hasInviteCode || !inviteLink}
               className="btn-primary min-h-12 justify-center py-3"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -564,6 +596,7 @@ export default function TeamSettingsPage() {
             </button>
             <button
               onClick={copyLink}
+              disabled={!inviteLink}
               className={`${linkCopied ? 'btn-accent' : 'btn-secondary'} min-h-12 justify-center py-3`}
             >
               {linkCopied ? (
@@ -606,7 +639,7 @@ export default function TeamSettingsPage() {
                 <option value="player">Player</option>
                 <option value="parent">Parent</option>
               </select>
-              <button type="submit" className="btn-accent whitespace-nowrap">
+              <button type="submit" disabled={!hasInviteCode} className="btn-accent whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>

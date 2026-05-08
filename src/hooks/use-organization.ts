@@ -37,6 +37,8 @@ interface JoinOrganizationResult {
 
 const STALE_ORG_MEMBER_ERROR =
   'This organization member could not be updated. They may have been removed or your access may have changed.';
+const TEAM_PUBLIC_SELECT =
+  'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
 
 export function useOrganization() {
   const { user, refreshOrganizationMemberships, setCurrentOrganization } = useAuth();
@@ -204,7 +206,7 @@ export function useOrganization() {
     async (organizationId: string): Promise<{ success: boolean; teams?: Team[]; error?: string }> => {
       const { data, error } = await supabase
         .from('teams')
-        .select('*')
+        .select(TEAM_PUBLIC_SELECT)
         .eq('organization_id', organizationId)
         .order('name', { ascending: true });
 
@@ -213,7 +215,12 @@ export function useOrganization() {
         return { success: false, error: 'Failed to load organization teams' };
       }
 
-      return { success: true, teams: (data || []) as Team[] };
+      const teams = (data || []).map((team) => ({
+        ...(team as Team),
+        team_code: null,
+      }));
+
+      return { success: true, teams };
     },
     [supabase]
   );

@@ -9,6 +9,15 @@ import type { Team, TeamRole, CreateTeamInput } from '@/types/database';
 const PUBLIC_INVITE_ROLES = new Set<TeamRole>(['player', 'parent']);
 const STALE_TEAM_ERROR = 'Team access changed. Refresh and try again.';
 const STALE_TEAM_MEMBER_ERROR = 'Team member access changed. Refresh members and try again.';
+const TEAM_PUBLIC_SELECT =
+  'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
+
+function withTeamInviteCode(team: Partial<Team>, inviteCode: string | null): Team {
+  return {
+    ...(team as Team),
+    team_code: inviteCode,
+  };
+}
 
 interface JoinTeamResult {
   success: boolean;
@@ -64,11 +73,13 @@ export function useTeam() {
         return { success: false, error: 'Failed to join team. Please try again.' };
       }
 
+      const joinedTeam = withTeamInviteCode(team as Team, null);
+
       // Refresh team memberships
       await refreshTeamMemberships();
-      setCurrentTeam(team as Team);
+      setCurrentTeam(joinedTeam);
 
-      return { success: true, team: team as Team };
+      return { success: true, team: joinedTeam };
     },
     [user, supabase, refreshTeamMemberships, setCurrentTeam]
   );
@@ -91,7 +102,7 @@ export function useTeam() {
           logo_url: input.logo_url || null,
           created_by: user.id,
         })
-        .select()
+        .select(TEAM_PUBLIC_SELECT)
         .single();
 
       if (error || !team) {
@@ -99,11 +110,23 @@ export function useTeam() {
         return { success: false, error: 'Failed to create team. Please try again.' };
       }
 
+      let inviteCode: string | null = null;
+      const { data: fetchedInviteCode, error: inviteError } = await supabase.rpc('get_team_invite_code', {
+        team_uuid: team.id,
+      });
+      if (inviteError) {
+        console.error('Error fetching new team invite code:', inviteError);
+      } else {
+        inviteCode = fetchedInviteCode;
+      }
+
+      const createdTeam = withTeamInviteCode(team as Team, inviteCode);
+
       // Refresh team memberships (trigger will have added user as admin)
       await refreshTeamMemberships();
-      setCurrentTeam(team as Team);
+      setCurrentTeam(createdTeam);
 
-      return { success: true, team: team as Team };
+      return { success: true, team: createdTeam };
     },
     [user, supabase, refreshTeamMemberships, setCurrentTeam]
   );
