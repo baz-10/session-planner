@@ -31,6 +31,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
   const { getMessages, sendMessage, sendFileMessage, markAsRead, subscribeToMessages } = useChat();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const getConversationName = () => {
     if (conversation.name) return conversation.name;
@@ -48,14 +49,27 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
     if (showLoading) {
       setIsLoading(true);
     }
-    const data = await getMessages(conversation.id);
-    setMessages(data);
-    if (showLoading) {
-      setIsLoading(false);
-    }
 
-    // Mark as read
-    void markAsRead(conversation.id);
+    try {
+      setLoadError('');
+      const data = await getMessages(conversation.id, 50, undefined, { throwOnError: true });
+      setMessages(data);
+
+      // Mark as read after a successful load.
+      void markAsRead(conversation.id);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      setMessages([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Messages could not load. Check your connection and try again.'
+      );
+    } finally {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+    }
   }, [conversation.id, getMessages, markAsRead]);
 
   useEffect(() => {
@@ -136,7 +150,22 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       </div>
 
       {/* Messages */}
-      <MessageList messages={messages} isLoading={isLoading} />
+      {loadError ? (
+        <div className="flex flex-1 items-center justify-center bg-background px-6 text-center">
+          <div>
+            <p className="text-sm font-semibold text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadMessages()}
+              className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      ) : (
+        <MessageList messages={messages} isLoading={isLoading} />
+      )}
 
       {/* Input */}
       <MessageInput

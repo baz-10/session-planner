@@ -29,6 +29,10 @@ interface MessageWithSender extends Message {
   sender: Profile;
 }
 
+interface ChatLoadOptions {
+  throwOnError?: boolean;
+}
+
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_CHAT_ATTACHMENT_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx']);
 const ALLOWED_CHAT_ATTACHMENT_MIME_TYPES = new Set([
@@ -36,6 +40,8 @@ const ALLOWED_CHAT_ATTACHMENT_MIME_TYPES = new Set([
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
+const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
+const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
 
 function getSafeAttachmentExtension(file: File) {
   const extension = file.name.split('.').pop()?.toLowerCase() || '';
@@ -77,7 +83,7 @@ export function useChat() {
   /**
    * Get all conversations for the current user
    */
-  const getConversations = useCallback(async (): Promise<ConversationWithDetails[]> => {
+  const getConversations = useCallback(async (options: ChatLoadOptions = {}): Promise<ConversationWithDetails[]> => {
     if (!user) return [];
 
     // Get conversations where user is a participant
@@ -86,7 +92,15 @@ export function useChat() {
       .select('conversation_id')
       .eq('user_id', user.id);
 
-    if (partError || !participations?.length) {
+    if (partError) {
+      console.error('Error fetching conversation participation:', partError);
+      if (options.throwOnError) {
+        throw new Error(CHAT_LIST_LOAD_ERROR);
+      }
+      return [];
+    }
+
+    if (!participations?.length) {
       return [];
     }
 
@@ -103,6 +117,9 @@ export function useChat() {
 
     if (error) {
       console.error('Error fetching conversations:', error);
+      if (options.throwOnError) {
+        throw new Error(CHAT_LIST_LOAD_ERROR);
+      }
       return [];
     }
 
@@ -339,7 +356,12 @@ export function useChat() {
    * Get messages for a conversation
    */
   const getMessages = useCallback(
-    async (conversationId: string, limit = 50, before?: string): Promise<MessageWithSender[]> => {
+    async (
+      conversationId: string,
+      limit = 50,
+      before?: string,
+      options: ChatLoadOptions = {}
+    ): Promise<MessageWithSender[]> => {
       let query = supabase
         .from('messages')
         .select(`
@@ -358,6 +380,9 @@ export function useChat() {
 
       if (error) {
         console.error('Error fetching messages:', error);
+        if (options.throwOnError) {
+          throw new Error(CHAT_MESSAGES_LOAD_ERROR);
+        }
         return [];
       }
 

@@ -26,11 +26,30 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   const { getConversations, subscribeToConversations } = useChat();
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const loadConversations = useCallback(async () => {
-    const data = await getConversations();
-    setConversations(data);
-    setIsLoading(false);
+  const loadConversations = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
+    setLoadError('');
+
+    try {
+      const data = await getConversations({ throwOnError: true });
+      setConversations(data);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      setConversations([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Conversations could not load. Check your connection and try again.'
+      );
+    } finally {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+    }
   }, [getConversations]);
 
   useEffect(() => {
@@ -38,7 +57,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
 
     // Subscribe to updates
     const unsubscribe = subscribeToConversations(() => {
-      loadConversations();
+      loadConversations(false);
     });
 
     return unsubscribe;
@@ -88,7 +107,20 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   if (conversations.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>No conversations yet</p>
+        {loadError ? (
+          <>
+            <p className="px-4 text-sm font-medium text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadConversations()}
+              className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              Try again
+            </button>
+          </>
+        ) : (
+          <p>No conversations yet</p>
+        )}
       </div>
     );
   }
