@@ -79,6 +79,19 @@ interface SessionBuilderStatus {
   text: string;
 }
 
+interface DeferredSessionBuilderStatus {
+  sessionId: string;
+  message: SessionBuilderStatus;
+}
+
+const DEFERRED_SESSION_BUILDER_STATUS_KEY = 'session-planner:session-builder-status';
+const SESSION_BUILDER_STATUS_TYPES = new Set<SessionBuilderStatusType>([
+  'success',
+  'error',
+  'warning',
+  'info',
+]);
+
 const STATUS_BANNER_CLASSES: Record<SessionBuilderStatusType, string> = {
   success: 'border-emerald-200 bg-emerald-50 text-emerald-950',
   error: 'border-red-200 bg-red-50 text-red-950',
@@ -151,6 +164,57 @@ function toInputDate(value?: string | null): string {
 
 function clampActivityDuration(value: number): number {
   return Math.max(1, Math.round(Number.isFinite(value) ? value : 10));
+}
+
+function isSessionBuilderStatus(value: unknown): value is SessionBuilderStatus {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SessionBuilderStatus>;
+  return (
+    typeof candidate.text === 'string' &&
+    SESSION_BUILDER_STATUS_TYPES.has(candidate.type as SessionBuilderStatusType)
+  );
+}
+
+function storeDeferredSessionBuilderStatus(sessionId: string, message: SessionBuilderStatus) {
+  try {
+    window.sessionStorage.setItem(
+      DEFERRED_SESSION_BUILDER_STATUS_KEY,
+      JSON.stringify({ sessionId, message } satisfies DeferredSessionBuilderStatus)
+    );
+  } catch {
+    // Status persistence is best-effort; the draft still exists if storage is unavailable.
+  }
+}
+
+function takeDeferredSessionBuilderStatus(sessionId?: string): SessionBuilderStatus | null {
+  if (!sessionId) {
+    return null;
+  }
+
+  try {
+    const rawStatus = window.sessionStorage.getItem(DEFERRED_SESSION_BUILDER_STATUS_KEY);
+    if (!rawStatus) {
+      return null;
+    }
+
+    const parsedStatus = JSON.parse(rawStatus) as Partial<DeferredSessionBuilderStatus>;
+    if (parsedStatus.sessionId !== sessionId || !isSessionBuilderStatus(parsedStatus.message)) {
+      return null;
+    }
+
+    window.sessionStorage.removeItem(DEFERRED_SESSION_BUILDER_STATUS_KEY);
+    return parsedStatus.message;
+  } catch {
+    try {
+      window.sessionStorage.removeItem(DEFERRED_SESSION_BUILDER_STATUS_KEY);
+    } catch {
+      // Ignore unavailable session storage.
+    }
+    return null;
+  }
 }
 
 const normalizeActivitySortOrder = (
@@ -319,6 +383,13 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       document.removeEventListener('click', handleDocumentClick, true);
     };
   }, [hasUnsavedChanges, isSaving, navigateWithUnsavedGuard]);
+
+  useEffect(() => {
+    const deferredStatus = takeDeferredSessionBuilderStatus(sessionId);
+    if (deferredStatus) {
+      setStatusMessage(deferredStatus);
+    }
+  }, [sessionId]);
 
   const loadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -998,10 +1069,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
         setIsSaving(false);
         if (failedCount > 0) {
-          showStatus({
+          const draftWarning: SessionBuilderStatus = {
             type: 'warning',
             text: `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`,
-          });
+          };
+          storeDeferredSessionBuilderStatus(draftResult.session.id, draftWarning);
         }
         router.push(`/dashboard/sessions/${draftResult.session.id}`);
         return;
