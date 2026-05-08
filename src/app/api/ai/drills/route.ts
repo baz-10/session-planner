@@ -5,11 +5,25 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
 import { createDrillAIService } from '@/lib/ai/drill-ai-service';
 import type { DrillQueryContext } from '@/lib/ai/openai-config';
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { apiKey, query, context } = body as {
       apiKey: string;
