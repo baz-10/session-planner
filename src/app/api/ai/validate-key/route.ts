@@ -11,15 +11,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { apiKey } = body as { apiKey: string };
+    const normalizedApiKey = apiKey?.trim();
 
-    if (!apiKey) {
+    if (!normalizedApiKey) {
       return NextResponse.json(
         { valid: false, error: 'API key is required' },
         { status: 400 }
       );
     }
 
-    const result = await DrillAIService.validateApiKey(apiKey);
+    const result = await DrillAIService.validateApiKey(normalizedApiKey);
     return NextResponse.json(result);
   } catch (error) {
     console.error('API key validation error:', error);

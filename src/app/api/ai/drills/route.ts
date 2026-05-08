@@ -16,23 +16,25 @@ export async function POST(request: NextRequest) {
       query: string;
       context?: DrillQueryContext;
     };
+    const normalizedApiKey = apiKey?.trim();
+    const normalizedQuery = query?.trim();
 
-    if (!apiKey) {
+    if (!normalizedApiKey) {
       return NextResponse.json(
         { success: false, error: 'API key is required' },
         { status: 400 }
       );
     }
 
-    if (!query) {
+    if (!normalizedQuery) {
       return NextResponse.json(
         { success: false, error: 'Query is required' },
         { status: 400 }
       );
     }
 
-    const aiService = createDrillAIService(apiKey);
-    const result = await aiService.getSuggestions(query, context);
+    const aiService = createDrillAIService(normalizedApiKey);
+    const result = await aiService.getSuggestions(normalizedQuery, context);
 
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });

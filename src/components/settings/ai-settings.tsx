@@ -22,7 +22,8 @@ export function AISettings({ onClose }: AISettingsProps) {
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const handleValidateAndSave = async () => {
-    if (!apiKeyInput.trim()) {
+    const nextApiKey = apiKeyInput.trim();
+    if (!nextApiKey) {
       setError('Please enter an API key');
       return;
     }
@@ -31,7 +32,7 @@ export function AISettings({ onClose }: AISettingsProps) {
     setSuccessMessage(null);
     setValidationStatus('validating');
 
-    const validation = await validateApiKey(apiKeyInput);
+    const validation = await validateApiKey(nextApiKey);
 
     if (!validation.valid) {
       setValidationStatus('invalid');
@@ -42,7 +43,7 @@ export function AISettings({ onClose }: AISettingsProps) {
     setValidationStatus('valid');
 
     const result = await saveSettings({
-      openaiApiKey: apiKeyInput,
+      openaiApiKey: nextApiKey,
       aiEnabled: true,
     });
 

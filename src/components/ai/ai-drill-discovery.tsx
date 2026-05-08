@@ -338,12 +338,13 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
-    if (!apiKeyInput.trim()) return;
+    const nextApiKey = apiKeyInput.trim();
+    if (!nextApiKey) return;
 
     setStatus('validating');
     setError(null);
 
-    const validation = await validateApiKey(apiKeyInput);
+    const validation = await validateApiKey(nextApiKey);
     if (!validation.valid) {
       setStatus('error');
       setError(validation.error || 'Invalid API key');
@@ -352,7 +353,7 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
 
     setStatus('saving');
     const result = await saveSettings({
-      openaiApiKey: apiKeyInput,
+      openaiApiKey: nextApiKey,
       aiEnabled: true,
     });
 

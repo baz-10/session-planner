@@ -110,11 +110,16 @@ export function useAISettings() {
 
   const validateApiKey = useCallback(
     async (apiKey: string): Promise<{ valid: boolean; error?: string }> => {
+      const normalizedApiKey = apiKey.trim();
+      if (!normalizedApiKey) {
+        return { valid: false, error: 'API key is required' };
+      }
+
       try {
         const response = await fetch('/api/ai/validate-key', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey }),
+          body: JSON.stringify({ apiKey: normalizedApiKey }),
         });
 
         return await response.json();
