@@ -22,6 +22,7 @@ export default function ChatPage() {
   const [selectedConversation, setSelectedConversation] = useState<ConversationWithDetails | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
+  const [quickChatError, setQuickChatError] = useState('');
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canUseCoachesChat = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
@@ -36,6 +37,7 @@ export default function ChatPage() {
   }, []);
 
   const handleSelectConversation = (conversation: ConversationWithDetails) => {
+    setQuickChatError('');
     setSelectedConversation(conversation);
   };
 
@@ -54,13 +56,19 @@ export default function ChatPage() {
   };
 
   const openTeamConversation = async (type: 'team' | 'coaches') => {
-    const teamChat = await getTeamChat(type);
-    if (!teamChat) return;
+    setQuickChatError('');
+    const result = await getTeamChat(type);
+    if (!result.success || !result.conversation) {
+      setQuickChatError(result.error || 'Team chat could not be opened. Refresh and try again.');
+      return;
+    }
 
     const conversations = await getConversations();
-    const conversation = conversations.find((item) => item.id === teamChat.id);
+    const conversation = conversations.find((item) => item.id === result.conversation?.id);
     if (conversation) {
       setSelectedConversation(conversation);
+    } else {
+      setQuickChatError('Team chat was created but is not visible yet. Refresh messages and try again.');
     }
   };
 
@@ -103,6 +111,11 @@ export default function ChatPage() {
 
         {/* Quick access - Team chats */}
         <div className="space-y-1 p-2 border-b border-border">
+          {quickChatError && (
+            <div role="alert" className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              {quickChatError}
+            </div>
+          )}
           <button
             onClick={() => openTeamConversation('team')}
             className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors"
