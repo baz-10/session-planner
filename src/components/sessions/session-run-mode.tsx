@@ -23,6 +23,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/components/ui';
 import { MobileListCard, MobileStickyActionBar } from '@/components/mobile';
 import {
   calculateActivityTimings,
@@ -277,6 +278,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const [runState, setRunState] = useState<RunState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
   const lastTickRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -436,13 +438,21 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     });
   }, [updateRunState]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (!session) return;
-    if (!confirm('Reset live progress and notes for this session?')) return;
+    const confirmed = await confirmAction({
+      title: 'Reset live session?',
+      description: 'This clears the timer progress and all live notes saved on this device for this session.',
+      confirmLabel: 'Reset session',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
     const nextState = createInitialRunState(sessionId, session.activities);
     window.localStorage.removeItem(storageKeyForSession(sessionId));
     setRunState(nextState);
-  }, [session, sessionId]);
+  }, [confirmAction, session, sessionId]);
 
   const jumpToActivity = useCallback(
     (index: number) => {
@@ -1256,6 +1266,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         </main>
       </div>
       </div>
+      {confirmDialog}
     </>
   );
 }
