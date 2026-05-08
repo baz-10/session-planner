@@ -466,7 +466,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Auth actions
   const buildCallbackUrl = (redirectTo?: string) => {
     const callbackUrl = new URL('/callback', window.location.origin);
-    if (redirectTo && redirectTo.startsWith('/')) {
+    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
       callbackUrl.searchParams.set('next', redirectTo);
     }
     return callbackUrl.toString();
