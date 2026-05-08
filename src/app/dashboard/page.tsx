@@ -118,7 +118,7 @@ export default function DashboardPage() {
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
 
         const [sessions, drills, membersResult, attendanceStats] = await Promise.all([
-          getSessions(),
+          getSessions({ throwOnError: true }),
           getDrills(),
           getTeamMembers(currentTeam.id),
           getAttendanceStats({ startDate: monthStart, endDate: monthEnd }),
