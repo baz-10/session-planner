@@ -237,6 +237,89 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     setStatusMessage(message);
   }, []);
 
+  const confirmDiscardUnsavedChanges = useCallback(async () => {
+    if (!hasUnsavedChanges || isSaving) {
+      return true;
+    }
+
+    return confirmAction({
+      title: 'Leave without saving?',
+      description: 'Your changes are still local. Save the plan before leaving if you want to keep them.',
+      confirmLabel: 'Leave page',
+      confirmVariant: 'destructive',
+    });
+  }, [confirmAction, hasUnsavedChanges, isSaving]);
+
+  const navigateWithUnsavedGuard = useCallback(
+    async (href: string) => {
+      const shouldNavigate = await confirmDiscardUnsavedChanges();
+      if (!shouldNavigate) return;
+      router.push(href);
+    },
+    [confirmDiscardUnsavedChanges, router]
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedChanges || isSaving) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, isSaving]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges || isSaving) {
+      return;
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      const anchor = target?.closest('a[href]');
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      if (anchor.target && anchor.target !== '_self') {
+        return;
+      }
+
+      const nextUrl = new URL(anchor.href);
+      if (
+        nextUrl.origin !== window.location.origin ||
+        (nextUrl.pathname === window.location.pathname && nextUrl.search === window.location.search)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      void navigateWithUnsavedGuard(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    };
+
+    document.addEventListener('click', handleDocumentClick, true);
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true);
+    };
+  }, [hasUnsavedChanges, isSaving, navigateWithUnsavedGuard]);
+
   const loadSession = useCallback(async () => {
     if (!sessionId) return;
     setIsLoading(true);
@@ -823,12 +906,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   );
 
   const handleViewLinkedPlay = useCallback(
-    (activityId: string) => {
+    async (activityId: string) => {
       const activity = (session.activities || []).find((item) => item.id === activityId);
       if (!activity?.linked_play_id) return;
-      router.push(`/dashboard/plays/${activity.linked_play_id}`);
+      await navigateWithUnsavedGuard(`/dashboard/plays/${activity.linked_play_id}`);
     },
-    [session.activities, router]
+    [session.activities, navigateWithUnsavedGuard]
   );
 
   const isLinkedPlayStale = useCallback(
@@ -1506,13 +1589,14 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     <div className="space-y-6 bg-[#f8fafc] p-4 pb-40 md:p-6 xl:p-8">
       <div className="space-y-4 md:hidden">
         <header className="flex items-center gap-3">
-          <Link
-            href="/dashboard/sessions"
+          <button
+            type="button"
+            onClick={() => void navigateWithUnsavedGuard('/dashboard/sessions')}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-navy shadow-sm"
             aria-label="Back to sessions"
           >
             <ArrowLeft className="h-6 w-6" />
-          </Link>
+          </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
               Session Builder
