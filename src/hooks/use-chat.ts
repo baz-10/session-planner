@@ -131,8 +131,35 @@ export function useChat() {
       return [];
     }
 
+    let currentTeamMemberIds: Set<string> | null = null;
+    if (currentTeam) {
+      const { data: teamMembers, error: teamMembersError } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', currentTeam.id);
+
+      if (teamMembersError) {
+        console.error('Error fetching current team members for chat scoping:', teamMembersError);
+        if (options.throwOnError) {
+          throw new Error(CHAT_LIST_LOAD_ERROR);
+        }
+        return [];
+      }
+
+      currentTeamMemberIds = new Set(
+        (teamMembers || []).map((member: { user_id: string }) => member.user_id)
+      );
+    }
+
     const scopedConversations = (conversations || []).filter((conversation) => {
-      if (conversation.type === 'direct') return true;
+      if (conversation.type === 'direct') {
+        if (!currentTeamMemberIds) return true;
+
+        return conversation.participants.some(
+          (participant: ConversationParticipant) =>
+            participant.user_id !== user.id && currentTeamMemberIds?.has(participant.user_id)
+        );
+      }
       return currentTeam ? conversation.team_id === currentTeam.id : false;
     });
 
