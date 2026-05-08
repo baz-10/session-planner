@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { MobileEmptyState, MobileListCard, MobileLoadingState } from '@/components/mobile';
+import { useConfirmDialog, useTextPromptDialog } from '@/components/ui';
 import { formatDuration, formatTime12Hour } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
 
@@ -33,6 +34,8 @@ export function SessionsList() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionMessage, setActionMessage] = useState<SessionListActionMessage | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const { promptForText, textPromptDialog } = useTextPromptDialog();
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
@@ -76,7 +79,14 @@ export function SessionsList() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Delete practice plan?',
+      description: `"${name}" will be removed from this team. This cannot be undone.`,
+      confirmLabel: 'Delete plan',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     const result = await deleteSession(id);
     if (result.success) {
@@ -102,7 +112,15 @@ export function SessionsList() {
       return;
     }
 
-    const newName = prompt('Enter name for the copy:', `${name} (Copy)`);
+    const newName = await promptForText({
+      title: 'Duplicate practice plan',
+      description: 'Name the copied plan before it is added to this team.',
+      label: 'Plan name',
+      defaultValue: `${name} (Copy)`,
+      confirmLabel: 'Create copy',
+      validate: (value) => (value ? null : 'Plan name is required.'),
+    });
+
     if (!newName) return;
 
     const result = await duplicateSession(id, newName);
@@ -414,6 +432,8 @@ export function SessionsList() {
         </tbody>
         </table>
       </div>
+      {confirmDialog}
+      {textPromptDialog}
     </>
   );
 }

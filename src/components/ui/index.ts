@@ -10,6 +10,7 @@ export * from './button';
 export * from './card';
 export * from './empty-state';
 export * from './input';
+export * from './action-dialogs';
 export * from './loading-spinner';
 export * from './modal';
 export * from './notification-badge';

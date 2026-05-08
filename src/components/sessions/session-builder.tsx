@@ -36,6 +36,7 @@ import { DrillSelectorModal } from './drill-selector-modal';
 import { PlaySelectorModal } from './play-selector-modal';
 import { SessionAutopilotPanel } from './session-autopilot-panel';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog, useTextPromptDialog } from '@/components/ui';
 import {
   MobileEmptyState,
   MobileListCard,
@@ -225,6 +226,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const [loadError, setLoadError] = useState('');
   const [statusMessage, setStatusMessage] = useState<SessionBuilderStatus | null>(null);
   const [drillModalInitialTab, setDrillModalInitialTab] = useState<'library' | 'custom'>('library');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const { promptForText, textPromptDialog } = useTextPromptDialog();
   const activeTeamId = session.team_id || currentTeam?.id;
   const currentMembership = teamMemberships.find((membership) => membership.team.id === activeTeamId);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
@@ -834,9 +837,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       const existingActivities = session.activities || [];
       if (session.id && existingActivities.length > 0) {
-        const shouldCreateDraft = confirm(
-          `Apply ${variant.label} as a new draft plan? Your current saved plan will stay unchanged.`
-        );
+        const shouldCreateDraft = await confirmAction({
+          title: 'Create Autopilot draft?',
+          description: `Apply ${variant.label} as a new draft plan. Your current saved plan will stay unchanged.`,
+          confirmLabel: 'Create draft',
+        });
+
         if (!shouldCreateDraft) {
           return;
         }
@@ -908,9 +914,13 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }
 
       if (existingActivities.length > 0) {
-        const shouldReplace = confirm(
-          `Apply ${variant.label}? This will replace ${existingActivities.length} existing activities in this plan.`
-        );
+        const shouldReplace = await confirmAction({
+          title: 'Replace current activities?',
+          description: `Apply ${variant.label} and replace ${existingActivities.length} existing activities in this plan.`,
+          confirmLabel: 'Replace activities',
+          confirmVariant: 'destructive',
+        });
+
         if (!shouldReplace) {
           return;
         }
@@ -1020,6 +1030,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       session.team_id,
       categories,
       addActivity,
+      confirmAction,
       createSession,
       currentTeam?.id,
       drillCategoryIdsByDrillId,
@@ -1234,7 +1245,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       return;
     }
 
-    const newName = prompt('Enter name for the new plan:', `${session.name} (Copy)`);
+    const newName = await promptForText({
+      title: 'Duplicate practice plan',
+      description: 'Name the copied plan before it is added to this team.',
+      label: 'Plan name',
+      defaultValue: `${session.name} (Copy)`,
+      confirmLabel: 'Create copy',
+      validate: (value) => (value ? null : 'Plan name is required.'),
+    });
+
     if (!newName) return;
 
     if (session.id) {
@@ -1250,7 +1269,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       }
       setIsSaving(false);
     }
-  }, [canManageSessions, session.id, session.name, duplicateSession, router, showStatus]);
+  }, [
+    canManageSessions,
+    session.id,
+    session.name,
+    duplicateSession,
+    promptForText,
+    router,
+    showStatus,
+  ]);
 
   // Print session
   const handlePrint = useCallback(() => {
@@ -1368,11 +1395,18 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext, showStatus]);
 
   // Clear form
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
     if (!canManageSessions) return;
 
     if (hasUnsavedChanges) {
-      if (!confirm('Are you sure you want to clear the form? Unsaved changes will be lost.')) {
+      const shouldClear = await confirmAction({
+        title: 'Clear unsaved changes?',
+        description: 'The current form values and activities will be reset. Unsaved changes will be lost.',
+        confirmLabel: 'Clear form',
+        confirmVariant: 'destructive',
+      });
+
+      if (!shouldClear) {
         return;
       }
     }
@@ -1390,7 +1424,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       activities: [],
     });
     setHasUnsavedChanges(false);
-  }, [canManageSessions, hasUnsavedChanges]);
+  }, [canManageSessions, confirmAction, hasUnsavedChanges]);
 
   const activities = useMemo(
     () => (session.activities || []) as ActivityWithCategory[],
@@ -2107,6 +2141,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           onUpdate={loadCategories}
         />
       )}
+      {confirmDialog}
+      {textPromptDialog}
     </div>
   );
 }
