@@ -42,13 +42,27 @@ export default function ChatPage() {
   };
 
   const handleNewConversationCreated = async (conversationId: string) => {
-    // Refresh conversations and select the new one
-    const conversations = await getConversations();
-    const newConv = conversations.find((c) => c.id === conversationId);
-    if (newConv) {
-      setSelectedConversation(newConv);
+    setQuickChatError('');
+
+    try {
+      // Refresh conversations and select the new one
+      const conversations = await getConversations({ throwOnError: true });
+      const newConv = conversations.find((c) => c.id === conversationId);
+      if (newConv) {
+        setSelectedConversation(newConv);
+      } else {
+        setQuickChatError('Conversation was created but is not visible yet. Refresh messages and try again.');
+      }
+      setShowNewChat(false);
+    } catch (error) {
+      console.error('Error selecting new conversation:', error);
+      setQuickChatError(
+        error instanceof Error
+          ? error.message
+          : 'Conversation was created, but messages could not refresh. Try again.'
+      );
+      setShowNewChat(false);
     }
-    setShowNewChat(false);
   };
 
   const handleBack = () => {
@@ -63,12 +77,21 @@ export default function ChatPage() {
       return;
     }
 
-    const conversations = await getConversations();
-    const conversation = conversations.find((item) => item.id === result.conversation?.id);
-    if (conversation) {
-      setSelectedConversation(conversation);
-    } else {
-      setQuickChatError('Team chat was created but is not visible yet. Refresh messages and try again.');
+    try {
+      const conversations = await getConversations({ throwOnError: true });
+      const conversation = conversations.find((item) => item.id === result.conversation?.id);
+      if (conversation) {
+        setSelectedConversation(conversation);
+      } else {
+        setQuickChatError('Team chat was created but is not visible yet. Refresh messages and try again.');
+      }
+    } catch (error) {
+      console.error('Error selecting team chat:', error);
+      setQuickChatError(
+        error instanceof Error
+          ? error.message
+          : 'Team chat was opened, but messages could not refresh. Try again.'
+      );
     }
   };
 
