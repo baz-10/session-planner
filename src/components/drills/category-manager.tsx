@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useDrills } from '@/hooks/use-drills';
+import { useConfirmDialog } from '@/components/ui';
 import type { DrillCategory } from '@/types/database';
 
 interface CategoryManagerProps {
@@ -32,6 +33,7 @@ export function CategoryManager({ categories, onClose, onUpdate }: CategoryManag
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [error, setError] = useState('');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) {
@@ -88,9 +90,14 @@ export function CategoryManager({ categories, onClose, onUpdate }: CategoryManag
   };
 
   const handleDelete = async (category: DrillCategory) => {
-    if (!confirm(`Delete "${category.name}"? Drills using this category will be uncategorized.`)) {
-      return;
-    }
+    const confirmed = await confirmAction({
+      title: 'Delete category?',
+      description: `Drills using "${category.name}" will be uncategorized.`,
+      confirmLabel: 'Delete category',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     const result = await deleteCategory(category.id);
     if (result.success) {
@@ -265,6 +272,7 @@ export function CategoryManager({ categories, onClose, onUpdate }: CategoryManag
           </button>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

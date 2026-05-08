@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useDrills } from '@/hooks/use-drills';
+import { useConfirmDialog } from '@/components/ui';
 import type { Drill, DrillCategory, DrillMedia } from '@/types/database';
 
 interface DrillWithDetails extends Drill {
@@ -28,6 +29,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   const [media, setMedia] = useState<DrillMedia[]>(drill?.media || []);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState('');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isEditing = !!drill;
 
@@ -107,7 +109,14 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   };
 
   const handleDeleteMedia = async (mediaId: string) => {
-    if (!confirm('Delete this media file?')) return;
+    const confirmed = await confirmAction({
+      title: 'Delete media file?',
+      description: 'This file will be removed from the drill.',
+      confirmLabel: 'Delete file',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     setError('');
     const result = await deleteDrillMedia(mediaId);
@@ -331,6 +340,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
           </button>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

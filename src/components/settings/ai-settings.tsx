@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAISettings } from '@/hooks/use-ai-settings';
+import { useConfirmDialog } from '@/components/ui';
 
 interface AISettingsProps {
   onClose?: () => void;
@@ -18,6 +19,7 @@ export function AISettings({ onClose }: AISettingsProps) {
   );
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const handleValidateAndSave = async () => {
     if (!apiKeyInput.trim()) {
@@ -53,7 +55,14 @@ export function AISettings({ onClose }: AISettingsProps) {
   };
 
   const handleClearApiKey = async () => {
-    if (!confirm('Are you sure you want to remove your API key?')) return;
+    const confirmed = await confirmAction({
+      title: 'Remove API key?',
+      description: 'AI drill discovery will be disabled until another API key is saved.',
+      confirmLabel: 'Remove key',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     setError(null);
     setSuccessMessage(null);
@@ -367,6 +376,7 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

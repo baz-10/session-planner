@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { usePlays } from '@/hooks/use-plays';
 import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
 import { PlayDiagramPreview } from '@/components/plays/play-diagram-preview';
+import { useConfirmDialog, useTextPromptDialog } from '@/components/ui';
 import type { CourtTemplate, PlayType } from '@/lib/plays/diagram-types';
 import type { Play } from '@/types/database';
 
@@ -27,6 +28,8 @@ export function PlayLibrary() {
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const { promptForText, textPromptDialog } = useTextPromptDialog();
 
   const membership = teamMemberships.find((item) => item.team.id === currentTeamId);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
@@ -113,7 +116,15 @@ export function PlayLibrary() {
   }, [courtTemplate, loadPlays, playType, searchPlays, searchQuery, selectedTag]);
 
   const handleDuplicate = async (play: Play) => {
-    const newName = prompt('Name for duplicate play:', `${play.name} (Copy)`);
+    const newName = await promptForText({
+      title: 'Duplicate play',
+      description: 'Name the copied play before it is added to your library.',
+      label: 'Play name',
+      defaultValue: `${play.name} (Copy)`,
+      confirmLabel: 'Create copy',
+      validate: (value) => (value ? null : 'Play name is required.'),
+    });
+
     if (!newName) return;
 
     setActionError('');
@@ -126,7 +137,15 @@ export function PlayLibrary() {
   };
 
   const handleDelete = async (play: Play) => {
-    if (!confirm(`Delete "${play.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Delete play?',
+      description: `"${play.name}" will be removed from your play library.`,
+      confirmLabel: 'Delete play',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
     setActionError('');
     const result = await deletePlay(play.id);
     if (result.success) {
@@ -333,6 +352,8 @@ export function PlayLibrary() {
           ))}
         </div>
       )}
+      {confirmDialog}
+      {textPromptDialog}
     </div>
   );
 }

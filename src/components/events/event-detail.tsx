@@ -8,6 +8,7 @@ import { PlayCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
+import { useConfirmDialog } from '@/components/ui';
 import { EventForm } from './event-form';
 import { RsvpPanel } from './rsvp-panel';
 import { AttendanceTracker } from './attendance-tracker';
@@ -73,6 +74,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showEditForm, setShowEditForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'rsvp' | 'attendance' | 'plan'>('rsvp');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
   const isEventPast = event ? isPast(new Date(event.start_time)) : false;
@@ -101,15 +103,37 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
     let deleteSeries = false;
 
     if (event.recurrence_series_id) {
-      deleteSeries = confirm(
-        'Delete the entire recurring series? Click OK for full series, Cancel for one occurrence.'
-      );
+      deleteSeries = await confirmAction({
+        title: 'Delete recurring series?',
+        description: 'Delete every event in this recurring series, or choose only this occurrence.',
+        confirmLabel: 'Delete series',
+        cancelLabel: 'Choose occurrence',
+        confirmVariant: 'destructive',
+      });
 
-      if (!deleteSeries && !confirm('Delete only this event occurrence?')) {
+      if (!deleteSeries) {
+        const deleteOccurrence = await confirmAction({
+          title: 'Delete this occurrence?',
+          description: 'Only this event occurrence will be removed from the schedule.',
+          confirmLabel: 'Delete occurrence',
+          confirmVariant: 'destructive',
+        });
+
+        if (!deleteOccurrence) {
+          return;
+        }
+      }
+    } else {
+      const confirmed = await confirmAction({
+        title: 'Delete event?',
+        description: `"${event.title}" will be removed from the schedule.`,
+        confirmLabel: 'Delete event',
+        confirmVariant: 'destructive',
+      });
+
+      if (!confirmed) {
         return;
       }
-    } else if (!confirm('Are you sure you want to delete this event?')) {
-      return;
     }
 
     const result = await deleteEvent(eventId, { deleteSeries });
@@ -424,6 +448,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
           }}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

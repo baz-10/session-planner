@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDrills } from '@/hooks/use-drills';
 import { DrillForm } from './drill-form';
 import { CategoryManager } from './category-manager';
+import { useConfirmDialog } from '@/components/ui';
 import { drillMatchesCategory, getVisibleLabelTags } from '@/lib/utils/drill-tags';
 import type { Drill, DrillCategory, DrillMedia } from '@/types/database';
 
@@ -33,6 +34,7 @@ export function DrillLibrary() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingDrill, setEditingDrill] = useState<DrillWithDetails | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const loadCategories = useCallback(async () => {
     const data = await getCategories();
@@ -102,7 +104,14 @@ export function DrillLibrary() {
   }, [availableTags, selectedTag]);
 
   const handleDelete = async (drill: DrillWithDetails) => {
-    if (!confirm(`Are you sure you want to delete "${drill.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Delete drill?',
+      description: `"${drill.name}" will be removed from the drill library.`,
+      confirmLabel: 'Delete drill',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     setActionError('');
     const result = await deleteDrill(drill.id);
@@ -391,6 +400,7 @@ export function DrillLibrary() {
           onUpdate={loadCategories}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

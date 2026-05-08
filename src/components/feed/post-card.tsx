@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
+import { useConfirmDialog } from '@/components/ui';
 import { CommentSection } from './comment-section';
 import { ReactionPicker } from './reaction-picker';
 import { AttachmentGallery } from './attachment-gallery';
@@ -38,6 +39,7 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAuthor = user?.id === post.author_id;
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
@@ -48,7 +50,15 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
   const reactionSummary = getReactionSummary(post.reactions);
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this post?')) return;
+    const confirmed = await confirmAction({
+      title: 'Delete post?',
+      description: 'This post and its comments will be removed from the team feed.',
+      confirmLabel: 'Delete post',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
     setIsDeleting(true);
     await deletePost(post.id);
     onUpdate();
@@ -217,6 +227,7 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
           onUpdate={onUpdate}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

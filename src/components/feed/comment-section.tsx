@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
+import { useConfirmDialog } from '@/components/ui';
 import type { Comment, Profile } from '@/types/database';
 
 interface CommentWithAuthor extends Comment {
@@ -22,6 +23,7 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
   const { addComment, deleteComment } = usePosts();
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
 
@@ -39,7 +41,15 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
   };
 
   const handleDelete = async (commentId: string) => {
-    if (!confirm('Delete this comment?')) return;
+    const confirmed = await confirmAction({
+      title: 'Delete comment?',
+      description: 'This comment will be removed from the post.',
+      confirmLabel: 'Delete comment',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
     await deleteComment(commentId);
     onUpdate();
   };
@@ -100,6 +110,7 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
           </button>
         </div>
       </form>
+      {confirmDialog}
     </div>
   );
 }

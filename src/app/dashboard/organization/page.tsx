@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { useOrganization } from '@/hooks/use-organization';
+import { useConfirmDialog } from '@/components/ui';
 import type { Team, OrgRole } from '@/types/database';
 
 interface OrganizationMemberWithProfile {
@@ -31,6 +32,7 @@ export default function OrganizationSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteFeedback, setInviteFeedback] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -124,7 +126,15 @@ export default function OrganizationSettingsPage() {
       return;
     }
 
-    if (!confirm('Are you sure you want to remove this member?')) return;
+    const memberName = member?.profile?.full_name || member?.profile?.email || 'This member';
+    const confirmed = await confirmAction({
+      title: 'Remove organization member?',
+      description: `${memberName} will lose access to ${currentOrganization.name}.`,
+      confirmLabel: 'Remove member',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     const result = await removeMember(currentOrganization.id, memberId);
     if (result.success) {
@@ -411,6 +421,7 @@ export default function OrganizationSettingsPage() {
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }
