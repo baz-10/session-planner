@@ -22,13 +22,10 @@ function logSessionDebug(...args: unknown[]) {
   }
 }
 
-function isLegacySessionActivityColumnError(error: { message?: string | null } | null): boolean {
+function isLegacyLinkedPlayColumnError(error: { message?: string | null } | null): boolean {
   if (!error?.message) return false;
   const message = error.message.toLowerCase();
-  return (
-    (message.includes('additional_category_ids') && message.includes('column')) ||
-    (message.includes('linked_play_') && message.includes('column'))
-  );
+  return message.includes('linked_play_') && message.includes('column');
 }
 
 const STALE_SESSION_ERROR = 'This plan could not be saved. It may have been deleted or your access may have changed.';
@@ -318,11 +315,10 @@ export function useSessions() {
         }));
 
         let { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
-        if (insertError && isLegacySessionActivityColumnError(insertError)) {
+        if (insertError && isLegacyLinkedPlayColumnError(insertError)) {
           const legacyActivitiesToInsert = activitiesToInsert.map((activity) => {
             // Remove columns unavailable in legacy schemas.
             const {
-              additional_category_ids: _ignoredAdditionalCategoryIds,
               linked_play_id: _ignoredLinkedPlayId,
               linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
               linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
@@ -380,9 +376,8 @@ export function useSessions() {
         .select()
         .single();
 
-      if (error && isLegacySessionActivityColumnError(error)) {
+      if (error && isLegacyLinkedPlayColumnError(error)) {
         const {
-          additional_category_ids: _ignoredAdditionalCategoryIds,
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
           linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
@@ -422,9 +417,8 @@ export function useSessions() {
         .update(updates, { count: 'exact' })
         .eq('id', activityId);
 
-      if (error && isLegacySessionActivityColumnError(error)) {
+      if (error && isLegacyLinkedPlayColumnError(error)) {
         const {
-          additional_category_ids: _ignoredAdditionalCategoryIds,
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
           linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
