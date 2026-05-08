@@ -486,32 +486,18 @@ export function useSessions() {
       sessionId: string,
       activityIds: string[]
     ): Promise<{ success: boolean; error?: string }> => {
-      // Update each activity with its new sort_order
-      const updates = activityIds.map((id, index) => ({
-        id,
-        sort_order: index,
-      }));
+      const { error } = await supabase.rpc('reorder_session_activities', {
+        session_uuid: sessionId,
+        activity_ids: activityIds,
+      });
 
-      // Use a transaction-like approach by updating all in parallel
-      const promises = updates.map(({ id, sort_order }) =>
-        supabase
-          .from('session_activities')
-          .update({ sort_order }, { count: 'exact' })
-          .eq('id', id)
-          .eq('session_id', sessionId)
-      );
-
-      const results = await Promise.all(promises);
-      const hasError = results.some((r) => r.error);
-      const hasNoOp = results.some((r) => r.count === 0);
-
-      if (hasError) {
-        console.error('Error reordering activities');
+      if (error) {
+        console.error('Error reordering activities:', error);
+        const message = error.message || '';
+        if (message.toLowerCase().includes('activity list changed')) {
+          return { success: false, error: STALE_ACTIVITY_ERROR };
+        }
         return { success: false, error: 'Failed to reorder activities' };
-      }
-
-      if (hasNoOp) {
-        return { success: false, error: STALE_ACTIVITY_ERROR };
       }
 
       return { success: true };
