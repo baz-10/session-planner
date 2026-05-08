@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTeam } from '@/hooks/use-team';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole, Team } from '@/types/database';
 
 type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
@@ -29,9 +30,16 @@ export function JoinTeamForm({
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, role);
+    const result = await joinTeamByCode(normalizedCode, role);
 
     if (!result.success) {
       setError(result.error || 'Failed to join team');
@@ -69,9 +77,9 @@ export function JoinTeamForm({
         <input
           type="text"
           value={teamCode}
-          onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+          onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
           required
-          maxLength={6}
+          autoCapitalize="characters"
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest font-mono"
           placeholder="ABC123"
         />
@@ -101,7 +109,7 @@ export function JoinTeamForm({
 
       <button
         type="submit"
-        disabled={isSubmitting || teamCode.length !== 6}
+        disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
         className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? 'Joining...' : 'Join Team'}

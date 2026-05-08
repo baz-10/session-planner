@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole } from '@/types/database';
 
 type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
@@ -17,7 +18,7 @@ function getRoleFromUrl(value: string | null): InviteJoinRole {
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const codeFromUrl = searchParams.get('code');
+  const codeFromUrl = normalizeTeamCode(searchParams.get('code') || '');
   const roleFromUrl = getRoleFromUrl(searchParams.get('role'));
   const joinRedirectTarget = (() => {
     const params = new URLSearchParams();
@@ -30,7 +31,7 @@ function JoinPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const { joinTeamByCode } = useTeam();
 
-  const [teamCode, setTeamCode] = useState(codeFromUrl || '');
+  const [teamCode, setTeamCode] = useState(codeFromUrl);
   const [role, setRole] = useState<InviteJoinRole>(roleFromUrl);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -39,7 +40,7 @@ function JoinPageContent() {
   // Pre-fill code from URL
   useEffect(() => {
     if (codeFromUrl) {
-      setTeamCode(codeFromUrl.toUpperCase());
+      setTeamCode(codeFromUrl);
     }
   }, [codeFromUrl]);
 
@@ -51,9 +52,16 @@ function JoinPageContent() {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, role);
+    const result = await joinTeamByCode(normalizedCode, role);
 
     if (!result.success) {
       setError(result.error || 'Failed to join team');
@@ -167,9 +175,9 @@ function JoinPageContent() {
                 id="teamCode"
                 type="text"
                 value={teamCode}
-                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
                 required
-                maxLength={6}
+                autoCapitalize="characters"
                 className="input text-center text-2xl tracking-widest font-mono"
                 placeholder="ABC123"
                 autoComplete="off"
@@ -194,7 +202,7 @@ function JoinPageContent() {
 
             <button
               type="submit"
-              disabled={isSubmitting || teamCode.length !== 6}
+              disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
               className="btn-primary w-full py-3"
             >
               {isSubmitting ? (

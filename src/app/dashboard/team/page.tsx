@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole } from '@/types/database';
 
 type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
@@ -235,7 +236,8 @@ export default function TeamSettingsPage() {
 
   const handleJoinTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCode.length !== 6) {
+    const normalizedCode = normalizeTeamCode(joinCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
       setFormError('Please enter a valid 6-character team code');
       return;
     }
@@ -243,7 +245,7 @@ export default function TeamSettingsPage() {
     setIsSubmitting(true);
     setFormError('');
 
-    const result = await joinTeamByCode(joinCode.toUpperCase(), joinRole);
+    const result = await joinTeamByCode(normalizedCode, joinRole);
 
     setIsSubmitting(false);
 
@@ -432,17 +434,17 @@ export default function TeamSettingsPage() {
             <h3 className="text-lg font-semibold text-navy mb-4">Join a Team</h3>
             <form onSubmit={handleJoinTeam} className="space-y-4">
               <div className="form-group">
-                <label htmlFor="teamCode" className="label">Team Code</label>
-                <input
-                  id="teamCode"
-                  type="text"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  className="input text-center text-2xl tracking-widest font-mono"
-                  placeholder="ABC123"
-                  maxLength={6}
-                  required
-                />
+	                <label htmlFor="teamCode" className="label">Team Code</label>
+	                <input
+	                  id="teamCode"
+	                  type="text"
+	                  value={joinCode}
+	                  onChange={(e) => setJoinCode(normalizeTeamCode(e.target.value))}
+	                  className="input text-center text-2xl tracking-widest font-mono"
+	                  placeholder="ABC123"
+	                  autoCapitalize="characters"
+	                  required
+	                />
                 <p className="text-xs text-text-muted mt-1">Ask your coach for the 6-character team code</p>
               </div>
               <div className="form-group">
@@ -468,11 +470,11 @@ export default function TeamSettingsPage() {
                 >
                   Back
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || joinCode.length !== 6}
-                  className="btn-accent min-h-12 flex-1"
-                >
+	                <button
+	                  type="submit"
+	                  disabled={isSubmitting || joinCode.length !== TEAM_CODE_LENGTH}
+	                  className="btn-accent min-h-12 flex-1"
+	                >
                   {isSubmitting ? 'Joining...' : 'Join Team'}
                 </button>
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { usePlayers } from '@/hooks/use-players';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole, RelationshipType } from '@/types/database';
 
 type OnboardingStep = 'profile' | 'team-choice' | 'create-team' | 'join-team' | 'add-players' | 'complete';
@@ -112,9 +113,16 @@ export function OnboardingFlow() {
   const handleJoinTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, joinRole);
+    const result = await joinTeamByCode(normalizedCode, joinRole);
 
     if (!result.success) {
       setError(result.error || 'Failed to join team');
@@ -353,14 +361,14 @@ export function OnboardingFlow() {
                   Team Code
                 </label>
                 <input
-                  type="text"
-                  value={teamCode}
-                  onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
-                  required
-                  maxLength={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-2xl tracking-widest font-mono"
-                  placeholder="ABC123"
-                />
+	                  type="text"
+	                  value={teamCode}
+	                  onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
+	                  required
+	                  autoCapitalize="characters"
+	                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-2xl tracking-widest font-mono"
+	                  placeholder="ABC123"
+	                />
                 <p className="mt-1 text-sm text-gray-500">
                   Ask your coach for the 6-character team code
                 </p>
@@ -384,10 +392,10 @@ export function OnboardingFlow() {
                 </div>
               )}
               <button
-                type="submit"
-                disabled={isSubmitting || teamCode.length !== 6}
-                className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
-              >
+	                type="submit"
+	                disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+	                className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
+	              >
                 {isSubmitting ? 'Joining...' : 'Join Team'}
               </button>
             </form>

@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { Team, TeamRole, CreateTeamInput } from '@/types/database';
 
 const PUBLIC_INVITE_ROLES = new Set<TeamRole>(['player', 'parent']);
@@ -41,8 +42,13 @@ export function useTeam() {
         };
       }
 
+      const normalizedCode = normalizeTeamCode(teamCode);
+      if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+        return { success: false, error: 'Please enter a valid 6-character team code.' };
+      }
+
       const { data: team, error: joinError } = await supabase.rpc('join_team_by_code', {
-        invite_code: teamCode.toUpperCase(),
+        invite_code: normalizedCode,
         requested_role: role,
       });
 
