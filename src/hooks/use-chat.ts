@@ -246,7 +246,7 @@ export function useChat() {
             conversation_id: conversationId,
             user_id: userId,
           })),
-          { onConflict: 'conversation_id,user_id' }
+          { onConflict: 'conversation_id,user_id', ignoreDuplicates: true }
         );
 
       if (participantError) {
