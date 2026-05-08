@@ -2292,22 +2292,33 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       {canManageSessions && (
       <MobileStickyActionBar>
+        {session.id && !hasUnsavedChanges && (
+          <Link
+            href={`/dashboard/sessions/${session.id}/run`}
+            aria-label="Run live"
+            className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-navy bg-white px-3 text-sm font-extrabold text-navy"
+          >
+            <PlayCircle className="h-5 w-5" />
+            Run
+          </Link>
+        )}
         <button
           type="button"
           onClick={openSingleDrillModal}
           disabled={isSaving}
-          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-teal bg-white px-4 text-base font-extrabold text-teal disabled:opacity-50"
+          aria-label="+ Add Activity"
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-teal bg-white px-3 text-sm font-extrabold text-teal disabled:opacity-50"
         >
-          + Add Activity
+          + Add
         </button>
         <button
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-navy px-4 text-base font-extrabold text-white disabled:opacity-50"
+          className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-navy px-3 text-sm font-extrabold text-white disabled:opacity-50"
         >
           <Save className="h-5 w-5" />
-          {isSaving ? 'Saving' : 'Save Plan'}
+          {isSaving ? 'Saving' : 'Save'}
         </button>
       </MobileStickyActionBar>
       )}
