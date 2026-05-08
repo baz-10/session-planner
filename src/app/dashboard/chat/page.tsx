@@ -23,6 +23,7 @@ export default function ChatPage() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
   const [quickChatError, setQuickChatError] = useState('');
+  const [openingQuickChat, setOpeningQuickChat] = useState<'team' | 'coaches' | null>(null);
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canUseCoachesChat = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
@@ -35,6 +36,13 @@ export default function ChatPage() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    setSelectedConversation(null);
+    setShowNewChat(false);
+    setQuickChatError('');
+    setOpeningQuickChat(null);
+  }, [currentTeam?.id]);
 
   const handleSelectConversation = (conversation: ConversationWithDetails) => {
     setQuickChatError('');
@@ -70,10 +78,14 @@ export default function ChatPage() {
   };
 
   const openTeamConversation = async (type: 'team' | 'coaches') => {
+    if (openingQuickChat) return;
+
     setQuickChatError('');
+    setOpeningQuickChat(type);
     const result = await getTeamChat(type);
     if (!result.success || !result.conversation) {
       setQuickChatError(result.error || 'Team chat could not be opened. Refresh and try again.');
+      setOpeningQuickChat(null);
       return;
     }
 
@@ -92,6 +104,8 @@ export default function ChatPage() {
           ? error.message
           : 'Team chat was opened, but messages could not refresh. Try again.'
       );
+    } finally {
+      setOpeningQuickChat(null);
     }
   };
 
@@ -141,7 +155,8 @@ export default function ChatPage() {
           )}
           <button
             onClick={() => openTeamConversation('team')}
-            className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors"
+            disabled={openingQuickChat !== null}
+            className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
           >
             <div className="w-10 h-10 rounded-full bg-teal-glow text-teal flex items-center justify-center">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,13 +165,16 @@ export default function ChatPage() {
             </div>
             <div className="text-left">
               <div className="font-medium text-navy">Team Chat</div>
-              <div className="text-sm text-text-secondary">Message everyone</div>
+              <div className="text-sm text-text-secondary">
+                {openingQuickChat === 'team' ? 'Opening...' : 'Message everyone'}
+              </div>
             </div>
           </button>
           {canUseCoachesChat && (
             <button
               onClick={() => openTeamConversation('coaches')}
-              className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors"
+              disabled={openingQuickChat !== null}
+              className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
             >
               <div className="w-10 h-10 rounded-full bg-navy/10 text-navy flex items-center justify-center">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -165,7 +183,9 @@ export default function ChatPage() {
               </div>
               <div className="text-left">
                 <div className="font-medium text-navy">Coaches Chat</div>
-                <div className="text-sm text-text-secondary">Coach/admin thread</div>
+                <div className="text-sm text-text-secondary">
+                  {openingQuickChat === 'coaches' ? 'Opening...' : 'Coach/admin thread'}
+                </div>
               </div>
             </button>
           )}
