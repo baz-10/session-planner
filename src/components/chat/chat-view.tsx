@@ -141,12 +141,6 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           )}
         </div>
 
-        {/* Menu button */}
-        <button type="button" className="p-2 text-gray-400 hover:text-gray-600 rounded" aria-label="Conversation options">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-          </svg>
-        </button>
       </div>
 
       {/* Messages */}
@@ -171,6 +165,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       <MessageInput
         onSendMessage={handleSendMessage}
         onSendFile={handleSendFile}
+        disabled={Boolean(loadError)}
       />
     </div>
   );

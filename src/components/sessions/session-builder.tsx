@@ -426,6 +426,17 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     async (activityId: string) => {
       if (!canManageSessions) return;
 
+      const activityName =
+        session.activities?.find((activity) => activity.id === activityId)?.name || 'this activity';
+      const confirmed = await confirmAction({
+        title: 'Delete activity?',
+        description: `${activityName} will be removed from this practice plan.`,
+        confirmLabel: 'Delete activity',
+        confirmVariant: 'destructive',
+      });
+
+      if (!confirmed) return;
+
       if (session.id) {
         const result = await deleteActivity(activityId);
         if (!result.success) {
@@ -450,7 +461,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         setHasUnsavedChanges(true);
       }
     },
-    [canManageSessions, session.id, deleteActivity, showStatus]
+    [canManageSessions, confirmAction, session.activities, session.id, deleteActivity, showStatus]
   );
 
   const handleReorder = useCallback(

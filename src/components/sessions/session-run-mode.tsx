@@ -89,6 +89,36 @@ function storageKeyForSession(sessionId: string): string {
   return `session-planner:run-mode:${sessionId}`;
 }
 
+function readStoredRunState(sessionId: string): RunState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    return parseStoredRunState(window.localStorage.getItem(storageKeyForSession(sessionId)), sessionId);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredRunState(runState: RunState) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(storageKeyForSession(runState.sessionId), JSON.stringify(runState));
+  } catch {
+    // Private browsing or storage quota errors should not crash live run mode.
+  }
+}
+
+function removeStoredRunState(sessionId: string) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(storageKeyForSession(sessionId));
+  } catch {
+    // Storage access can be unavailable in some browser privacy modes.
+  }
+}
+
 function secondsForActivity(activity?: SessionActivity | null): number {
   return Math.max(60, (Number(activity?.duration) || 0) * 60);
 }
@@ -301,10 +331,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         (left, right) => left.sort_order - right.sort_order
       );
       const nextSession = { ...data, activities: sortedActivities } as SessionWithActivities;
-      const storedState =
-        typeof window === 'undefined'
-          ? null
-          : parseStoredRunState(window.localStorage.getItem(storageKeyForSession(sessionId)), sessionId);
+      const storedState = readStoredRunState(sessionId);
 
       setSession(nextSession);
       setRunState(
@@ -390,7 +417,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
 
   useEffect(() => {
     if (!runState) return;
-    window.localStorage.setItem(storageKeyForSession(runState.sessionId), JSON.stringify(runState));
+    writeStoredRunState(runState);
   }, [runState]);
 
   useEffect(() => {
@@ -451,7 +478,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     if (!confirmed) return;
 
     const nextState = createInitialRunState(sessionId, session.activities);
-    window.localStorage.removeItem(storageKeyForSession(sessionId));
+    removeStoredRunState(sessionId);
     setRunState(nextState);
   }, [confirmAction, session, sessionId]);
 
