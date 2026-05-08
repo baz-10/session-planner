@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
@@ -75,16 +75,12 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
     onUpdate();
   };
 
-  const handleView = () => {
-    if (!post.has_viewed) {
-      markAsViewed(post.id);
-    }
-  };
-
   // Mark as viewed when card becomes visible
-  useState(() => {
-    handleView();
-  });
+  useEffect(() => {
+    if (!post.has_viewed) {
+      void markAsViewed(post.id);
+    }
+  }, [markAsViewed, post.has_viewed, post.id]);
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
