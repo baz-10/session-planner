@@ -16,13 +16,23 @@ interface PlayerToAdd {
   lastName: string;
 }
 
-export function OnboardingFlow() {
+interface OnboardingFlowProps {
+  initialParentTeamId?: string | null;
+  onParentSetupComplete?: () => void;
+}
+
+export function OnboardingFlow({
+  initialParentTeamId = null,
+  onParentSetupComplete,
+}: OnboardingFlowProps) {
   const router = useRouter();
   const { user, profile, updateProfile, refreshTeamMemberships, teamMemberships, currentTeam } = useAuth();
   const { createTeam, joinTeamByCode } = useTeam();
   const { createPlayerWithLink } = usePlayers();
 
-  const [step, setStep] = useState<OnboardingStep>('profile');
+  const [step, setStep] = useState<OnboardingStep>(
+    initialParentTeamId && profile?.onboarding_completed ? 'add-players' : 'profile'
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,9 +54,15 @@ export function OnboardingFlow() {
   // Parent - add players state
   const [playersToAdd, setPlayersToAdd] = useState<PlayerToAdd[]>([{ firstName: '', lastName: '' }]);
   const [relationship, setRelationship] = useState<RelationshipType>('parent');
-  const [joinedTeamId, setJoinedTeamId] = useState<string | null>(null);
+  const [joinedTeamId, setJoinedTeamId] = useState<string | null>(initialParentTeamId);
 
   const getJoinedParentTeamId = () => {
+    if (initialParentTeamId && teamMemberships.some((membership) => (
+      membership.team.id === initialParentTeamId && membership.role === 'parent'
+    ))) {
+      return initialParentTeamId;
+    }
+
     if (currentTeam?.id && teamMemberships.some((membership) => (
       membership.team.id === currentTeam.id && membership.role === 'parent'
     ))) {
@@ -57,6 +73,15 @@ export function OnboardingFlow() {
   };
 
   const hasParentTeamMembership = Boolean(getJoinedParentTeamId());
+
+  useEffect(() => {
+    if (!initialParentTeamId) return;
+
+    setJoinedTeamId(initialParentTeamId);
+    if (profile?.onboarding_completed) {
+      setStep('add-players');
+    }
+  }, [initialParentTeamId, profile?.onboarding_completed]);
 
   useEffect(() => {
     if (isParent || hasParentTeamMembership) {
@@ -80,7 +105,7 @@ export function OnboardingFlow() {
       return;
     }
 
-    const parentTeamId = getJoinedParentTeamId();
+    const parentTeamId = getJoinedParentTeamId() || initialParentTeamId;
     setIsSubmitting(false);
 
     if (parentTeamId) {
@@ -184,6 +209,7 @@ export function OnboardingFlow() {
     }
 
     setIsSubmitting(false);
+    onParentSetupComplete?.();
     setStep('complete');
   };
 
@@ -206,6 +232,7 @@ export function OnboardingFlow() {
   const handleComplete = async () => {
     await updateProfile({ onboarding_completed: true });
     await refreshTeamMemberships();
+    onParentSetupComplete?.();
     router.push('/dashboard');
   };
 

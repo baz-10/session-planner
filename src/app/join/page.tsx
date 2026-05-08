@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
+import { storePendingParentTeamSetupId } from '@/lib/utils/parent-team-setup';
 import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole } from '@/types/database';
 
@@ -69,7 +70,15 @@ function JoinPageContent() {
       return;
     }
 
-    setSuccess(`Successfully joined ${result.team?.name}! Redirecting...`);
+    if (role === 'parent' && result.team?.id && user?.id) {
+      storePendingParentTeamSetupId(user.id, result.team.id);
+    }
+
+    setSuccess(
+      role === 'parent'
+        ? `Successfully joined ${result.team?.name}! Redirecting to add your players...`
+        : `Successfully joined ${result.team?.name}! Redirecting...`
+    );
     setTimeout(() => {
       router.push(role === 'parent' ? '/onboarding' : '/dashboard');
     }, 1500);
