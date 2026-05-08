@@ -37,8 +37,20 @@ interface JoinOrganizationResult {
 
 const STALE_ORG_MEMBER_ERROR =
   'This organization member could not be updated. They may have been removed or your access may have changed.';
+const ORGANIZATION_PUBLIC_SELECT =
+  'id, name, logo_url, settings, created_by, created_at, updated_at';
 const TEAM_PUBLIC_SELECT =
   'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
+
+function withOrganizationInviteCode(
+  organization: Partial<Organization>,
+  inviteCode: string | null
+): Organization {
+  return {
+    ...(organization as Organization),
+    organization_code: inviteCode,
+  };
+}
 
 export function useOrganization() {
   const { user, refreshOrganizationMemberships, setCurrentOrganization } = useAuth();
@@ -61,7 +73,7 @@ export function useOrganization() {
           logo_url: logoUrl || null,
           created_by: user.id,
         })
-        .select()
+        .select(ORGANIZATION_PUBLIC_SELECT)
         .single();
 
       if (createError || !org) {
@@ -69,11 +81,25 @@ export function useOrganization() {
         return { success: false, error: 'Failed to create organization. Please try again.' };
       }
 
+      const organization = withOrganizationInviteCode(org, null);
+      const { data: inviteCode, error: inviteError } = await supabase.rpc(
+        'get_organization_invite_code',
+        {
+          org_uuid: organization.id,
+        }
+      );
+
+      if (inviteError) {
+        console.error('Error fetching new organization invite code:', inviteError);
+      } else {
+        organization.organization_code = inviteCode;
+      }
+
       // The database trigger adds the creator as an organization admin.
       await refreshOrganizationMemberships();
-      setCurrentOrganization(org as Organization);
+      setCurrentOrganization(organization);
 
-      return { success: true, organization: org as Organization };
+      return { success: true, organization };
     },
     [user, supabase, refreshOrganizationMemberships, setCurrentOrganization]
   );
@@ -97,18 +123,20 @@ export function useOrganization() {
         invite_code: normalizedCode,
       });
 
-      if (joinError) {
+      if (joinError || !org) {
         console.error('Error joining organization:', joinError);
         return {
           success: false,
-          error: joinError.message || 'Failed to join organization. Please check the invite code.',
+          error: joinError?.message || 'Failed to join organization. Please check the invite code.',
         };
       }
 
-      await refreshOrganizationMemberships();
-      setCurrentOrganization(org as Organization);
+      const organization = withOrganizationInviteCode(org as Partial<Organization>, null);
 
-      return { success: true, organization: org as Organization };
+      await refreshOrganizationMemberships();
+      setCurrentOrganization(organization);
+
+      return { success: true, organization };
     },
     [user, supabase, refreshOrganizationMemberships, setCurrentOrganization]
   );

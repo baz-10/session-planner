@@ -45,7 +45,7 @@ export interface Profile {
 export interface Organization {
   id: string;
   name: string;
-  organization_code: string;
+  organization_code: string | null;
   logo_url: string | null;
   settings: Record<string, unknown>;
   created_by: string | null;
@@ -922,9 +922,13 @@ export interface Database {
         Args: { team_uuid: string };
         Returns: string;
       };
+      get_organization_invite_code: {
+        Args: { org_uuid: string };
+        Returns: string;
+      };
       join_organization_by_code: {
         Args: { invite_code: string };
-        Returns: Organization;
+        Returns: Omit<Organization, 'organization_code'>;
       };
       refresh_invoice_status: {
         Args: { invoice_uuid: string };

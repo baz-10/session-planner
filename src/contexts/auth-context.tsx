@@ -15,6 +15,8 @@ import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization,
 const AUTH_INIT_TIMEOUT_MS = 30000;
 const TEAM_PUBLIC_SELECT =
   'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
+const ORGANIZATION_PUBLIC_SELECT =
+  'id, name, logo_url, settings, created_by, created_at, updated_at';
 const MANAGER_TEAM_ROLES = new Set<TeamMember['role']>(['admin', 'coach']);
 
 function logAuth(...args: unknown[]) {
@@ -27,6 +29,16 @@ function hideTeamInviteCode(team: Partial<Team>): Team {
   return {
     ...(team as Team),
     team_code: null,
+  };
+}
+
+function withOrganizationInviteCode(
+  organization: Partial<Organization>,
+  inviteCode: string | null
+): Organization {
+  return {
+    ...(organization as Organization),
+    organization_code: inviteCode,
   };
 }
 
@@ -263,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('organization_members')
       .select(`
         *,
-        organization:organizations(*)
+        organization:organizations(${ORGANIZATION_PUBLIC_SELECT})
       `)
       .eq('user_id', state.user.id);
 
@@ -272,10 +284,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const memberships = (data || []).map((item: OrganizationMember & { organization: Organization }) => ({
-      ...item,
-      organization: item.organization as Organization,
-    })) as OrganizationMembership[];
+    const memberships = await Promise.all(
+      (data || []).map(async (item: OrganizationMember & { organization: Partial<Organization> }) => {
+        const organization = withOrganizationInviteCode(item.organization, null);
+
+        if (item.role === 'admin') {
+          const { data: inviteCode, error: inviteError } = await supabase.rpc(
+            'get_organization_invite_code',
+            {
+              org_uuid: organization.id,
+            }
+          );
+
+          if (inviteError) {
+            console.error('[Auth] Error fetching organization invite code:', inviteError);
+          } else {
+            organization.organization_code = inviteCode;
+          }
+        }
+
+        return {
+          ...item,
+          organization,
+        } as OrganizationMembership;
+      })
+    );
 
     setOrganizationMemberships(memberships);
     setCurrentOrganization((previousOrganization) => {
