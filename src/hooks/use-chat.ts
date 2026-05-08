@@ -583,23 +583,54 @@ export function useChat() {
    * Subscribe to conversation updates (new messages, etc.)
    */
   const subscribeToConversations = useCallback(
-    (onUpdate: () => void) => {
+    (onUpdate: () => void, conversationIds: string[] = []) => {
       if (!user) return () => {};
 
-      const channel = supabase
-        .channel('conversations-updates')
+      const uniqueConversationIds = [...new Set(conversationIds.filter(Boolean))];
+      let channel = supabase
+        .channel(`conversations-updates:${user.id}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'messages',
+            table: 'conversation_participants',
+            filter: `user_id=eq.${user.id}`,
           },
           () => {
             onUpdate();
           }
-        )
-        .subscribe();
+        );
+
+      for (const conversationId of uniqueConversationIds) {
+        channel = channel
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'messages',
+              filter: `conversation_id=eq.${conversationId}`,
+            },
+            () => {
+              onUpdate();
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'conversation_participants',
+              filter: `conversation_id=eq.${conversationId}`,
+            },
+            () => {
+              onUpdate();
+            }
+          );
+      }
+
+      channel.subscribe();
 
       return () => {
         supabase.removeChannel(channel);

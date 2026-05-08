@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
@@ -27,6 +27,10 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const conversationIdKey = useMemo(
+    () => conversations.map((conversation) => conversation.id).sort().join('|'),
+    [conversations]
+  );
 
   const loadConversations = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -53,15 +57,17 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   }, [getConversations]);
 
   useEffect(() => {
-    loadConversations();
+    void loadConversations();
+  }, [loadConversations]);
 
-    // Subscribe to updates
+  useEffect(() => {
+    const conversationIds = conversationIdKey ? conversationIdKey.split('|') : [];
     const unsubscribe = subscribeToConversations(() => {
       loadConversations(false);
-    });
+    }, conversationIds);
 
     return unsubscribe;
-  }, [loadConversations, subscribeToConversations]);
+  }, [conversationIdKey, loadConversations, subscribeToConversations]);
 
   const getConversationName = (conv: ConversationWithDetails) => {
     if (conv.name) return conv.name;
