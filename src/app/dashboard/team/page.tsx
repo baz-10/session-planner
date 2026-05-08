@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
+import { useConfirmDialog } from '@/components/ui';
 import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole } from '@/types/database';
 
@@ -74,6 +75,7 @@ export default function TeamSettingsPage() {
   const [joinRole, setJoinRole] = useState<InviteJoinRole>('player');
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   // Get current user's role in this team
   const currentMembership = teamMemberships.find(m => m.team.id === currentTeam?.id);
@@ -308,7 +310,14 @@ export default function TeamSettingsPage() {
     }
 
     const memberName = member.profile?.full_name || member.profile?.email || 'this member';
-    if (!confirm(`Remove ${memberName} from ${currentTeam.name}?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Remove team member?',
+      description: `${memberName} will lose access to ${currentTeam.name}.`,
+      confirmLabel: 'Remove member',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     setUpdatingMemberId(member.id);
     setMemberActionError('');
@@ -760,6 +769,7 @@ export default function TeamSettingsPage() {
           </div>
         )}
       </MobileListCard>
+      {confirmDialog}
     </MobilePageShell>
   );
 }
