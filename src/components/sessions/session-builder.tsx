@@ -1478,23 +1478,33 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
     try {
       const existingDrills = await getDrills();
-      const existingNames = new Set(
-        existingDrills.map((drill) => drill.name.trim().toLowerCase()).filter(Boolean)
+      const existingDrillIdByName = new Map(
+        existingDrills
+          .map((drill) => [drill.name.trim().toLowerCase(), drill.id] as const)
+          .filter(([name]) => Boolean(name))
       );
 
       let createdCount = 0;
+      let linkedExistingCount = 0;
       let skippedCount = 0;
       let failedCreateCount = 0;
       let failedLinkCount = 0;
-      const createdDrillByActivityId = new Map<string, string>();
+      const drillIdByActivityId = new Map<string, string>();
+      const existingDrillActivityIds = new Set<string>();
 
       for (const activity of activities) {
         const normalizedName = activity.name.trim().toLowerCase();
         const alreadyLinked = Boolean(activity.drill_id);
-        const duplicateName = existingNames.has(normalizedName);
 
-        if (!normalizedName || alreadyLinked || duplicateName) {
+        if (!normalizedName || alreadyLinked) {
           skippedCount += 1;
+          continue;
+        }
+
+        const existingDrillId = existingDrillIdByName.get(normalizedName);
+        if (existingDrillId) {
+          drillIdByActivityId.set(activity.id, existingDrillId);
+          existingDrillActivityIds.add(activity.id);
           continue;
         }
 
@@ -1513,17 +1523,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }
 
         createdCount += 1;
-        existingNames.add(normalizedName);
-        createdDrillByActivityId.set(activity.id, createResult.drill.id);
+        existingDrillIdByName.set(normalizedName, createResult.drill.id);
+        drillIdByActivityId.set(activity.id, createResult.drill.id);
       }
 
       const linkedDrillByActivityId = new Map<string, string>();
 
-      if (createdDrillByActivityId.size > 0) {
+      if (drillIdByActivityId.size > 0) {
         if (session.id) {
-          for (const [activityId, drillId] of createdDrillByActivityId.entries()) {
+          for (const [activityId, drillId] of drillIdByActivityId.entries()) {
             if (activityId.startsWith('temp-')) {
               linkedDrillByActivityId.set(activityId, drillId);
+              if (existingDrillActivityIds.has(activityId)) {
+                linkedExistingCount += 1;
+              }
               setHasUnsavedChanges(true);
               continue;
             }
@@ -1531,13 +1544,19 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             const linkResult = await updateActivity(activityId, { drill_id: drillId });
             if (linkResult.success) {
               linkedDrillByActivityId.set(activityId, drillId);
+              if (existingDrillActivityIds.has(activityId)) {
+                linkedExistingCount += 1;
+              }
             } else {
               failedLinkCount += 1;
             }
           }
         } else {
-          createdDrillByActivityId.forEach((drillId, activityId) => {
+          drillIdByActivityId.forEach((drillId, activityId) => {
             linkedDrillByActivityId.set(activityId, drillId);
+            if (existingDrillActivityIds.has(activityId)) {
+              linkedExistingCount += 1;
+            }
           });
           setHasUnsavedChanges(true);
         }
@@ -1560,7 +1579,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       if (skippedCount > 0) {
         summaryParts.push(
-          `${skippedCount} skipped (already linked or same-name drill exists).`
+          `${skippedCount} skipped (already linked or missing a name).`
+        );
+      }
+      if (linkedExistingCount > 0) {
+        summaryParts.push(
+          `Linked ${linkedExistingCount} existing drill${linkedExistingCount === 1 ? '' : 's'}.`
         );
       }
       if (failedCreateCount > 0) {
