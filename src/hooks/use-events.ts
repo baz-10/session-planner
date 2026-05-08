@@ -62,7 +62,7 @@ export function useEvents() {
         .select(`
           *,
           session:sessions(*),
-          rsvps(*, user:profiles!user_id(*), player:players!player_id(*))
+          rsvps(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*))
         `)
         .eq('team_id', currentTeam.id)
         .order('start_time', { ascending: true });
@@ -105,8 +105,8 @@ export function useEvents() {
         .select(`
           *,
           session:sessions(*),
-          rsvps(*, user:profiles!user_id(*), player:players!player_id(*)),
-          attendance_records(*, user:profiles!user_id(*), player:players!player_id(*))
+          rsvps(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*)),
+          attendance_records(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*))
         `)
         .eq('id', eventId)
         .single();

@@ -378,8 +378,8 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <p className="text-sm text-gray-600 mb-4">
-        Enter your OpenAI API key to enable AI-powered drill discovery. Your key is stored securely
-        and only used for generating drill suggestions.
+        Enter your OpenAI API key to enable AI-powered drill discovery. Your key stays on this
+        device and is only sent to OpenAI when you request AI suggestions.
       </p>
 
       {error && (

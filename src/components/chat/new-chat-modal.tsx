@@ -44,7 +44,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
       .from('team_members')
       .select(`
         *,
-        profile:profiles!user_id(*)
+        profile:profiles!user_id(id, email, full_name, avatar_url)
       `)
       .eq('team_id', currentTeam.id)
       .neq('user_id', user?.id);

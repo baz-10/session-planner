@@ -336,7 +336,7 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
 
           <p className="text-sm text-gray-500">
-            Your API key is stored securely and only used to make requests to OpenAI on your behalf.
+            Your API key stays on this device and is only sent to OpenAI when you use AI features.
             You can get an API key from{' '}
             <a
               href="https://platform.openai.com/api-keys"

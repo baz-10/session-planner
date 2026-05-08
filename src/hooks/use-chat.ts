@@ -118,7 +118,7 @@ export function useChat() {
       .from('conversations')
       .select(`
         *,
-        participants:conversation_participants(*, user:profiles!user_id(*))
+        participants:conversation_participants(*, user:profiles!user_id(id, email, full_name, avatar_url))
       `)
       .in('id', conversationIds)
       .order('updated_at', { ascending: false });
@@ -396,7 +396,7 @@ export function useChat() {
         .from('messages')
         .select(`
           *,
-          sender:profiles!sender_id(*)
+          sender:profiles!sender_id(id, email, full_name, avatar_url)
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
@@ -558,7 +558,7 @@ export function useChat() {
               .from('messages')
               .select(`
                 *,
-                sender:profiles!sender_id(*)
+                sender:profiles!sender_id(id, email, full_name, avatar_url)
               `)
               .eq('id', payload.new.id)
               .single();

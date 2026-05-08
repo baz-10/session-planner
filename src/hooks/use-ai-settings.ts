@@ -12,6 +12,39 @@ export interface AISettings {
 
 const STORAGE_KEY = 'session_planner_ai_settings';
 
+function storageKeyForUser(userId: string): string {
+  return `${STORAGE_KEY}:${userId}`;
+}
+
+function readStoredApiKey(userId: string): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const value = window.localStorage.getItem(storageKeyForUser(userId))?.trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredApiKey(userId: string, apiKey: string | null) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (apiKey) {
+      window.localStorage.setItem(storageKeyForUser(userId), apiKey);
+    } else {
+      window.localStorage.removeItem(storageKeyForUser(userId));
+    }
+  } catch {
+    // Local persistence can fail in private browsing; keep in-memory state.
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
 export function useAISettings() {
   const { user } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -34,15 +67,39 @@ export function useAISettings() {
         .eq('id', user.id)
         .single();
 
-      if (profile?.settings) {
-        const aiSettings = (profile.settings as Record<string, unknown>).ai as AISettings | undefined;
-        if (aiSettings) {
-          setSettings({
-            openaiApiKey: aiSettings.openaiApiKey || null,
-            aiEnabled: aiSettings.aiEnabled || false,
-            preferredModel: aiSettings.preferredModel || 'gpt-4o-mini',
-          });
-        }
+      const profileSettings = isRecord(profile?.settings) ? profile.settings : {};
+      const aiSettings = isRecord(profileSettings.ai) ? profileSettings.ai : {};
+      const localApiKey = readStoredApiKey(user.id);
+      const legacyProfileApiKey =
+        typeof aiSettings.openaiApiKey === 'string' ? aiSettings.openaiApiKey.trim() : '';
+
+      if (legacyProfileApiKey && !localApiKey) {
+        writeStoredApiKey(user.id, legacyProfileApiKey);
+      }
+
+      const nextSettings = {
+        openaiApiKey: localApiKey || legacyProfileApiKey || null,
+        aiEnabled: typeof aiSettings.aiEnabled === 'boolean' ? aiSettings.aiEnabled : false,
+        preferredModel:
+          typeof aiSettings.preferredModel === 'string'
+            ? aiSettings.preferredModel
+            : 'gpt-4o-mini',
+      };
+
+      setSettings(nextSettings);
+
+      if (legacyProfileApiKey) {
+        const safeAISettings = { ...aiSettings };
+        delete safeAISettings.openaiApiKey;
+        await supabase
+          .from('profiles')
+          .update({
+            settings: {
+              ...profileSettings,
+              ai: safeAISettings,
+            },
+          })
+          .eq('id', user.id);
       }
     } catch (error) {
       console.error('Error loading AI settings:', error);
@@ -75,19 +132,36 @@ export function useAISettings() {
           .eq('id', user.id)
           .single();
 
-        const currentSettings = (profile?.settings || {}) as Record<string, unknown>;
-        const updatedAISettings = {
-          ...settings,
-          ...newSettings,
-        };
+        const currentSettings = isRecord(profile?.settings) ? profile.settings : {};
+        const currentAISettings = isRecord(currentSettings.ai) ? currentSettings.ai : {};
+        const nextApiKey =
+          newSettings.openaiApiKey === undefined
+            ? settings.openaiApiKey
+            : newSettings.openaiApiKey?.trim() || null;
 
-        // Update profile with new AI settings
+        if (newSettings.openaiApiKey !== undefined) {
+          writeStoredApiKey(user.id, nextApiKey);
+        }
+
+        const updatedSettings = {
+          openaiApiKey: nextApiKey,
+          aiEnabled: newSettings.aiEnabled ?? settings.aiEnabled,
+          preferredModel: newSettings.preferredModel ?? settings.preferredModel,
+        };
+        const safeProfileAISettings = {
+          ...currentAISettings,
+          aiEnabled: updatedSettings.aiEnabled,
+          preferredModel: updatedSettings.preferredModel,
+        };
+        delete safeProfileAISettings.openaiApiKey;
+
+        // Keep user API keys local-only; profile settings are visible to teammates.
         const { error } = await (supabase as any)
           .from('profiles')
           .update({
             settings: {
               ...currentSettings,
-              ai: updatedAISettings,
+              ai: safeProfileAISettings,
             },
           })
           .eq('id', user.id);
@@ -96,7 +170,7 @@ export function useAISettings() {
           throw error;
         }
 
-        setSettings(updatedAISettings);
+        setSettings(updatedSettings);
         return { success: true };
       } catch (error) {
         console.error('Error saving AI settings:', error);

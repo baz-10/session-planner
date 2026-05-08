@@ -176,7 +176,7 @@ export function useTeam() {
         .from('team_members')
         .select(`
           *,
-          profile:profiles(*)
+          profile:profiles(id, email, full_name, avatar_url)
         `)
         .eq('team_id', teamId)
         .order('role', { ascending: true });

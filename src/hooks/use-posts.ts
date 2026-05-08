@@ -53,10 +53,10 @@ export function usePosts() {
         .from('posts')
         .select(`
           *,
-          author:profiles!author_id(*),
+          author:profiles!author_id(id, email, full_name, avatar_url),
           attachments:post_attachments(*),
-          reactions(*, user:profiles!user_id(*)),
-          comments(*, author:profiles!author_id(*))
+          reactions(*, user:profiles!user_id(id, email, full_name, avatar_url)),
+          comments(*, author:profiles!author_id(id, email, full_name, avatar_url))
         `)
         .eq('team_id', currentTeam.id)
         .order('pinned', { ascending: false })
@@ -105,10 +105,10 @@ export function usePosts() {
         .from('posts')
         .select(`
           *,
-          author:profiles!author_id(*),
+          author:profiles!author_id(id, email, full_name, avatar_url),
           attachments:post_attachments(*),
-          reactions(*, user:profiles!user_id(*)),
-          comments(*, author:profiles!author_id(*))
+          reactions(*, user:profiles!user_id(id, email, full_name, avatar_url)),
+          comments(*, author:profiles!author_id(id, email, full_name, avatar_url))
         `)
         .eq('id', postId)
         .single();

@@ -222,7 +222,7 @@ export function usePlayers() {
           *,
           parent_links:parent_player_links(
             *,
-            parent:profiles(*)
+            parent:profiles(id, email, full_name, avatar_url)
           )
         `)
         .eq('team_id', teamId);
