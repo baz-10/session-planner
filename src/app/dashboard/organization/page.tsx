@@ -30,9 +30,13 @@ export default function OrganizationSettingsPage() {
   const [members, setMembers] = useState<OrganizationMemberWithProfile[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [membersLoadError, setMembersLoadError] = useState('');
+  const [teamsLoadError, setTeamsLoadError] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteFeedback, setInviteFeedback] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState('');
+  const [updatingMemberId, setUpdatingMemberId] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -53,6 +57,8 @@ export default function OrganizationSettingsPage() {
       if (!currentOrganization?.id) return;
       setIsLoading(true);
       setError(null);
+      setMembersLoadError('');
+      setTeamsLoadError('');
 
       const [membersResult, teamsResult] = await Promise.all([
         getOrganizationMembers(currentOrganization.id),
@@ -62,9 +68,15 @@ export default function OrganizationSettingsPage() {
       if (!cancelled) {
         if (membersResult.success && membersResult.members) {
           setMembers(membersResult.members);
+        } else {
+          setMembers([]);
+          setMembersLoadError(membersResult.error || 'Failed to load organization members.');
         }
         if (teamsResult.success && teamsResult.teams) {
           setTeams(teamsResult.teams);
+        } else {
+          setTeams([]);
+          setTeamsLoadError(teamsResult.error || 'Failed to load organization teams.');
         }
         setIsLoading(false);
       }
@@ -109,16 +121,28 @@ export default function OrganizationSettingsPage() {
     if (!currentOrganization) return;
 
     const member = members.find((item) => item.id === memberId);
-    if (member?.role === 'admin' && newRole !== 'admin' && adminCount <= 1) {
-      setError('Add another admin before demoting the last organization admin.');
+    if (member?.user_id === user?.id) {
+      setError('You cannot change your own organization role.');
+      setActionFeedback('');
       return;
     }
 
+    if (member?.role === 'admin' && newRole !== 'admin' && adminCount <= 1) {
+      setError('Add another admin before demoting the last organization admin.');
+      setActionFeedback('');
+      return;
+    }
+
+    setUpdatingMemberId(memberId);
+    setError(null);
+    setActionFeedback('');
     const result = await updateMemberRole(currentOrganization.id, memberId, newRole);
+    setUpdatingMemberId('');
     if (result.success) {
       setMembers((prev) =>
         prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
       );
+      setActionFeedback('Organization role updated.');
     } else {
       setError(result.error || 'Failed to update role');
     }
@@ -127,8 +151,15 @@ export default function OrganizationSettingsPage() {
   const handleRemoveMember = async (memberId: string) => {
     if (!currentOrganization) return;
     const member = members.find((item) => item.id === memberId);
+    if (member?.user_id === user?.id) {
+      setError('You cannot remove your own organization membership from this screen.');
+      setActionFeedback('');
+      return;
+    }
+
     if (member?.role === 'admin' && adminCount <= 1) {
       setError('Add another admin before removing the last organization admin.');
+      setActionFeedback('');
       return;
     }
 
@@ -142,9 +173,14 @@ export default function OrganizationSettingsPage() {
 
     if (!confirmed) return;
 
+    setUpdatingMemberId(memberId);
+    setError(null);
+    setActionFeedback('');
     const result = await removeMember(currentOrganization.id, memberId);
+    setUpdatingMemberId('');
     if (result.success) {
       setMembers((prev) => prev.filter((m) => m.id !== memberId));
+      setActionFeedback('Organization member removed.');
     } else {
       setError(result.error || 'Failed to remove member');
     }
@@ -214,6 +250,12 @@ export default function OrganizationSettingsPage() {
         </div>
       )}
 
+      {actionFeedback && (
+        <div className="bg-teal-glow border border-teal/20 text-teal-dark px-4 py-3 rounded-lg mb-6">
+          {actionFeedback}
+        </div>
+      )}
+
       {/* Organization Info Card */}
       <div className="card p-6 mb-6">
         <div className="flex items-center gap-4 mb-4">
@@ -272,6 +314,10 @@ export default function OrganizationSettingsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : teamsLoadError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+            {teamsLoadError}
           </div>
         ) : teams.length === 0 ? (
           <div className="text-center py-8 text-text-secondary">
@@ -362,6 +408,10 @@ export default function OrganizationSettingsPage() {
           <div className="flex items-center justify-center py-8">
             <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : membersLoadError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+            {membersLoadError}
+          </div>
         ) : members.length === 0 ? (
           <div className="text-center py-8 text-text-secondary">
             <p>No members yet. Invite someone to get started!</p>
@@ -372,6 +422,8 @@ export default function OrganizationSettingsPage() {
               const isCurrentUser = member.user_id === user?.id;
               const isLastAdmin = member.role === 'admin' && adminCount <= 1;
               const memberName = member.profile?.full_name || member.profile?.email || 'Unknown member';
+              const isUpdating = updatingMemberId === member.id;
+              const controlsDisabled = isCurrentUser || isLastAdmin || isUpdating;
 
               return (
               <div key={member.id} className="flex items-center gap-4 p-4 bg-whisper rounded-lg">
@@ -392,7 +444,7 @@ export default function OrganizationSettingsPage() {
                     <select
                       value={member.role}
                       onChange={(e) => handleRoleChange(member.id, e.target.value as OrgRole)}
-                      disabled={isLastAdmin}
+                      disabled={controlsDisabled}
                       aria-label={`Change organization role for ${memberName}`}
                       className="input py-1.5 px-2 text-sm"
                     >
@@ -401,9 +453,17 @@ export default function OrganizationSettingsPage() {
                     </select>
                     <button
                       onClick={() => handleRemoveMember(member.id)}
-                      disabled={isLastAdmin}
+                      disabled={controlsDisabled}
                       className="btn-ghost text-error p-2 disabled:cursor-not-allowed disabled:opacity-40"
-                      title={isLastAdmin ? 'Add another admin before removing this member' : 'Remove member'}
+                      title={
+                        isUpdating
+                          ? 'Saving'
+                          : isCurrentUser
+                            ? 'You cannot remove yourself from this screen'
+                            : isLastAdmin
+                              ? 'Add another admin before removing this member'
+                              : 'Remove member'
+                      }
                       aria-label={`Remove ${memberName} from organization`}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
