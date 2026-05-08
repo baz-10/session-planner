@@ -1485,6 +1485,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       let createdCount = 0;
       let skippedCount = 0;
       let failedCreateCount = 0;
+      let failedLinkCount = 0;
       const createdDrillByActivityId = new Map<string, string>();
 
       for (const activity of activities) {
@@ -1516,25 +1517,41 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         createdDrillByActivityId.set(activity.id, createResult.drill.id);
       }
 
-      if (createdDrillByActivityId.size > 0) {
-        setSession((prev) => ({
-          ...prev,
-          activities: (prev.activities || []).map((activity) =>
-            createdDrillByActivityId.has(activity.id)
-              ? { ...activity, drill_id: createdDrillByActivityId.get(activity.id) || activity.drill_id }
-              : activity
-          ),
-        }));
+      const linkedDrillByActivityId = new Map<string, string>();
 
+      if (createdDrillByActivityId.size > 0) {
         if (session.id) {
           for (const [activityId, drillId] of createdDrillByActivityId.entries()) {
-            if (!activityId.startsWith('temp-')) {
-              await updateActivity(activityId, { drill_id: drillId });
+            if (activityId.startsWith('temp-')) {
+              linkedDrillByActivityId.set(activityId, drillId);
+              setHasUnsavedChanges(true);
+              continue;
+            }
+
+            const linkResult = await updateActivity(activityId, { drill_id: drillId });
+            if (linkResult.success) {
+              linkedDrillByActivityId.set(activityId, drillId);
+            } else {
+              failedLinkCount += 1;
             }
           }
         } else {
+          createdDrillByActivityId.forEach((drillId, activityId) => {
+            linkedDrillByActivityId.set(activityId, drillId);
+          });
           setHasUnsavedChanges(true);
         }
+      }
+
+      if (linkedDrillByActivityId.size > 0) {
+        setSession((prev) => ({
+          ...prev,
+          activities: (prev.activities || []).map((activity) =>
+            linkedDrillByActivityId.has(activity.id)
+              ? { ...activity, drill_id: linkedDrillByActivityId.get(activity.id) || activity.drill_id }
+              : activity
+          ),
+        }));
       }
 
       const summaryParts = [
@@ -1549,11 +1566,16 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       if (failedCreateCount > 0) {
         summaryParts.push(`${failedCreateCount} failed to save.`);
       }
+      if (failedLinkCount > 0) {
+        summaryParts.push(
+          `${failedLinkCount} created drill link${failedLinkCount === 1 ? '' : 's'} failed to update on the plan.`
+        );
+      }
 
       await loadDrillCategoryContext();
 
       showStatus({
-        type: failedCreateCount > 0 ? 'warning' : 'success',
+        type: failedCreateCount > 0 || failedLinkCount > 0 ? 'warning' : 'success',
         text: summaryParts.join(' '),
       });
     } catch (error) {
