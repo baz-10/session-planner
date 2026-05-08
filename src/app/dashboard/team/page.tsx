@@ -9,6 +9,43 @@ import type { TeamRole } from '@/types/database';
 type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
 const MANAGED_TEAM_ROLES: TeamRole[] = ['admin', 'coach', 'player', 'parent'];
 
+type InviteFeedback = {
+  type: 'success' | 'error';
+  text: string;
+};
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy selection fallback below.
+  }
+
+  if (typeof document === 'undefined') return false;
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.top = '-9999px';
+  textArea.style.left = '-9999px';
+  document.body.appendChild(textArea);
+  textArea.select();
+
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textArea);
+  }
+}
+
 export default function TeamSettingsPage() {
   const { currentTeam, teamMemberships, user } = useAuth();
   const { getTeamMembers, createTeam, joinTeamByCode, updateMemberRole, removeMember } = useTeam();
@@ -20,6 +57,7 @@ export default function TeamSettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'player' | 'parent'>('player');
   const [inviteSent, setInviteSent] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState<InviteFeedback | null>(null);
   const [membersLoadError, setMembersLoadError] = useState('');
   const [membersReloadKey, setMembersReloadKey] = useState(0);
   const [memberActionError, setMemberActionError] = useState('');
@@ -60,6 +98,7 @@ export default function TeamSettingsPage() {
   const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
   const linkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inviteFeedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -67,8 +106,17 @@ export default function TeamSettingsPage() {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
       if (inviteTimerRef.current) clearTimeout(inviteTimerRef.current);
+      if (inviteFeedbackTimerRef.current) clearTimeout(inviteFeedbackTimerRef.current);
     };
   }, []);
+
+  const showInviteFeedback = (feedback: InviteFeedback) => {
+    setInviteFeedback(feedback);
+    if (inviteFeedbackTimerRef.current) {
+      clearTimeout(inviteFeedbackTimerRef.current);
+    }
+    inviteFeedbackTimerRef.current = setTimeout(() => setInviteFeedback(null), 3500);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -91,26 +139,33 @@ export default function TeamSettingsPage() {
 
   const copyCode = async () => {
     if (!currentTeam?.team_code) return;
-    try {
-      await navigator.clipboard.writeText(currentTeam.team_code);
+
+    const didCopy = await copyTextToClipboard(currentTeam.team_code);
+    if (didCopy) {
       setCopied(true);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: select and copy not available, just show brief feedback
-      setCopied(true);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1000);
+      return;
     }
+
+    showInviteFeedback({
+      type: 'error',
+      text: 'Team code could not be copied. Select the code and copy it manually.',
+    });
   };
 
   const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
+    const didCopy = await copyTextToClipboard(inviteLink);
+    if (didCopy) {
       setLinkCopied(true);
       linkTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
-    } catch {
-      setLinkCopied(true);
-      linkTimerRef.current = setTimeout(() => setLinkCopied(false), 1000);
+      return true;
     }
+
+    showInviteFeedback({
+      type: 'error',
+      text: 'Invite link could not be copied. Try the email invite or copy the team code.',
+    });
+    return false;
   };
 
   const shareInvite = async () => {
@@ -121,12 +176,15 @@ export default function TeamSettingsPage() {
           text: `You've been invited to join ${currentTeam?.name}! Use code: ${currentTeam?.team_code}`,
           url: inviteLink,
         });
+        showInviteFeedback({ type: 'success', text: 'Invite shared.' });
       } catch (err) {
-        // User cancelled or share failed, fall back to copy
-        copyLink();
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        await copyLink();
       }
     } else {
-      copyLink();
+      await copyLink();
     }
   };
 
@@ -456,6 +514,19 @@ export default function TeamSettingsPage() {
             </svg>
             Invite Players & Parents
           </h3>
+
+          {inviteFeedback && (
+            <div
+              role={inviteFeedback.type === 'error' ? 'alert' : 'status'}
+              className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                inviteFeedback.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {inviteFeedback.text}
+            </div>
+          )}
 
           {/* Team Code Display */}
           <div className="mb-6 rounded-[20px] bg-whisper p-5">
