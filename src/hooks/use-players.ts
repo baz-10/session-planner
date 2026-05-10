@@ -22,6 +22,10 @@ interface LinkPlayerResult {
   error?: string;
 }
 
+const STALE_PLAYER_ERROR = 'Player access changed. Refresh and try again.';
+const STALE_PLAYER_LINK_ERROR = 'Player link access changed. Refresh and try again.';
+const PLAYER_LINK_CREATE_ERROR = 'Player could not be linked to your parent account. Please try again.';
+
 export function usePlayers() {
   const { user, refreshLinkedPlayers } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -92,13 +96,13 @@ export function usePlayers() {
         .select()
         .single();
 
-      if (linkError) {
+      if (linkError || !link) {
         console.error('Error linking player:', linkError);
-        // Player was created but linking failed
+        await supabase.from('players').delete().eq('id', createResult.player.id);
         return {
-          success: true,
+          success: false,
           player: createResult.player,
-          error: 'Player created but linking failed.',
+          error: PLAYER_LINK_CREATE_ERROR,
         };
       }
 
@@ -170,15 +174,19 @@ export function usePlayers() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('parent_player_links')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('parent_user_id', user.id)
         .eq('player_id', playerId);
 
       if (error) {
         console.error('Error unlinking player:', error);
         return { success: false, error: 'Failed to unlink player.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_PLAYER_LINK_ERROR };
       }
 
       await refreshLinkedPlayers();
@@ -195,14 +203,18 @@ export function usePlayers() {
       playerId: string,
       updates: Partial<Player>
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('players')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', playerId);
 
       if (error) {
         console.error('Error updating player:', error);
         return { success: false, error: 'Failed to update player.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_PLAYER_ERROR };
       }
 
       await refreshLinkedPlayers();
@@ -245,14 +257,18 @@ export function usePlayers() {
       linkId: string,
       updates: { can_rsvp?: boolean; receives_notifications?: boolean }
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('parent_player_links')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', linkId);
 
       if (error) {
         console.error('Error updating link settings:', error);
         return { success: false, error: 'Failed to update settings.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_PLAYER_LINK_ERROR };
       }
 
       await refreshLinkedPlayers();
