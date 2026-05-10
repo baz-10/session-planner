@@ -23,6 +23,7 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
   const { addComment, deleteComment } = usePosts();
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
@@ -32,10 +33,13 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
     if (!newComment.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
+    setCommentError('');
     const result = await addComment(postId, newComment.trim());
     if (result.success) {
       setNewComment('');
       onUpdate();
+    } else {
+      setCommentError(result.error || 'Failed to add comment.');
     }
     setIsSubmitting(false);
   };
@@ -50,12 +54,23 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
 
     if (!confirmed) return;
 
-    await deleteComment(commentId);
+    setCommentError('');
+    const result = await deleteComment(commentId);
+    if (!result.success) {
+      setCommentError(result.error || 'Failed to delete comment.');
+      return;
+    }
     onUpdate();
   };
 
   return (
     <div className="border-t border-gray-100">
+      {commentError && (
+        <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+          {commentError}
+        </div>
+      )}
+
       {/* Comments list */}
       <div className="max-h-80 overflow-y-auto">
         {comments.map((comment) => (

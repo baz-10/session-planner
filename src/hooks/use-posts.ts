@@ -66,6 +66,9 @@ const ALLOWED_POST_ATTACHMENT_EXTENSIONS = new Set([
   'xls',
   'xlsx',
 ]);
+const STALE_POST_ERROR = 'This post could not be updated. It may have been removed or your access may have changed.';
+const STALE_COMMENT_ERROR =
+  'This comment could not be updated. It may have been removed or your access may have changed.';
 
 type GetPostsResult =
   | { success: true; posts: PostWithDetails[] }
@@ -324,14 +327,18 @@ export function usePosts() {
       postId: string,
       content: string
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('posts')
-        .update({ content })
+        .update({ content }, { count: 'exact' })
         .eq('id', postId);
 
       if (error) {
         console.error('Error updating post:', error);
         return { success: false, error: 'Failed to update post' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
       }
 
       return { success: true };
@@ -344,11 +351,18 @@ export function usePosts() {
    */
   const deletePost = useCallback(
     async (postId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('posts').delete().eq('id', postId);
+      const { error, count } = await supabase
+        .from('posts')
+        .delete({ count: 'exact' })
+        .eq('id', postId);
 
       if (error) {
         console.error('Error deleting post:', error);
         return { success: false, error: 'Failed to delete post' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
       }
 
       return { success: true };
@@ -364,17 +378,21 @@ export function usePosts() {
       postId: string,
       pinned: boolean
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('posts')
         .update({
           pinned,
           pinned_at: pinned ? new Date().toISOString() : null,
-        })
+        }, { count: 'exact' })
         .eq('id', postId);
 
       if (error) {
         console.error('Error toggling pin:', error);
         return { success: false, error: 'Failed to toggle pin' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
       }
 
       return { success: true };
@@ -387,14 +405,18 @@ export function usePosts() {
    */
   const deleteAttachment = useCallback(
     async (attachmentId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('post_attachments')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', attachmentId);
 
       if (error) {
         console.error('Error deleting attachment:', error);
         return { success: false, error: 'Failed to delete attachment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: 'This attachment could not be deleted. Refresh and try again.' };
       }
 
       return { success: true };
@@ -527,14 +549,18 @@ export function usePosts() {
       commentId: string,
       content: string
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('comments')
-        .update({ content })
+        .update({ content }, { count: 'exact' })
         .eq('id', commentId);
 
       if (error) {
         console.error('Error updating comment:', error);
         return { success: false, error: 'Failed to update comment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_COMMENT_ERROR };
       }
 
       return { success: true };
@@ -547,14 +573,18 @@ export function usePosts() {
    */
   const deleteComment = useCallback(
     async (commentId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('comments')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', commentId);
 
       if (error) {
         console.error('Error deleting comment:', error);
         return { success: false, error: 'Failed to delete comment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_COMMENT_ERROR };
       }
 
       return { success: true };

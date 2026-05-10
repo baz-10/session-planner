@@ -38,6 +38,7 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
   const { deletePost, togglePin, addReaction, getReactionSummary, markAsViewed } = usePosts();
   const [showComments, setShowComments] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
@@ -60,18 +61,36 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
     if (!confirmed) return;
 
     setIsDeleting(true);
-    await deletePost(post.id);
+    setActionError('');
+    const result = await deletePost(post.id);
+    setIsDeleting(false);
+    if (!result.success) {
+      setActionError(result.error || 'Failed to delete post.');
+      return;
+    }
+    setShowMenu(false);
     onUpdate();
   };
 
   const handleTogglePin = async () => {
-    await togglePin(post.id, !post.pinned);
+    setActionError('');
+    const result = await togglePin(post.id, !post.pinned);
+    if (!result.success) {
+      setActionError(result.error || 'Failed to update pinned state.');
+      setShowMenu(false);
+      return;
+    }
     onUpdate();
     setShowMenu(false);
   };
 
   const handleReaction = async (emoji: string) => {
-    await addReaction(post.id, emoji);
+    setActionError('');
+    const result = await addReaction(post.id, emoji);
+    if (!result.success) {
+      setActionError(result.error || 'Failed to update reaction.');
+      return;
+    }
     onUpdate();
   };
 
@@ -163,6 +182,12 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
       <div className="px-4 pb-3">
         <p className="text-gray-800 whitespace-pre-wrap">{post.content}</p>
       </div>
+
+      {actionError && (
+        <div className="mx-4 mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+          {actionError}
+        </div>
+      )}
 
       {/* Attachments */}
       {post.attachments.length > 0 && (
