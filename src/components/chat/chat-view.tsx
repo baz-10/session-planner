@@ -32,6 +32,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [readStatusError, setReadStatusError] = useState('');
 
   const getConversationName = () => {
     if (conversation.name) return conversation.name;
@@ -45,6 +46,11 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
     return 'Conversation';
   };
 
+  const markConversationRead = useCallback(async () => {
+    const result = await markAsRead(conversation.id);
+    setReadStatusError(result.success ? '' : result.error || 'Read status could not update.');
+  }, [conversation.id, markAsRead]);
+
   const loadMessages = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setIsLoading(true);
@@ -56,7 +62,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       setMessages(data);
 
       // Mark as read after a successful load.
-      void markAsRead(conversation.id);
+      await markConversationRead();
     } catch (error) {
       console.error('Error loading messages:', error);
       setMessages([]);
@@ -70,7 +76,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
         setIsLoading(false);
       }
     }
-  }, [conversation.id, getMessages, markAsRead]);
+  }, [conversation.id, getMessages, markConversationRead]);
 
   useEffect(() => {
     loadMessages();
@@ -80,11 +86,11 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       setMessages((prev) => (
         prev.some((message) => message.id === newMessage.id) ? prev : [...prev, newMessage]
       ));
-      void markAsRead(conversation.id);
+      void markConversationRead();
     });
 
     return unsubscribe;
-  }, [conversation.id, loadMessages, subscribeToMessages, markAsRead]);
+  }, [conversation.id, loadMessages, subscribeToMessages, markConversationRead]);
 
   const handleSendMessage = async (content: string) => {
     const result = await sendMessage({ conversation_id: conversation.id, content });
@@ -158,7 +164,14 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           </div>
         </div>
       ) : (
-        <MessageList messages={messages} isLoading={isLoading} />
+        <>
+          {readStatusError && (
+            <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
+              {readStatusError}
+            </div>
+          )}
+          <MessageList messages={messages} isLoading={isLoading} />
+        </>
       )}
 
       {/* Input */}

@@ -51,6 +51,7 @@ const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connectio
 const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
 const TEAM_CHAT_SYNC_ERROR = 'Team chat could not sync team members. Refresh and try again.';
 const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
+const CHAT_READ_STATUS_ERROR = 'Messages loaded, but read status could not update. Refresh and try again.';
 
 function getSafeAttachmentExtension(file: File) {
   return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
@@ -546,14 +547,27 @@ export function useChat() {
    * Mark conversation as read
    */
   const markAsRead = useCallback(
-    async (conversationId: string): Promise<void> => {
-      if (!user) return;
+    async (conversationId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
 
-      await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .update({ last_read_at: new Date().toISOString() })
+        .update({ last_read_at: new Date().toISOString() }, { count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error marking conversation as read:', error);
+        return { success: false, error: CHAT_READ_STATUS_ERROR };
+      }
+
+      if (count === 0) {
+        return { success: false, error: CHAT_READ_STATUS_ERROR };
+      }
+
+      return { success: true };
     },
     [user, supabase]
   );
