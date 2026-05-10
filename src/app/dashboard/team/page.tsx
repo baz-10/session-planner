@@ -65,8 +65,8 @@ export default function TeamSettingsPage() {
     return url.toString();
   };
 
-  // Generate invite link
-  const inviteLink = buildInviteLink();
+  const inviteLink = buildInviteLink(inviteRole);
+  const inviteRoleLabel = inviteRole === 'player' ? 'Player' : 'Parent / Guardian';
 
   // Timer refs for cleanup
   const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -169,7 +169,7 @@ export default function TeamSettingsPage() {
       try {
         await navigator.share({
           title: `Join ${currentTeam?.name} on Session Planner`,
-          text: `You've been invited to join ${currentTeam?.name}! Use code: ${currentTeam?.team_code}`,
+          text: `You've been invited to join ${currentTeam?.name} as a ${inviteRoleLabel}. Use code: ${currentTeam?.team_code}`,
           url: inviteLink,
         });
         showInviteFeedback({ type: 'success', text: 'Invite shared.' });
@@ -198,10 +198,9 @@ export default function TeamSettingsPage() {
     // Include role suggestion in email
     const roleText = inviteRole === 'player' ? 'as a Player' : 'as a Parent/Guardian';
     const subject = `Join ${currentTeam.name} on Session Planner`;
-    const roleInviteLink = buildInviteLink(inviteRole);
     const body =
       `Hi!\n\nYou've been invited to join ${currentTeam.name} on Session Planner ${roleText}.\n\n` +
-      `Join using this link: ${roleInviteLink}\n\n` +
+      `Join using this link: ${inviteLink}\n\n` +
       `Or enter this code in the app: ${currentTeam.team_code}\n\n` +
       `See you on the field!`;
 
@@ -582,6 +581,21 @@ export default function TeamSettingsPage() {
             </p>
           </div>
 
+          <div className="mb-4 rounded-[18px] border border-border bg-white p-4">
+            <label htmlFor="inviteRole" className="mb-2 block text-sm font-semibold text-navy">
+              Invite role
+            </label>
+            <select
+              id="inviteRole"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as 'player' | 'parent')}
+              className="input"
+            >
+              <option value="player">Player</option>
+              <option value="parent">Parent / Guardian</option>
+            </select>
+          </div>
+
           {/* Share Options */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
@@ -630,15 +644,6 @@ export default function TeamSettingsPage() {
                 aria-label="Email address to invite"
                 className="input flex-1"
               />
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as 'player' | 'parent')}
-                aria-label="Role for invited person"
-                className="input sm:w-32"
-              >
-                <option value="player">Player</option>
-                <option value="parent">Parent</option>
-              </select>
               <button type="submit" disabled={!hasInviteCode} className="btn-accent whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
