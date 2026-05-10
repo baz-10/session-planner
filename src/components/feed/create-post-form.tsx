@@ -2,7 +2,11 @@
 
 import { useState, useRef } from 'react';
 import Image from 'next/image';
-import { usePosts } from '@/hooks/use-posts';
+import {
+  MAX_POST_ATTACHMENT_BYTES,
+  MAX_POST_ATTACHMENTS,
+  usePosts,
+} from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
 
 interface CreatePostFormProps {
@@ -15,12 +19,31 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    if (attachments.length + files.length > MAX_POST_ATTACHMENTS) {
+      setError(`Attach up to ${MAX_POST_ATTACHMENTS} files per post.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    const oversizedFile = files.find((file) => file.size > MAX_POST_ATTACHMENT_BYTES);
+    if (oversizedFile) {
+      setError(`${oversizedFile.name} is larger than 25 MB.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setError('');
     setAttachments((prev) => [...prev, ...files]);
 
     // Create previews for images
@@ -49,6 +72,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || !currentTeam) return;
+    setError('');
 
     const result = await createPost(
       { team_id: currentTeam.id, content: content.trim() },
@@ -60,6 +84,8 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
       setAttachments([]);
       setPreviews([]);
       onSuccess();
+    } else {
+      setError(result.error || 'Failed to create post.');
     }
   };
 
@@ -73,6 +99,11 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
       <form onSubmit={handleSubmit}>
+        {error && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        )}
         <div className="flex gap-3">
           <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-semibold flex-shrink-0">
             {user?.user_metadata?.full_name?.charAt(0)?.toUpperCase() || 'U'}

@@ -37,6 +37,57 @@ interface ReactionSummary {
   hasReacted: boolean;
 }
 
+export const MAX_POST_ATTACHMENTS = 5;
+export const MAX_POST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ALLOWED_POST_ATTACHMENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/quicktime',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+const ALLOWED_POST_ATTACHMENT_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'mp4',
+  'mov',
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+]);
+
+type GetPostsResult =
+  | { success: true; posts: PostWithDetails[] }
+  | { success: false; posts: PostWithDetails[]; error: string };
+
+function validatePostAttachment(file: File): string | null {
+  if (file.size > MAX_POST_ATTACHMENT_BYTES) {
+    return `${file.name} is larger than 25 MB.`;
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  if (
+    file.type &&
+    !ALLOWED_POST_ATTACHMENT_TYPES.has(file.type) &&
+    !ALLOWED_POST_ATTACHMENT_EXTENSIONS.has(extension)
+  ) {
+    return `${file.name} is not a supported attachment type.`;
+  }
+
+  return null;
+}
+
 export function usePosts() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -46,8 +97,10 @@ export function usePosts() {
    * Get all posts for the current team
    */
   const getPosts = useCallback(
-    async (limit = 20, offset = 0): Promise<PostWithDetails[]> => {
-      if (!currentTeam || !user) return [];
+    async (limit = 20, offset = 0): Promise<GetPostsResult> => {
+      if (!currentTeam || !user) {
+        return { success: false, posts: [], error: 'Select a team to view the feed.' };
+      }
 
       const { data: posts, error } = await supabase
         .from('posts')
@@ -65,7 +118,7 @@ export function usePosts() {
 
       if (error) {
         console.error('Error fetching posts:', error);
-        return [];
+        return { success: false, posts: [], error: 'Failed to load team feed.' };
       }
 
       // Get view counts and check if user has viewed
@@ -85,11 +138,13 @@ export function usePosts() {
         }
       });
 
-      return posts.map((post) => ({
+      const postsWithDetails = posts.map((post) => ({
         ...post,
         view_count: viewCounts.get(post.id) || 0,
         has_viewed: hasViewed.get(post.id) || false,
       })) as PostWithDetails[];
+
+      return { success: true, posts: postsWithDetails };
     },
     [supabase, currentTeam, user]
   );
@@ -211,32 +266,52 @@ export function usePosts() {
 
       setIsLoading(true);
 
-      const { data: post, error } = await supabase
-        .from('posts')
-        .insert({
-          team_id: currentTeam.id,
-          author_id: user.id,
-          content: input.content,
-          pinned: false,
-        })
-        .select()
-        .single();
-
-      if (error || !post) {
-        setIsLoading(false);
-        console.error('Error creating post:', error);
-        return { success: false, error: 'Failed to create post' };
-      }
-
-      // Upload attachments if any
-      if (attachmentFiles && attachmentFiles.length > 0) {
-        for (const file of attachmentFiles) {
-          await uploadAttachment(post.id, file);
+      try {
+        if (attachmentFiles && attachmentFiles.length > MAX_POST_ATTACHMENTS) {
+          return {
+            success: false,
+            error: `Attach up to ${MAX_POST_ATTACHMENTS} files per post.`,
+          };
         }
-      }
 
-      setIsLoading(false);
-      return { success: true, post: post as Post };
+        for (const file of attachmentFiles || []) {
+          const validationError = validatePostAttachment(file);
+          if (validationError) {
+            return { success: false, error: validationError };
+          }
+        }
+
+        const { data: post, error } = await supabase
+          .from('posts')
+          .insert({
+            team_id: currentTeam.id,
+            author_id: user.id,
+            content: input.content,
+            pinned: false,
+          })
+          .select()
+          .single();
+
+        if (error || !post) {
+          console.error('Error creating post:', error);
+          return { success: false, error: 'Failed to create post' };
+        }
+
+        for (const file of attachmentFiles || []) {
+          const result = await uploadAttachment(post.id, file);
+          if (!result.success) {
+            await supabase.from('posts').delete().eq('id', post.id);
+            return {
+              success: false,
+              error: result.error || 'Failed to upload one or more attachments.',
+            };
+          }
+        }
+
+        return { success: true, post: post as Post };
+      } finally {
+        setIsLoading(false);
+      }
     },
     [user, currentTeam, supabase, uploadAttachment]
   );

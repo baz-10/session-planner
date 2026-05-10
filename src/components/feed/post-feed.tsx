@@ -30,6 +30,7 @@ export function PostFeed() {
   const { getPosts } = usePosts();
   const [posts, setPosts] = useState<PostWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const LIMIT = 20;
@@ -44,8 +45,10 @@ export function PostFeed() {
     if (!currentTeam) return;
 
     setIsLoading(true);
+    setLoadError('');
 
-    const data = await getPosts(LIMIT, nextOffset);
+    const result = await getPosts(LIMIT, nextOffset);
+    const data = result.posts;
 
     if (reset) {
       setPosts(data);
@@ -55,6 +58,9 @@ export function PostFeed() {
 
     setHasMore(data.length === LIMIT);
     setOffset(nextOffset + data.length);
+    if (!result.success) {
+      setLoadError(result.error);
+    }
     setIsLoading(false);
   }, [currentTeam, getPosts]);
 
@@ -85,8 +91,21 @@ export function PostFeed() {
       {/* Create post form */}
       {canPost && <CreatePostForm onSuccess={handleRefresh} />}
 
+      {loadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Posts list */}
-      {posts.length === 0 && !isLoading ? (
+      {posts.length === 0 && !isLoading && !loadError ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
           <div className="text-6xl mb-4">📢</div>
           <h2 className="text-xl font-semibold mb-2">No Posts Yet</h2>
@@ -96,7 +115,7 @@ export function PostFeed() {
               : 'There are no posts to show yet.'}
           </p>
         </div>
-      ) : (
+      ) : posts.length > 0 ? (
         <div className="space-y-4">
           {posts.map((post) => (
             <PostCard key={post.id} post={post} onUpdate={handleRefresh} />
@@ -115,7 +134,7 @@ export function PostFeed() {
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Loading state */}
       {isLoading && posts.length === 0 && (
