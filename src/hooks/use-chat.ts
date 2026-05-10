@@ -42,6 +42,12 @@ interface TeamChatResult {
   error?: string;
 }
 
+interface DirectChatResult {
+  success: boolean;
+  conversation?: Conversation;
+  error?: string;
+}
+
 interface ChatLoadOptions {
   throwOnError?: boolean;
 }
@@ -52,6 +58,8 @@ const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection
 const TEAM_CHAT_SYNC_ERROR = 'Team chat could not sync team members. Refresh and try again.';
 const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
 const CHAT_READ_STATUS_ERROR = 'Messages loaded, but read status could not update. Refresh and try again.';
+const DIRECT_CHAT_CREATE_ERROR =
+  'Direct message could not be opened. Make sure this person is still on the selected team.';
 
 function getSafeAttachmentExtension(file: File) {
   return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
@@ -335,8 +343,10 @@ export function useChat() {
    * Get or create a direct message conversation
    */
   const getOrCreateDM = useCallback(
-    async (otherUserId: string): Promise<Conversation | null> => {
-      if (!user || !currentTeam) return null;
+    async (otherUserId: string): Promise<DirectChatResult> => {
+      if (!user || !currentTeam) {
+        return { success: false, error: 'Select a team before starting a direct message.' };
+      }
 
       const { data: convId, error } = await supabase.rpc('get_or_create_dm', {
         other_user_id: otherUserId,
@@ -345,17 +355,25 @@ export function useChat() {
 
       if (error) {
         console.error('Error getting/creating DM:', error);
-        return null;
+        return { success: false, error: DIRECT_CHAT_CREATE_ERROR };
       }
 
       // Fetch the conversation
-      const { data: conv } = await supabase
+      const { data: conv, error: fetchError } = await supabase
         .from('conversations')
         .select('*')
         .eq('id', convId)
         .single();
 
-      return conv as Conversation | null;
+      if (fetchError || !conv) {
+        console.error('Error loading direct message after create:', fetchError);
+        return {
+          success: false,
+          error: 'Direct message was created, but could not be loaded. Refresh and try again.',
+        };
+      }
+
+      return { success: true, conversation: conv as Conversation };
     },
     [user, currentTeam, supabase]
   );

@@ -91,13 +91,13 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
     setError('');
 
     if (mode === 'dm') {
-      const conv = await getOrCreateDM(selectedIds[0]);
-      if (conv) {
-        onConversationCreated(conv.id);
+      const result = await getOrCreateDM(selectedIds[0]);
+      if (result.success && result.conversation) {
+        onConversationCreated(result.conversation.id);
         setIsCreating(false);
         onClose();
       } else {
-        setError('Failed to create direct message. Please try again.');
+        setError(result.error || 'Failed to create direct message. Please try again.');
         setIsCreating(false);
       }
       return;
