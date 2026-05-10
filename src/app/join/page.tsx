@@ -70,8 +70,9 @@ function JoinPageContent() {
       return;
     }
 
-    if (role === 'parent' && result.team?.id && user?.id) {
-      storePendingParentTeamSetupId(user.id, result.team.id);
+    const parentSetupTeamId = role === 'parent' ? result.team?.id : null;
+    if (parentSetupTeamId && user?.id) {
+      storePendingParentTeamSetupId(user.id, parentSetupTeamId);
     }
 
     setSuccess(
@@ -80,7 +81,11 @@ function JoinPageContent() {
         : `Successfully joined ${result.team?.name}! Redirecting...`
     );
     setTimeout(() => {
-      router.push(role === 'parent' ? '/onboarding' : '/dashboard');
+      router.push(
+        parentSetupTeamId
+          ? `/onboarding?parentTeamId=${encodeURIComponent(parentSetupTeamId)}`
+          : '/dashboard'
+      );
     }, 1500);
   };
 

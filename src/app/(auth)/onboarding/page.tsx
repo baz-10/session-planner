@@ -6,17 +6,25 @@ import { useAuth } from '@/contexts/auth-context';
 import { OnboardingFlow } from '@/components/auth/onboarding-flow';
 import {
   clearPendingParentTeamSetupId,
+  getPendingParentTeamSetupIdFromSearch,
   getStoredPendingParentTeamSetupId,
 } from '@/lib/utils/parent-team-setup';
 
 export default function OnboardingPage() {
-  const { user, profile, isLoading } = useAuth();
+  const { user, profile, isLoading, teamMemberships } = useAuth();
   const router = useRouter();
   const [pendingParentTeamId, setPendingParentTeamId] = useState<string | null>(null);
   const [checkedPendingParentForUserId, setCheckedPendingParentForUserId] = useState<string | null>(null);
   const pendingParentUserKey = user?.id ?? 'anonymous';
   const hasCheckedPendingParentSetup = checkedPendingParentForUserId === pendingParentUserKey;
-  const isParentSetup = Boolean(pendingParentTeamId);
+  const verifiedParentTeamId =
+    pendingParentTeamId &&
+    teamMemberships.some(
+      (membership) => membership.team.id === pendingParentTeamId && membership.role === 'parent'
+    )
+      ? pendingParentTeamId
+      : null;
+  const isParentSetup = Boolean(verifiedParentTeamId);
 
   useEffect(() => {
     if (!user?.id) {
@@ -25,7 +33,11 @@ export default function OnboardingPage() {
       return;
     }
 
-    setPendingParentTeamId(getStoredPendingParentTeamSetupId(user.id));
+    const pendingTeamId =
+      getStoredPendingParentTeamSetupId(user.id) ||
+      getPendingParentTeamSetupIdFromSearch(window.location.search);
+
+    setPendingParentTeamId(pendingTeamId);
     setCheckedPendingParentForUserId(user.id);
   }, [user?.id]);
 
@@ -62,7 +74,7 @@ export default function OnboardingPage() {
         </p>
       </div>
       <OnboardingFlow
-        initialParentTeamId={pendingParentTeamId}
+        initialParentTeamId={verifiedParentTeamId}
         onParentSetupComplete={() => {
           if (user?.id) {
             clearPendingParentTeamSetupId(user.id);

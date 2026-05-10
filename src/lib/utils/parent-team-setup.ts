@@ -13,10 +13,30 @@ function getPendingParentTeamSetupKey(userId: string): string {
   return `${PENDING_PARENT_TEAM_SETUP_KEY_PREFIX}:${userId}`;
 }
 
-export function storePendingParentTeamSetupId(userId: string, teamId: string): void {
-  if (!UUID_PATTERN.test(teamId)) return;
+export function isValidPendingParentTeamSetupId(teamId: string | null | undefined): teamId is string {
+  return Boolean(teamId && UUID_PATTERN.test(teamId));
+}
 
-  getSessionStorage()?.setItem(getPendingParentTeamSetupKey(userId), teamId);
+export function getPendingParentTeamSetupIdFromSearch(search: string): string | null {
+  try {
+    const teamId = new URLSearchParams(search).get('parentTeamId');
+    return isValidPendingParentTeamSetupId(teamId) ? teamId : null;
+  } catch {
+    return null;
+  }
+}
+
+export function storePendingParentTeamSetupId(userId: string, teamId: string): boolean {
+  if (!isValidPendingParentTeamSetupId(teamId)) return false;
+
+  try {
+    const storage = getSessionStorage();
+    if (!storage) return false;
+    storage.setItem(getPendingParentTeamSetupKey(userId), teamId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getStoredPendingParentTeamSetupId(userId: string): string | null {
@@ -27,7 +47,7 @@ export function getStoredPendingParentTeamSetupId(userId: string): string | null
   const teamId = storage.getItem(key);
   if (!teamId) return null;
 
-  if (!UUID_PATTERN.test(teamId)) {
+  if (!isValidPendingParentTeamSetupId(teamId)) {
     storage.removeItem(key);
     return null;
   }
@@ -36,5 +56,9 @@ export function getStoredPendingParentTeamSetupId(userId: string): string | null
 }
 
 export function clearPendingParentTeamSetupId(userId: string): void {
-  getSessionStorage()?.removeItem(getPendingParentTeamSetupKey(userId));
+  try {
+    getSessionStorage()?.removeItem(getPendingParentTeamSetupKey(userId));
+  } catch {
+    // Storage access can fail in some browser privacy modes.
+  }
 }
