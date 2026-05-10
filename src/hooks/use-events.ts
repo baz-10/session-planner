@@ -383,28 +383,7 @@ export function useEvents() {
         return { success: false, error: 'No attendance records to save' };
       }
 
-      // Delete existing records for this event
-      const userIds = records.filter((r) => r.userId).map((r) => r.userId);
-      const playerIds = records.filter((r) => r.playerId).map((r) => r.playerId);
-
-      if (userIds.length > 0) {
-        await supabase
-          .from('attendance_records')
-          .delete()
-          .eq('event_id', eventId)
-          .in('user_id', userIds);
-      }
-
-      if (playerIds.length > 0) {
-        await supabase
-          .from('attendance_records')
-          .delete()
-          .eq('event_id', eventId)
-          .in('player_id', playerIds);
-      }
-
-      // Insert new records
-      const insertRecords = records.map((r) => ({
+      const attendanceRows = records.map((r) => ({
         event_id: eventId,
         user_id: r.userId || null,
         player_id: r.playerId || null,
@@ -413,11 +392,33 @@ export function useEvents() {
         recorded_by: user.id,
       }));
 
-      const { error } = await supabase.from('attendance_records').insert(insertRecords);
+      const userAttendanceRows = attendanceRows.filter((row) => row.user_id);
+      const playerAttendanceRows = attendanceRows.filter((row) => row.player_id);
 
-      if (error) {
-        console.error('Error recording attendance:', error);
-        return { success: false, error: 'Failed to record attendance' };
+      if (userAttendanceRows.length === 0 && playerAttendanceRows.length === 0) {
+        return { success: false, error: 'No valid attendance records to save' };
+      }
+
+      if (userAttendanceRows.length > 0) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .upsert(userAttendanceRows, { onConflict: 'event_id,user_id' });
+
+        if (error) {
+          console.error('Error recording user attendance:', error);
+          return { success: false, error: 'Failed to record attendance' };
+        }
+      }
+
+      if (playerAttendanceRows.length > 0) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .upsert(playerAttendanceRows, { onConflict: 'event_id,player_id' });
+
+        if (error) {
+          console.error('Error recording player attendance:', error);
+          return { success: false, error: 'Failed to record attendance' };
+        }
       }
 
       return { success: true };
