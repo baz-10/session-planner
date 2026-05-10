@@ -34,13 +34,16 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   const [linkedPlayers, setLinkedPlayers] = useState<LinkedPlayer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filter, setFilter] = useState<RsvpStatus | 'all'>('all');
+  const [rsvpError, setRsvpError] = useState('');
+  const [linkedPlayersError, setLinkedPlayersError] = useState('');
 
   const isParent = teamMembership?.role === 'parent';
 
   const loadLinkedPlayers = useCallback(async () => {
     if (!user) return;
 
-    const { data } = await supabase
+    setLinkedPlayersError('');
+    const { data, error } = await supabase
       .from('parent_player_links')
       .select(`
         player_id,
@@ -48,6 +51,13 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
       `)
       .eq('parent_user_id', user.id)
       .eq('can_rsvp', true);
+
+    if (error) {
+      console.error('Error loading linked players for RSVP:', error);
+      setLinkedPlayers([]);
+      setLinkedPlayersError('Your linked players could not load. Refresh and try again.');
+      return;
+    }
 
     if (data) {
       setLinkedPlayers(data as LinkedPlayer[]);
@@ -64,7 +74,13 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
 
   const handleRsvp = async (status: RsvpStatus, playerId?: string) => {
     setIsSubmitting(true);
-    await submitRsvp(event.id, status, { playerId });
+    setRsvpError('');
+    const result = await submitRsvp(event.id, status, { playerId });
+    if (!result.success) {
+      setRsvpError(result.error || 'Failed to submit RSVP.');
+      setIsSubmitting(false);
+      return;
+    }
     onUpdate();
     setIsSubmitting(false);
   };
@@ -84,6 +100,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
 
   return (
     <div className="space-y-6">
+      {rsvpError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {rsvpError}
+        </div>
+      )}
+
       {/* User's own RSVP (if not parent) */}
       {!isParent && (
         <div className="p-4 bg-gray-50 rounded-lg">
@@ -116,6 +138,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
       )}
 
       {/* Parent RSVP for linked players */}
+      {isParent && linkedPlayersError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {linkedPlayersError}
+        </div>
+      )}
+
       {isParent && linkedPlayers.length > 0 && (
         <div className="space-y-4">
           <h4 className="font-medium">RSVP for Your Players</h4>

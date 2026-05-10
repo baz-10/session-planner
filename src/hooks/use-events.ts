@@ -40,6 +40,9 @@ interface RsvpCounts {
   total: number;
 }
 
+const STALE_EVENT_ERROR = 'This event could not be updated. It may have been removed or your access may have changed.';
+const STALE_RSVP_ERROR = 'This RSVP could not be updated. Refresh and try again.';
+
 export function useEvents() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -175,9 +178,9 @@ export function useEvents() {
     ): Promise<{ success: boolean; error?: string }> => {
       setIsLoading(true);
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('events')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', eventId);
 
       setIsLoading(false);
@@ -185,6 +188,10 @@ export function useEvents() {
       if (error) {
         console.error('Error updating event:', error);
         return { success: false, error: 'Failed to update event' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_EVENT_ERROR };
       }
 
       return { success: true };
@@ -201,6 +208,7 @@ export function useEvents() {
       options?: { deleteSeries?: boolean }
     ): Promise<{ success: boolean; error?: string }> => {
       let deleteError: { message?: string } | null = null;
+      let deletedCount: number | null = null;
 
       if (options?.deleteSeries) {
         const { data: sourceEvent, error: lookupError } = await supabase
@@ -215,23 +223,36 @@ export function useEvents() {
         }
 
         if (sourceEvent?.recurrence_series_id) {
-          const { error } = await supabase
+          const { error, count } = await supabase
             .from('events')
-            .delete()
+            .delete({ count: 'exact' })
             .eq('recurrence_series_id', sourceEvent.recurrence_series_id);
           deleteError = error;
+          deletedCount = count;
         } else {
-          const { error } = await supabase.from('events').delete().eq('id', eventId);
+          const { error, count } = await supabase
+            .from('events')
+            .delete({ count: 'exact' })
+            .eq('id', eventId);
           deleteError = error;
+          deletedCount = count;
         }
       } else {
-        const { error } = await supabase.from('events').delete().eq('id', eventId);
+        const { error, count } = await supabase
+          .from('events')
+          .delete({ count: 'exact' })
+          .eq('id', eventId);
         deleteError = error;
+        deletedCount = count;
       }
 
       if (deleteError) {
         console.error('Error deleting event:', deleteError);
         return { success: false, error: 'Failed to delete event' };
+      }
+
+      if (deletedCount === 0) {
+        return { success: false, error: STALE_EVENT_ERROR };
       }
 
       return { success: true };
@@ -271,19 +292,23 @@ export function useEvents() {
 
       if (existing) {
         // Update existing RSVP
-        const { error } = await supabase
+        const { error, count } = await supabase
           .from('rsvps')
           .update({
             status,
             response_note: options?.note || null,
             responded_by: user.id,
             responded_at: new Date().toISOString(),
-          })
+          }, { count: 'exact' })
           .eq('id', existing.id);
 
         if (error) {
           console.error('Error updating RSVP:', error);
           return { success: false, error: 'Failed to update RSVP' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_RSVP_ERROR };
         }
       } else {
         // Create new RSVP
@@ -352,6 +377,10 @@ export function useEvents() {
     ): Promise<{ success: boolean; error?: string }> => {
       if (!user) {
         return { success: false, error: 'Not authenticated' };
+      }
+
+      if (records.length === 0) {
+        return { success: false, error: 'No attendance records to save' };
       }
 
       // Delete existing records for this event

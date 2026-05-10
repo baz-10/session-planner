@@ -74,6 +74,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showEditForm, setShowEditForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'rsvp' | 'attendance' | 'plan'>('rsvp');
+  const [actionError, setActionError] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
@@ -81,6 +82,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
 
   const loadEvent = useCallback(async () => {
     setIsLoading(true);
+    setActionError('');
     const data = await getEvent(eventId);
     setEvent(data);
 
@@ -139,6 +141,8 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
     const result = await deleteEvent(eventId, { deleteSeries });
     if (result.success) {
       onBack();
+    } else {
+      setActionError(result.error || 'Failed to delete event.');
     }
   };
 
@@ -195,6 +199,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             </div>
           )}
         </div>
+
+        {actionError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
 
         <div className="flex items-center gap-3 mb-4">
           <span className="text-4xl">{EVENT_TYPE_ICONS[event.type]}</span>

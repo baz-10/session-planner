@@ -45,22 +45,34 @@ export function AttendanceTracker({
   const [attendance, setAttendance] = useState<Map<string, PlayerAttendance>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const loadPlayers = useCallback(async () => {
     if (!currentTeam) {
       setPlayers([]);
+      setLoadError('');
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    setLoadError('');
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('players')
       .select('*')
       .eq('team_id', currentTeam.id)
       .eq('status', 'active')
       .order('last_name');
+
+    if (error) {
+      console.error('Error loading players for attendance:', error);
+      setPlayers([]);
+      setLoadError('Players could not load for attendance. Refresh and try again.');
+      setIsLoading(false);
+      return;
+    }
 
     if (data) {
       setPlayers(data as Player[]);
@@ -114,6 +126,7 @@ export function AttendanceTracker({
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveError('');
 
     const records = Array.from(attendance.values()).map((a) => ({
       playerId: a.playerId,
@@ -125,6 +138,8 @@ export function AttendanceTracker({
 
     if (result.success) {
       onUpdate();
+    } else {
+      setSaveError(result.error || 'Failed to save attendance.');
     }
 
     setIsSaving(false);
@@ -151,7 +166,13 @@ export function AttendanceTracker({
   if (players.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>No players on this team yet.</p>
+        {loadError ? (
+          <div className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {loadError}
+          </div>
+        ) : (
+          <p>No players on this team yet.</p>
+        )}
       </div>
     );
   }
@@ -165,6 +186,12 @@ export function AttendanceTracker({
 
   return (
     <div className="space-y-4">
+      {saveError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {saveError}
+        </div>
+      )}
+
       {/* Quick actions */}
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
