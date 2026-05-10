@@ -99,23 +99,27 @@ function readStoredRunState(sessionId: string): RunState | null {
   }
 }
 
-function writeStoredRunState(runState: RunState) {
-  if (typeof window === 'undefined') return;
+function writeStoredRunState(runState: RunState): boolean {
+  if (typeof window === 'undefined') return true;
 
   try {
     window.localStorage.setItem(storageKeyForSession(runState.sessionId), JSON.stringify(runState));
+    return true;
   } catch {
     // Private browsing or storage quota errors should not crash live run mode.
+    return false;
   }
 }
 
-function removeStoredRunState(sessionId: string) {
-  if (typeof window === 'undefined') return;
+function removeStoredRunState(sessionId: string): boolean {
+  if (typeof window === 'undefined') return true;
 
   try {
     window.localStorage.removeItem(storageKeyForSession(sessionId));
+    return true;
   } catch {
     // Storage access can be unavailable in some browser privacy modes.
+    return false;
   }
 }
 
@@ -171,7 +175,12 @@ function parseStoredRunState(value: string | null, sessionId: string): RunState 
           : 'ready',
       activityNotes:
         parsed.activityNotes && typeof parsed.activityNotes === 'object'
-          ? (parsed.activityNotes as Record<string, string>)
+          ? Object.fromEntries(
+              Object.entries(parsed.activityNotes).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === 'string' && typeof entry[1] === 'string'
+              )
+            )
           : {},
       sessionNotes: typeof parsed.sessionNotes === 'string' ? parsed.sessionNotes : '',
       updatedAt: Number.isFinite(parsed.updatedAt) ? Number(parsed.updatedAt) : Date.now(),
@@ -309,6 +318,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const [runState, setRunState] = useState<RunState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [storageWarning, setStorageWarning] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
   const lastTickRef = useRef<number | null>(null);
 
@@ -417,7 +427,12 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
 
   useEffect(() => {
     if (!runState) return;
-    writeStoredRunState(runState);
+    const didPersist = writeStoredRunState(runState);
+    setStorageWarning(
+      didPersist
+        ? ''
+        : 'Live progress is not being saved on this device. Keep this page open until you copy your summary.'
+    );
   }, [runState]);
 
   useEffect(() => {
@@ -478,8 +493,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     if (!confirmed) return;
 
     const nextState = createInitialRunState(sessionId, session.activities);
-    removeStoredRunState(sessionId);
+    const didClearStoredState = removeStoredRunState(sessionId);
     setRunState(nextState);
+    if (!didClearStoredState) {
+      setStorageWarning('Saved live progress could not be cleared from this device.');
+    }
   }, [confirmAction, session, sessionId]);
 
   const jumpToActivity = useCallback(
@@ -685,6 +703,12 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
             <RotateCcw className="h-5 w-5" />
           </button>
         </header>
+
+        {storageWarning && (
+          <div role="status" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-extrabold text-amber-800">
+            {storageWarning}
+          </div>
+        )}
 
         <MobileListCard className="mb-4 space-y-5">
           <div className="flex items-start gap-4">
@@ -923,6 +947,12 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
 
       <div className="hidden min-h-full bg-slate-50 p-3 md:block md:p-6 xl:p-8">
       <div className="mx-auto max-w-7xl space-y-5">
+        {storageWarning && (
+          <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            {storageWarning}
+          </div>
+        )}
+
         <header className="rounded-[24px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/10 md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
