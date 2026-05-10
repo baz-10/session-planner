@@ -391,17 +391,20 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     }
   }, [sessionId]);
 
-  const loadSession = useCallback(async () => {
-    if (!sessionId) return;
+  const loadSession = useCallback(async (targetSessionId = sessionId) => {
+    if (!targetSessionId) return false;
     setIsLoading(true);
-    const data = await getSession(sessionId);
+    const data = await getSession(targetSessionId);
     if (data) {
       setSession(data);
       setLoadError('');
+      setIsLoading(false);
+      return true;
     } else {
       setLoadError('Session not found, or you do not have access to this plan.');
     }
     setIsLoading(false);
+    return false;
   }, [getSession, sessionId]);
 
   // Load session data if editing
@@ -1637,7 +1640,15 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         return;
       }
 
-      await loadSession();
+      const didReload = await loadSession(session.id);
+      if (!didReload) {
+        showStatus({
+          type: 'error',
+          text: 'Could not reload the saved plan. Your local changes were kept.',
+        });
+        return;
+      }
+
       setHasUnsavedChanges(false);
       showStatus({
         type: 'info',
