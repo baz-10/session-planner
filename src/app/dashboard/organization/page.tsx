@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Copy, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useOrganization } from '@/hooks/use-organization';
 import { useConfirmDialog } from '@/components/ui';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import { openMailtoInvite } from '@/lib/utils/mailto';
 import type { Team, OrgRole } from '@/types/database';
 
@@ -43,6 +45,11 @@ export default function OrganizationSettingsPage() {
 
   const isAdmin = currentOrganizationRole === 'admin';
   const adminCount = members.filter((member) => member.role === 'admin').length;
+  const organizationInviteCode = currentOrganization?.organization_code || '';
+  const organizationInviteLink =
+    typeof window !== 'undefined' && organizationInviteCode
+      ? `${window.location.origin}/dashboard/organization/setup?code=${encodeURIComponent(organizationInviteCode)}`
+      : '';
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -87,22 +94,58 @@ export default function OrganizationSettingsPage() {
     };
   }, [currentOrganization?.id, getOrganizationMembers, getOrganizationTeams]);
 
-  const sendEmailInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentOrganization) return;
+  const showInviteFeedback = (message: string) => {
+    setInviteFeedback(message);
+    if (inviteTimerRef.current) clearTimeout(inviteTimerRef.current);
+    inviteTimerRef.current = setTimeout(() => setInviteFeedback(''), 3000);
+  };
 
-    const inviteCode = currentOrganization.organization_code;
-    if (!inviteCode) {
+  const copyOrganizationInviteCode = async () => {
+    if (!organizationInviteCode) {
       setError('Organization invite code is unavailable. Apply the latest database migrations first.');
       return;
     }
 
-    const inviteLink = `${window.location.origin}/dashboard/organization/setup?code=${encodeURIComponent(inviteCode)}`;
+    const didCopy = await copyTextToClipboard(organizationInviteCode);
+    if (!didCopy) {
+      setError('Organization invite code could not be copied. Select the code and copy it manually.');
+      return;
+    }
+
+    setError(null);
+    showInviteFeedback('Organization invite code copied.');
+  };
+
+  const copyOrganizationInviteLink = async () => {
+    if (!organizationInviteLink) {
+      setError('Organization invite link is unavailable. Apply the latest database migrations first.');
+      return;
+    }
+
+    const didCopy = await copyTextToClipboard(organizationInviteLink);
+    if (!didCopy) {
+      setError('Organization invite link could not be copied. Try the email invite or copy the code.');
+      return;
+    }
+
+    setError(null);
+    showInviteFeedback('Organization invite link copied.');
+  };
+
+  const sendEmailInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrganization) return;
+
+    if (!organizationInviteCode || !organizationInviteLink) {
+      setError('Organization invite code is unavailable. Apply the latest database migrations first.');
+      return;
+    }
+
     const subject = `Join ${currentOrganization.name} on Session Planner`;
     const body =
       `Hi!\n\nYou've been invited to join ${currentOrganization.name} on Session Planner.\n\n` +
-        `Join using this link: ${inviteLink}\n\n` +
-        `Invite code: ${inviteCode}\n\n` +
+        `Join using this link: ${organizationInviteLink}\n\n` +
+        `Invite code: ${organizationInviteCode}\n\n` +
         `New organization members join as members. An admin can promote trusted users after they join.\n\n` +
         `See you soon!`;
 
@@ -112,9 +155,9 @@ export default function OrganizationSettingsPage() {
       return;
     }
 
-    setInviteFeedback('Email client opened with a member invite link.');
+    setError(null);
+    showInviteFeedback('Email client opened with a member invite link.');
     setInviteEmail('');
-    inviteTimerRef.current = setTimeout(() => setInviteFeedback(''), 3000);
   };
 
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
@@ -289,9 +332,26 @@ export default function OrganizationSettingsPage() {
               <span className="font-mono text-lg font-bold tracking-wider text-navy">
                 {currentOrganization.organization_code || 'Unavailable'}
               </span>
-              <p className="text-sm text-text-secondary">
-                Share this code with organization members. Promote admins after they join.
-              </p>
+              <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row">
+                <button
+                  type="button"
+                  onClick={copyOrganizationInviteCode}
+                  disabled={!organizationInviteCode}
+                  className="btn-secondary min-h-10 justify-center whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy Code
+                </button>
+                <button
+                  type="button"
+                  onClick={copyOrganizationInviteLink}
+                  disabled={!organizationInviteLink}
+                  className="btn-secondary min-h-10 justify-center whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <LinkIcon className="h-4 w-4" />
+                  Copy Link
+                </button>
+              </div>
             </div>
           </div>
         )}
