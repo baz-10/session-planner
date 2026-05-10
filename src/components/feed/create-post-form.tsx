@@ -8,6 +8,13 @@ import {
   usePosts,
 } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
+import {
+  POST_ATTACHMENT_EXTENSIONS,
+  POST_ATTACHMENT_MIME_TYPES,
+  isSafeImageFile,
+  isSafeVideoFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 
 interface CreatePostFormProps {
   onSuccess: () => void;
@@ -43,12 +50,23 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
       return;
     }
 
+    const unsupportedFile = files.find(
+      (file) => !isTrustedAttachmentFile(file, POST_ATTACHMENT_MIME_TYPES, POST_ATTACHMENT_EXTENSIONS)
+    );
+    if (unsupportedFile) {
+      setError(`${unsupportedFile.name} is not a supported attachment type.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setError('');
     setAttachments((prev) => [...prev, ...files]);
 
     // Create previews for images
     files.forEach((file) => {
-      if (file.type.startsWith('image/')) {
+      if (isSafeImageFile(file)) {
         const reader = new FileReader();
         reader.onloadend = () => {
           setPreviews((prev) => [...prev, reader.result as string]);
@@ -90,9 +108,8 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   };
 
   const getFileIcon = (file: File) => {
-    if (file.type.startsWith('video/')) return '🎬';
+    if (isSafeVideoFile(file)) return '🎬';
     if (file.type === 'application/pdf') return '📄';
-    if (file.type.startsWith('audio/')) return '🎵';
     return '📎';
   };
 
@@ -163,7 +180,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
                   type="file"
                   onChange={handleFileSelect}
                   multiple
-                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx"
                   className="hidden"
                 />
                 <button

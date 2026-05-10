@@ -1,18 +1,21 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import {
+  CHAT_ATTACHMENT_EXTENSIONS,
+  CHAT_ATTACHMENT_MIME_TYPES,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 
 type SendResult = void | { success: boolean; error?: string };
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const ALLOWED_CHAT_ATTACHMENT_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx']);
 
 function validateAttachment(file: File) {
   if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
     return 'Attachments must be 10 MB or smaller.';
   }
 
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  if (!file.type.startsWith('image/') && !ALLOWED_CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
+  if (!isTrustedAttachmentFile(file, CHAT_ATTACHMENT_MIME_TYPES, CHAT_ATTACHMENT_EXTENSIONS)) {
     return 'Choose an image, PDF, Word document, or document file.';
   }
 
@@ -119,7 +122,7 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
           ref={fileInputRef}
           type="file"
           onChange={handleFileSelect}
-          accept="image/*,.pdf,.doc,.docx"
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx"
           className="hidden"
           disabled={disabled || isSending}
         />

@@ -3,6 +3,13 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  CHAT_ATTACHMENT_EXTENSIONS,
+  CHAT_ATTACHMENT_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import type {
   Conversation,
   ConversationParticipant,
@@ -40,20 +47,13 @@ interface ChatLoadOptions {
 }
 
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const ALLOWED_CHAT_ATTACHMENT_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx']);
-const ALLOWED_CHAT_ATTACHMENT_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
 const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
 const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
 const TEAM_CHAT_SYNC_ERROR = 'Team chat could not sync team members. Refresh and try again.';
 const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
 
 function getSafeAttachmentExtension(file: File) {
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  return ALLOWED_CHAT_ATTACHMENT_EXTENSIONS.has(extension) ? extension : 'bin';
+  return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
 }
 
 function createAttachmentObjectName(fileExtension: string) {
@@ -70,12 +70,7 @@ function validateChatAttachment(file: File): string | null {
     return 'Attachments must be 10 MB or smaller.';
   }
 
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  const isImage = file.type.startsWith('image/');
-  const hasAllowedMime = ALLOWED_CHAT_ATTACHMENT_MIME_TYPES.has(file.type);
-  const hasAllowedExtension = ALLOWED_CHAT_ATTACHMENT_EXTENSIONS.has(extension);
-
-  if (!isImage && !hasAllowedMime && !hasAllowedExtension) {
+  if (!isTrustedAttachmentFile(file, CHAT_ATTACHMENT_MIME_TYPES, CHAT_ATTACHMENT_EXTENSIONS)) {
     return 'Attachments must be an image, PDF, Word document, or document file.';
   }
 
@@ -524,7 +519,7 @@ export function useChat() {
 
       // Determine message type
       let messageType: MessageType = 'file';
-      if (file.type.startsWith('image/')) messageType = 'image';
+      if (isSafeImageFile(file)) messageType = 'image';
 
       const metadata: MessageMetadata = {
         file_url: publicUrl.publicUrl,

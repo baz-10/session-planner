@@ -95,13 +95,21 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
     if (!drill || !e.target.files || e.target.files.length === 0) return;
 
     setUploadingFiles(true);
+    setError('');
     const files = Array.from(e.target.files);
+    const uploadErrors: string[] = [];
 
     for (const file of files) {
       const result = await addDrillMedia(drill.id, file);
       if (result.success && result.media) {
         setMedia((prev) => [...prev, result.media!]);
+      } else {
+        uploadErrors.push(result.error || `${file.name} could not be uploaded.`);
       }
+    }
+
+    if (uploadErrors.length > 0) {
+      setError(uploadErrors[0]);
     }
 
     setUploadingFiles(false);
@@ -300,7 +308,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                   type="file"
                   onChange={handleFileUpload}
                   multiple
-                  accept="image/*,video/*,.pdf"
+                  accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf"
                   className="hidden"
                   disabled={uploadingFiles}
                 />

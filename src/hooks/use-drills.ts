@@ -3,6 +3,14 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  DRILL_MEDIA_EXTENSIONS,
+  DRILL_MEDIA_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isSafeVideoFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import { getVisibleLabelTags, toCategoryTag } from '@/lib/utils/drill-tags';
 import type {
   Drill,
@@ -24,6 +32,19 @@ interface DrillReadOptions {
 const STALE_DRILL_ERROR = 'Drill access changed. Refresh the library and try again.';
 const STALE_CATEGORY_ERROR = 'Category access changed. Refresh categories and try again.';
 const STALE_MEDIA_ERROR = 'Media access changed. Refresh the drill and try again.';
+const MAX_DRILL_MEDIA_BYTES = 50 * 1024 * 1024;
+
+function validateDrillMedia(file: File) {
+  if (file.size > MAX_DRILL_MEDIA_BYTES) {
+    return `${file.name} is larger than 50 MB.`;
+  }
+
+  if (!isTrustedAttachmentFile(file, DRILL_MEDIA_MIME_TYPES, DRILL_MEDIA_EXTENSIONS)) {
+    return `${file.name} is not a supported drill media type.`;
+  }
+
+  return null;
+}
 
 export function useDrills() {
   const { user, currentTeam } = useAuth();
@@ -221,8 +242,13 @@ export function useDrills() {
       drillId: string,
       file: File
     ): Promise<{ success: boolean; media?: DrillMedia; error?: string }> => {
+      const validationError = validateDrillMedia(file);
+      if (validationError) {
+        return { success: false, error: validationError };
+      }
+
       // Upload file to storage
-      const fileExt = file.name.split('.').pop();
+      const fileExt = getSafeFileExtension(file, DRILL_MEDIA_EXTENSIONS);
       const fileName = `${drillId}/${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -238,12 +264,10 @@ export function useDrills() {
       const { data: urlData } = supabase.storage.from('drill-media').getPublicUrl(fileName);
 
       // Determine type
-      const type: AttachmentType = file.type.startsWith('image/')
+      const type: AttachmentType = isSafeImageFile(file)
         ? 'image'
-        : file.type.startsWith('video/')
+        : isSafeVideoFile(file)
         ? 'video'
-        : file.type.startsWith('audio/')
-        ? 'audio'
         : 'document';
 
       // Create media record

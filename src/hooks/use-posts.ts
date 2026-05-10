@@ -3,6 +3,14 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  POST_ATTACHMENT_EXTENSIONS,
+  POST_ATTACHMENT_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isSafeVideoFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import type {
   Post,
   PostAttachment,
@@ -39,33 +47,6 @@ interface ReactionSummary {
 
 export const MAX_POST_ATTACHMENTS = 5;
 export const MAX_POST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-const ALLOWED_POST_ATTACHMENT_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'video/mp4',
-  'video/quicktime',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-]);
-const ALLOWED_POST_ATTACHMENT_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'webp',
-  'mp4',
-  'mov',
-  'pdf',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-]);
 const STALE_POST_ERROR = 'This post could not be updated. It may have been removed or your access may have changed.';
 const STALE_COMMENT_ERROR =
   'This comment could not be updated. It may have been removed or your access may have changed.';
@@ -79,12 +60,7 @@ function validatePostAttachment(file: File): string | null {
     return `${file.name} is larger than 25 MB.`;
   }
 
-  const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  if (
-    file.type &&
-    !ALLOWED_POST_ATTACHMENT_TYPES.has(file.type) &&
-    !ALLOWED_POST_ATTACHMENT_EXTENSIONS.has(extension)
-  ) {
+  if (!isTrustedAttachmentFile(file, POST_ATTACHMENT_MIME_TYPES, POST_ATTACHMENT_EXTENSIONS)) {
     return `${file.name} is not a supported attachment type.`;
   }
 
@@ -211,7 +187,7 @@ export function usePosts() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const fileExt = file.name.split('.').pop();
+      const fileExt = getSafeFileExtension(file, POST_ATTACHMENT_EXTENSIONS);
       const filePath = `${currentTeam.id}/posts/${postId}/${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -229,9 +205,8 @@ export function usePosts() {
 
       // Determine attachment type
       let attachmentType: AttachmentType = 'document';
-      if (file.type.startsWith('image/')) attachmentType = 'image';
-      else if (file.type.startsWith('video/')) attachmentType = 'video';
-      else if (file.type.startsWith('audio/')) attachmentType = 'audio';
+      if (isSafeImageFile(file)) attachmentType = 'image';
+      else if (isSafeVideoFile(file)) attachmentType = 'video';
 
       const { data: attachment, error } = await supabase
         .from('post_attachments')
