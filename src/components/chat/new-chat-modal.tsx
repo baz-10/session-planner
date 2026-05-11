@@ -7,7 +7,7 @@ import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 import type { Profile, TeamMember } from '@/types/database';
 
 interface TeamMemberWithProfile extends TeamMember {
-  profile: Profile;
+  profile: Profile | null;
 }
 
 interface NewChatModalProps {
@@ -69,6 +69,10 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   useEffect(() => {
     loadMembers();
   }, [loadMembers]);
+
+  const getMemberDisplayName = (member: TeamMemberWithProfile) => {
+    return member.profile?.full_name || member.profile?.email || 'Team member';
+  };
 
   const filteredMembers = members.filter((member) => {
     const query = searchQuery.trim().toLowerCase();
@@ -258,7 +262,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
                   onClick={() => toggleSelection(member.user_id)}
                   disabled={isCreating}
                   aria-pressed={selectedIds.includes(member.user_id)}
-                  aria-label={`Select ${member.profile?.full_name || member.profile?.email || 'team member'} for chat`}
+                  aria-label={`Select ${getMemberDisplayName(member)} for chat`}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
                 >
                   {/* Checkbox/Radio */}
@@ -276,13 +280,13 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
 
                   {/* Avatar */}
                   <div className="w-10 h-10 rounded-full bg-gray-300 text-white flex items-center justify-center font-medium">
-                    {member.profile?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                    {getMemberDisplayName(member).charAt(0).toUpperCase() || 'U'}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 text-left">
                     <div className="font-medium text-gray-900 truncate">
-                      {member.profile?.full_name || 'Unknown'}
+                      {getMemberDisplayName(member)}
                     </div>
                     <div className="text-sm text-gray-500 truncate">
                       <span className="capitalize">{member.role}</span>

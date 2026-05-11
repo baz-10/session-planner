@@ -76,10 +76,11 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
 
   const getConversationName = (conv: ConversationWithDetails) => {
     if (conv.name) return conv.name;
+    const participants = Array.isArray(conv.participants) ? conv.participants : [];
 
     // For DMs, show the other person's name
     if (conv.type === 'direct') {
-      const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
+      const otherParticipant = participants.find((p) => p.user_id !== user?.id);
       return getParticipantDisplayName(otherParticipant);
     }
 
@@ -87,8 +88,10 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   };
 
   const renderConversationAvatar = (conv: ConversationWithDetails) => {
+    const participants = Array.isArray(conv.participants) ? conv.participants : [];
+
     if (conv.type === 'direct') {
-      const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
+      const otherParticipant = participants.find((p) => p.user_id !== user?.id);
       return getParticipantDisplayName(otherParticipant).charAt(0).toUpperCase() || 'U';
     }
 
