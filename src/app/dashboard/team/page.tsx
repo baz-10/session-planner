@@ -18,6 +18,8 @@ type InviteFeedback = {
   text: string;
 };
 
+type InviteAction = 'code' | 'link' | 'share' | 'email';
+
 export default function TeamSettingsPage() {
   const { currentTeam, teamMemberships, user } = useAuth();
   const { getTeamMembers, createTeam, joinTeamByCode, updateMemberRole, removeMember } = useTeam();
@@ -35,6 +37,7 @@ export default function TeamSettingsPage() {
   const [memberActionError, setMemberActionError] = useState('');
   const [memberActionSuccess, setMemberActionSuccess] = useState('');
   const [updatingMemberId, setUpdatingMemberId] = useState('');
+  const [inviteAction, setInviteAction] = useState<InviteAction | null>(null);
   const [pageOrigin, setPageOrigin] = useState('');
 
   // Create/Join team state
@@ -54,6 +57,7 @@ export default function TeamSettingsPage() {
   const canManageMembers = currentMembership?.role === 'admin';
   const adminCount = members.filter((member) => member.role === 'admin').length;
   const hasInviteCode = Boolean(currentTeam?.team_code);
+  const inviteActionInFlight = inviteAction !== null;
 
   const buildInviteLink = (role?: InviteJoinRole) => {
     if (!pageOrigin || !currentTeam?.team_code) return '';
@@ -134,17 +138,22 @@ export default function TeamSettingsPage() {
       return;
     }
 
-    const didCopy = await copyTextToClipboard(currentTeam.team_code);
-    if (didCopy) {
-      setCopied(true);
-      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-      return;
-    }
+    setInviteAction('code');
+    try {
+      const didCopy = await copyTextToClipboard(currentTeam.team_code);
+      if (didCopy) {
+        setCopied(true);
+        copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+        return;
+      }
 
-    showInviteFeedback({
-      type: 'error',
-      text: 'Team code could not be copied. Select the code and copy it manually.',
-    });
+      showInviteFeedback({
+        type: 'error',
+        text: 'Team code could not be copied. Select the code and copy it manually.',
+      });
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const copyLink = async () => {
@@ -156,18 +165,23 @@ export default function TeamSettingsPage() {
       return false;
     }
 
-    const didCopy = await copyTextToClipboard(inviteLink);
-    if (didCopy) {
-      setLinkCopied(true);
-      linkTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
-      return true;
-    }
+    setInviteAction('link');
+    try {
+      const didCopy = await copyTextToClipboard(inviteLink);
+      if (didCopy) {
+        setLinkCopied(true);
+        linkTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
+        return true;
+      }
 
-    showInviteFeedback({
-      type: 'error',
-      text: 'Invite link could not be copied. Try the email invite or copy the team code.',
-    });
-    return false;
+      showInviteFeedback({
+        type: 'error',
+        text: 'Invite link could not be copied. Try the email invite or copy the team code.',
+      });
+      return false;
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const shareInvite = async () => {
@@ -179,22 +193,27 @@ export default function TeamSettingsPage() {
       return;
     }
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Join ${currentTeam?.name} on Session Planner`,
-          text: `You've been invited to join ${currentTeam?.name} as a ${inviteRoleLabel}. Use code: ${currentTeam?.team_code}`,
-          url: inviteLink,
-        });
-        showInviteFeedback({ type: 'success', text: 'Invite shared.' });
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return;
+    setInviteAction('share');
+    try {
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `Join ${currentTeam?.name} on Session Planner`,
+            text: `You've been invited to join ${currentTeam?.name} as a ${inviteRoleLabel}. Use code: ${currentTeam?.team_code}`,
+            url: inviteLink,
+          });
+          showInviteFeedback({ type: 'success', text: 'Invite shared.' });
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return;
+          }
+          await copyLink();
         }
+      } else {
         await copyLink();
       }
-    } else {
-      await copyLink();
+    } finally {
+      setInviteAction(null);
     }
   };
 
@@ -218,15 +237,20 @@ export default function TeamSettingsPage() {
       `Or enter this code in the app: ${currentTeam.team_code}\n\n` +
       `See you on the field!`;
 
-    const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
-    if (!didOpen) {
-      showInviteFeedback({ type: 'error', text: 'Enter an email address before sending an invite.' });
-      return;
-    }
+    setInviteAction('email');
+    try {
+      const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
+      if (!didOpen) {
+        showInviteFeedback({ type: 'error', text: 'Enter an email address before sending an invite.' });
+        return;
+      }
 
-    setInviteSent(true);
-    setInviteEmail('');
-    inviteTimerRef.current = setTimeout(() => setInviteSent(false), 3000);
+      setInviteSent(true);
+      setInviteEmail('');
+      inviteTimerRef.current = setTimeout(() => setInviteSent(false), 3000);
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const handleCreateTeam = async (e: React.FormEvent) => {
@@ -310,18 +334,24 @@ export default function TeamSettingsPage() {
     setMemberActionError('');
     setMemberActionSuccess('');
 
-    const result = await updateMemberRole(currentTeam.id, member.id, role);
-    setUpdatingMemberId('');
+    try {
+      const result = await updateMemberRole(currentTeam.id, member.id, role);
 
-    if (!result.success) {
-      setMemberActionError(result.error || 'Failed to update member role.');
-      return;
+      if (!result.success) {
+        setMemberActionError(result.error || 'Failed to update member role.');
+        return;
+      }
+
+      setMembers((prev) =>
+        prev.map((item) => (item.id === member.id ? { ...item, role } : item))
+      );
+      setMemberActionSuccess('Member role updated.');
+    } catch (error) {
+      console.error('Unexpected error updating team member role:', error);
+      setMemberActionError('Failed to update member role.');
+    } finally {
+      setUpdatingMemberId('');
     }
-
-    setMembers((prev) =>
-      prev.map((item) => (item.id === member.id ? { ...item, role } : item))
-    );
-    setMemberActionSuccess('Member role updated.');
   };
 
   const handleRemoveMember = async (member: any) => {
@@ -353,16 +383,22 @@ export default function TeamSettingsPage() {
     setMemberActionError('');
     setMemberActionSuccess('');
 
-    const result = await removeMember(currentTeam.id, member.id);
-    setUpdatingMemberId('');
+    try {
+      const result = await removeMember(currentTeam.id, member.id);
 
-    if (!result.success) {
-      setMemberActionError(result.error || 'Failed to remove member.');
-      return;
+      if (!result.success) {
+        setMemberActionError(result.error || 'Failed to remove member.');
+        return;
+      }
+
+      setMembers((prev) => prev.filter((item) => item.id !== member.id));
+      setMemberActionSuccess('Member removed from team.');
+    } catch (error) {
+      console.error('Unexpected error removing team member:', error);
+      setMemberActionError('Failed to remove member.');
+    } finally {
+      setUpdatingMemberId('');
     }
-
-    setMembers((prev) => prev.filter((item) => item.id !== member.id));
-    setMemberActionSuccess('Member removed from team.');
   };
 
   if (!currentTeam) {
@@ -588,7 +624,8 @@ export default function TeamSettingsPage() {
               <button
                 type="button"
                 onClick={copyCode}
-                disabled={!hasInviteCode}
+                disabled={!hasInviteCode || inviteActionInFlight}
+                aria-busy={inviteAction === 'code'}
                 className={`btn min-h-12 justify-center ${copied ? 'btn-accent' : 'btn-secondary'} sm:min-w-[112px]`}
               >
                 {copied ? (
@@ -621,6 +658,7 @@ export default function TeamSettingsPage() {
               id="inviteRole"
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as 'player' | 'parent')}
+              disabled={inviteActionInFlight}
               className="input"
             >
               <option value="player">Player</option>
@@ -633,7 +671,8 @@ export default function TeamSettingsPage() {
             <button
               type="button"
               onClick={shareInvite}
-              disabled={!hasInviteCode || !inviteLink}
+              disabled={!hasInviteCode || !inviteLink || inviteActionInFlight}
+              aria-busy={inviteAction === 'share'}
               className="btn-primary min-h-12 justify-center py-3"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -644,7 +683,8 @@ export default function TeamSettingsPage() {
             <button
               type="button"
               onClick={copyLink}
-              disabled={!inviteLink}
+              disabled={!inviteLink || inviteActionInFlight}
+              aria-busy={inviteAction === 'link'}
               className={`${linkCopied ? 'btn-accent' : 'btn-secondary'} min-h-12 justify-center py-3`}
             >
               {linkCopied ? (
@@ -675,10 +715,16 @@ export default function TeamSettingsPage() {
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="player@email.com"
                 required
+                disabled={inviteActionInFlight}
                 aria-label="Email address to invite"
                 className="input flex-1"
               />
-              <button type="submit" disabled={!hasInviteCode || !inviteLink} className="btn-accent whitespace-nowrap">
+              <button
+                type="submit"
+                disabled={!hasInviteCode || !inviteLink || inviteActionInFlight}
+                aria-busy={inviteAction === 'email'}
+                className="btn-accent whitespace-nowrap"
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
@@ -698,10 +744,10 @@ export default function TeamSettingsPage() {
       <MobileListCard>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-navy">
-          <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          Team Members ({members.length})
+            <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Team Members ({members.length})
           </h3>
           {canManageMembers ? (
             <p className="text-sm font-medium text-text-muted">
@@ -750,69 +796,71 @@ export default function TeamSettingsPage() {
               const isCurrentUser = member.user_id === user?.id;
               const isLastAdmin = member.role === 'admin' && adminCount <= 1;
               const isUpdating = updatingMemberId === member.id;
-              const controlsDisabled = isUpdating || isCurrentUser || isLastAdmin;
+              const controlsDisabled = Boolean(updatingMemberId) || isCurrentUser || isLastAdmin;
 
               return (
-              <div
-                key={member.id}
-                className="flex flex-col gap-3 rounded-2xl bg-whisper p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
-                    <span className="text-sm font-semibold text-teal-dark">
-                      {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-navy truncate">
-                      {member.profile?.full_name || 'Unknown'}
-                    </p>
-                    <p className="text-sm text-text-muted truncate">
-                      {member.profile?.email}
-                    </p>
-                    {(isCurrentUser || isLastAdmin) && (
-                      <p className="mt-1 text-xs font-semibold text-text-muted">
-                        {isCurrentUser ? 'You' : 'Last admin'}
+                <div
+                  key={member.id}
+                  className="flex flex-col gap-3 rounded-2xl bg-whisper p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4"
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
+                      <span className="text-sm font-semibold text-teal-dark">
+                        {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-navy truncate">
+                        {member.profile?.full_name || 'Unknown'}
                       </p>
-                    )}
+                      <p className="text-sm text-text-muted truncate">
+                        {member.profile?.email}
+                      </p>
+                      {(isCurrentUser || isLastAdmin) && (
+                        <p className="mt-1 text-xs font-semibold text-text-muted">
+                          {isCurrentUser ? 'You' : 'Last admin'}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {canManageMembers ? (
-                  <div className="flex items-center gap-2 sm:justify-end">
-                    <select
-                      value={member.role}
-                      onChange={(event) => handleMemberRoleChange(member, event.target.value as TeamRole)}
-                      disabled={controlsDisabled}
-                      aria-label={`Role for ${member.profile?.full_name || member.profile?.email || 'member'}`}
-                      className="input min-h-11 flex-1 capitalize sm:w-32 sm:flex-none"
-                    >
-                      {MANAGED_TEAM_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(member)}
-                      disabled={controlsDisabled}
-                      className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-100 bg-white px-3 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isUpdating ? 'Saving' : 'Remove'}
-                    </button>
-                  </div>
-                ) : (
-                  <span className={`badge ${
-                    member.role === 'admin' ? 'badge-navy' :
-                    member.role === 'coach' ? 'badge-teal' :
-                    member.role === 'player' ? 'badge-success' :
-                    'badge-warning'
-                  }`}>
-                    {member.role}
-                  </span>
-                )}
-              </div>
+                  {canManageMembers ? (
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      <select
+                        value={member.role}
+                        onChange={(event) => handleMemberRoleChange(member, event.target.value as TeamRole)}
+                        disabled={controlsDisabled}
+                        aria-busy={isUpdating}
+                        aria-label={`Role for ${member.profile?.full_name || member.profile?.email || 'member'}`}
+                        className="input min-h-11 flex-1 capitalize sm:w-32 sm:flex-none"
+                      >
+                        {MANAGED_TEAM_ROLES.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(member)}
+                        disabled={controlsDisabled}
+                        aria-busy={isUpdating}
+                        className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-100 bg-white px-3 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isUpdating ? 'Saving' : 'Remove'}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`badge ${
+                      member.role === 'admin' ? 'badge-navy' :
+                      member.role === 'coach' ? 'badge-teal' :
+                      member.role === 'player' ? 'badge-success' :
+                      'badge-warning'
+                    }`}>
+                      {member.role}
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>
