@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, UserRound, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { clearPendingOAuthSignupRole, storePendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
 import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { TeamRole } from '@/types/database';
 import type { LucideIcon } from 'lucide-react';
@@ -115,6 +116,7 @@ export function SignupForm() {
 
     setError('');
     setIsSubmitting(true);
+    storePendingOAuthSignupRole(userType);
 
     try {
       const { error } =
@@ -122,9 +124,11 @@ export function SignupForm() {
           ? await signInWithGoogle(redirectTo)
           : await signInWithApple(redirectTo);
       if (error) {
+        clearPendingOAuthSignupRole();
         setError(error.message);
       }
     } catch (error) {
+      clearPendingOAuthSignupRole();
       console.error(`Unexpected error starting ${provider} sign-up:`, error);
       setError(error instanceof Error ? error.message : 'Failed to start sign-up');
     } finally {

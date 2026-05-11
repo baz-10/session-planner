@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { consumePendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
 import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 export function CallbackHandler() {
@@ -25,6 +26,21 @@ export function CallbackHandler() {
           const { data: { user } } = await supabase.auth.getUser();
 
           if (user) {
+            const pendingSignupRole = consumePendingOAuthSignupRole();
+            if (pendingSignupRole && !user.user_metadata?.user_type) {
+              const { error: metadataError } = await supabase.auth.updateUser({
+                data: {
+                  ...user.user_metadata,
+                  user_type: pendingSignupRole.userType,
+                  default_role: pendingSignupRole.defaultRole,
+                },
+              });
+
+              if (metadataError) {
+                console.error('Failed to preserve social sign-up role:', metadataError);
+              }
+            }
+
             const { data: profile } = await supabase
               .from('profiles')
               .select('onboarding_completed')

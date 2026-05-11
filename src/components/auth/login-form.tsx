@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
+import { clearPendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
 import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 const PASSWORD_SIGN_IN_TIMEOUT_MS = 60000;
@@ -95,6 +96,7 @@ export function LoginForm() {
     setError('');
     setStatusHint('');
     setIsSubmitting(true);
+    clearPendingOAuthSignupRole();
 
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -117,6 +119,7 @@ export function LoginForm() {
     setError('');
     setStatusHint('');
     setIsSubmitting(true);
+    clearPendingOAuthSignupRole();
 
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
