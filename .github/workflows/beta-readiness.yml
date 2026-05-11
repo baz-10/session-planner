@@ -1,0 +1,64 @@
+name: Beta readiness
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  beta-gates:
+    name: Local beta gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check whitespace
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Mobile experience audit
+        run: npm run audit:mobile
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Production build with required env
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+
+      - name: Production build without Supabase env
+        run: npm run build
