@@ -96,31 +96,41 @@ export function usePlays() {
       }
 
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('plays')
-        .insert({
-          team_id: currentTeam.id,
-          organization_id: input.organization_id || null,
-          name: input.name,
-          description: input.description || null,
-          play_type: input.play_type || 'offense',
-          court_template: input.court_template || 'half_court',
-          tags: input.tags || [],
-          diagram: input.diagram,
-          thumbnail_data_url: input.thumbnail_data_url || null,
-          version: input.version || 1,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-      setIsLoading(false);
 
-      if (error || !data) {
-        console.error('Error creating play:', error);
-        return { success: false, error: error?.message || 'Failed to create play' };
+      try {
+        const { data, error } = await supabase
+          .from('plays')
+          .insert({
+            team_id: currentTeam.id,
+            organization_id: input.organization_id || null,
+            name: input.name,
+            description: input.description || null,
+            play_type: input.play_type || 'offense',
+            court_template: input.court_template || 'half_court',
+            tags: input.tags || [],
+            diagram: input.diagram,
+            thumbnail_data_url: input.thumbnail_data_url || null,
+            version: input.version || 1,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (error || !data) {
+          console.error('Error creating play:', error);
+          return { success: false, error: error?.message || 'Failed to create play' };
+        }
+
+        return { success: true, play: data as Play };
+      } catch (error) {
+        console.error('Unexpected error creating play:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create play',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      return { success: true, play: data as Play };
     },
     [user, currentTeam, supabase]
   );
@@ -132,23 +142,33 @@ export function usePlays() {
       }
 
       setIsLoading(true);
-      const { error, count } = await supabase
-        .from('plays')
-        .update(updates, { count: 'exact' })
-        .eq('id', playId)
-        .eq('team_id', currentTeam.id);
-      setIsLoading(false);
 
-      if (error) {
-        console.error('Error updating play:', error);
-        return { success: false, error: error.message || 'Failed to update play' };
+      try {
+        const { error, count } = await supabase
+          .from('plays')
+          .update(updates, { count: 'exact' })
+          .eq('id', playId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating play:', error);
+          return { success: false, error: error.message || 'Failed to update play' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_PLAY_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating play:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update play',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      if (count === 0) {
-        return { success: false, error: STALE_PLAY_ERROR };
-      }
-
-      return { success: true };
     },
     [supabase, currentTeam]
   );

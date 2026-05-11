@@ -27,6 +27,9 @@ export function PlayLibrary() {
   const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [activeAction, setActiveAction] = useState<{ playId: string; type: 'duplicate' | 'delete' } | null>(
+    null
+  );
   const [reloadKey, setReloadKey] = useState(0);
   const { confirmAction, confirmDialog } = useConfirmDialog();
   const { promptForText, textPromptDialog } = useTextPromptDialog();
@@ -128,11 +131,19 @@ export function PlayLibrary() {
     if (!newName) return;
 
     setActionError('');
-    const result = await duplicatePlay(play.id, newName);
-    if (result.success) {
-      await loadPlays();
-    } else {
-      setActionError(result.error || 'Failed to duplicate play');
+    setActiveAction({ playId: play.id, type: 'duplicate' });
+    try {
+      const result = await duplicatePlay(play.id, newName);
+      if (result.success) {
+        await loadPlays();
+      } else {
+        setActionError(result.error || 'Failed to duplicate play');
+      }
+    } catch (error) {
+      console.error('Unexpected error duplicating play:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to duplicate play');
+    } finally {
+      setActiveAction(null);
     }
   };
 
@@ -147,11 +158,19 @@ export function PlayLibrary() {
     if (!confirmed) return;
 
     setActionError('');
-    const result = await deletePlay(play.id);
-    if (result.success) {
-      setPlays((prev) => prev.filter((item) => item.id !== play.id));
-    } else {
-      setActionError(result.error || 'Failed to delete play');
+    setActiveAction({ playId: play.id, type: 'delete' });
+    try {
+      const result = await deletePlay(play.id);
+      if (result.success) {
+        setPlays((prev) => prev.filter((item) => item.id !== play.id));
+      } else {
+        setActionError(result.error || 'Failed to delete play');
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting play:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to delete play');
+    } finally {
+      setActiveAction(null);
     }
   };
 
@@ -181,7 +200,7 @@ export function PlayLibrary() {
     <div className="space-y-6">
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
         {actionError && (
-          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {actionError}
           </div>
         )}
@@ -271,11 +290,14 @@ export function PlayLibrary() {
           {plays.map((play) => (
             <article
               key={play.id}
+              aria-busy={activeAction?.playId === play.id}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/30 hover:shadow-lg"
             >
               <button
+                type="button"
                 onClick={() => router.push(`/dashboard/plays/${play.id}`)}
-                className="w-full text-left"
+                disabled={activeAction !== null}
+                className="w-full text-left disabled:cursor-not-allowed"
               >
                 <div className="aspect-[4/3] overflow-hidden bg-slate-100">
                   <PlayDiagramPreview
@@ -326,24 +348,34 @@ export function PlayLibrary() {
 
               <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-3">
                 <button
+                  type="button"
                   onClick={() => router.push(`/dashboard/plays/${play.id}`)}
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={activeAction !== null}
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {canEdit ? 'Edit' : 'View'}
                 </button>
                 {canEdit && (
                   <>
                     <button
+                      type="button"
                       onClick={() => handleDuplicate(play)}
-                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      disabled={activeAction !== null}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Duplicate
+                      {activeAction?.playId === play.id && activeAction.type === 'duplicate'
+                        ? 'Duplicating...'
+                        : 'Duplicate'}
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(play)}
-                      className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                      disabled={activeAction !== null}
+                      className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Delete
+                      {activeAction?.playId === play.id && activeAction.type === 'delete'
+                        ? 'Deleting...'
+                        : 'Delete'}
                     </button>
                   </>
                 )}

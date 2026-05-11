@@ -83,7 +83,7 @@ export function useDrills() {
     if (!error) return fallback;
 
     if (error.code === '42501' || error.message?.toLowerCase().includes('row-level security')) {
-      return 'You do not have permission to manage categories for the selected team. Try switching to the correct team.';
+      return 'You do not have permission to manage drills or categories for the selected team. Try switching to the correct team.';
     }
 
     return error.message || fallback;
@@ -184,30 +184,42 @@ export function useDrills() {
       }
 
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('drills')
-        .insert({
-          team_id: currentTeam.id,
-          organization_id: input.organization_id || null,
-          category_id: input.category_id || null,
-          name: input.name,
-          description: input.description || null,
-          default_duration: input.default_duration || 10,
-          notes: input.notes || null,
-          tags: input.tags || [],
-          created_by: user.id,
-        })
-        .select()
-        .single();
 
-      setIsLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from('drills')
+          .insert({
+            team_id: currentTeam.id,
+            organization_id: input.organization_id || null,
+            category_id: input.category_id || null,
+            name: input.name,
+            description: input.description || null,
+            default_duration: input.default_duration || 10,
+            notes: input.notes || null,
+            tags: input.tags || [],
+            created_by: user.id,
+          })
+          .select()
+          .single();
 
-      if (error || !data) {
-        console.error('Error creating drill:', error);
-        return { success: false, error: 'Failed to create drill' };
+        if (error || !data) {
+          console.error('Error creating drill:', error);
+          return {
+            success: false,
+            error: toDrillErrorMessage(error, 'Failed to create drill'),
+          };
+        }
+
+        return { success: true, drill: data as Drill };
+      } catch (error) {
+        console.error('Unexpected error creating drill:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create drill',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      return { success: true, drill: data as Drill };
     },
     [user, currentTeam, supabase]
   );
@@ -217,25 +229,43 @@ export function useDrills() {
    */
   const updateDrill = useCallback(
     async (drillId: string, updates: Partial<Drill>): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before updating this drill.' };
+      }
+
       setIsLoading(true);
-      const { error, count } = await supabase
-        .from('drills')
-        .update(updates, { count: 'exact' })
-        .eq('id', drillId);
-      setIsLoading(false);
 
-      if (error) {
-        console.error('Error updating drill:', error);
-        return { success: false, error: 'Failed to update drill' };
+      try {
+        const { error, count } = await supabase
+          .from('drills')
+          .update(updates, { count: 'exact' })
+          .eq('id', drillId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating drill:', error);
+          return {
+            success: false,
+            error: toDrillErrorMessage(error, 'Failed to update drill'),
+          };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_DRILL_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating drill:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update drill',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      if (count === 0) {
-        return { success: false, error: STALE_DRILL_ERROR };
-      }
-
-      return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -243,10 +273,15 @@ export function useDrills() {
    */
   const deleteDrill = useCallback(
     async (drillId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before deleting this drill.' };
+      }
+
       const { error, count } = await supabase
         .from('drills')
         .delete({ count: 'exact' })
-        .eq('id', drillId);
+        .eq('id', drillId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error deleting drill:', error);
@@ -259,7 +294,7 @@ export function useDrills() {
 
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
