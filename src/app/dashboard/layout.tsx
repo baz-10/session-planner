@@ -122,8 +122,10 @@ export default function DashboardLayout({
           ? `${window.location.pathname}${window.location.search}`
           : pathname;
       router.replace(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
+    } else if (!isLoading && user && profile && !profile.onboarding_completed) {
+      router.replace('/onboarding');
     }
-  }, [isLoading, pathname, router, user]);
+  }, [isLoading, pathname, profile, router, user]);
 
   if (isLoading || !user) {
     return (
