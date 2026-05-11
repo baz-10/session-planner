@@ -82,14 +82,13 @@ export default function ChatPage() {
 
     setQuickChatError('');
     setOpeningQuickChat(type);
-    const result = await getTeamChat(type);
-    if (!result.success || !result.conversation) {
-      setQuickChatError(result.error || 'Team chat could not be opened. Refresh and try again.');
-      setOpeningQuickChat(null);
-      return;
-    }
-
     try {
+      const result = await getTeamChat(type);
+      if (!result.success || !result.conversation) {
+        setQuickChatError(result.error || 'Team chat could not be opened. Refresh and try again.');
+        return;
+      }
+
       const conversations = await getConversations({ throwOnError: true });
       const conversation = conversations.find((item) => item.id === result.conversation?.id);
       if (conversation) {
@@ -156,8 +155,10 @@ export default function ChatPage() {
             </div>
           )}
           <button
+            type="button"
             onClick={() => openTeamConversation('team')}
             disabled={openingQuickChat !== null}
+            aria-busy={openingQuickChat === 'team'}
             className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
           >
             <div className="w-10 h-10 rounded-full bg-teal-glow text-teal flex items-center justify-center">
@@ -174,8 +175,10 @@ export default function ChatPage() {
           </button>
           {canUseCoachesChat && (
             <button
+              type="button"
               onClick={() => openTeamConversation('coaches')}
               disabled={openingQuickChat !== null}
+              aria-busy={openingQuickChat === 'coaches'}
               className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
             >
               <div className="w-10 h-10 rounded-full bg-navy/10 text-navy flex items-center justify-center">

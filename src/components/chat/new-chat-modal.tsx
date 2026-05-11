@@ -40,23 +40,30 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
 
     setIsLoading(true);
     setMemberLoadError('');
-    const { data, error } = await supabase
-      .from('team_members')
-      .select(`
-        *,
-        profile:profiles!user_id(id, email, full_name, avatar_url)
-      `)
-      .eq('team_id', currentTeam.id)
-      .neq('user_id', user?.id);
+    try {
+      const { data, error } = await supabase
+        .from('team_members')
+        .select(`
+          *,
+          profile:profiles!user_id(id, email, full_name, avatar_url)
+        `)
+        .eq('team_id', currentTeam.id)
+        .neq('user_id', user?.id);
 
-    if (error) {
-      console.error('Error loading chat members:', error);
+      if (error) {
+        console.error('Error loading chat members:', error);
+        setMembers([]);
+        setMemberLoadError('Unable to load team members. Check your connection and try again.');
+      } else if (data) {
+        setMembers(data as TeamMemberWithProfile[]);
+      }
+    } catch (loadError) {
+      console.error('Unexpected error loading chat members:', loadError);
       setMembers([]);
       setMemberLoadError('Unable to load team members. Check your connection and try again.');
-    } else if (data) {
-      setMembers(data as TeamMemberWithProfile[]);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [currentTeam, supabase, user?.id]);
 
   useEffect(() => {
@@ -163,6 +170,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
                 setSelectedIds([]);
                 setError('');
               }}
+              disabled={isCreating}
               aria-pressed={mode === 'dm'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
                 mode === 'dm' ? 'bg-white shadow' : 'text-gray-500'
@@ -177,6 +185,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
                 setSelectedIds([]);
                 setError('');
               }}
+              disabled={isCreating}
               aria-pressed={mode === 'group'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
                 mode === 'group' ? 'bg-white shadow' : 'text-gray-500'
@@ -197,6 +206,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
                 setGroupName(e.target.value);
                 setError('');
               }}
+              disabled={isCreating}
               placeholder="Group name"
               aria-label="Group chat name"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
@@ -210,6 +220,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            disabled={isCreating}
             placeholder="Search team members..."
             aria-label="Search team members"
             className="w-full px-3 py-2 bg-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
@@ -244,6 +255,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
                   key={member.id}
                   type="button"
                   onClick={() => toggleSelection(member.user_id)}
+                  disabled={isCreating}
                   aria-pressed={selectedIds.includes(member.user_id)}
                   aria-label={`Select ${member.profile?.full_name || member.profile?.email || 'team member'} for chat`}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
@@ -300,6 +312,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
               (mode === 'group' && !groupName.trim()) ||
               isCreating
             }
+            aria-busy={isCreating}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
           >
             {isCreating ? 'Creating...' : mode === 'dm' ? 'Start Chat' : 'Create Group'}
