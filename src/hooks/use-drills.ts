@@ -33,6 +33,7 @@ const STALE_DRILL_ERROR = 'Drill access changed. Refresh the library and try aga
 const STALE_CATEGORY_ERROR = 'Category access changed. Refresh categories and try again.';
 const STALE_MEDIA_ERROR = 'Media access changed. Refresh the drill and try again.';
 const MAX_DRILL_MEDIA_BYTES = 50 * 1024 * 1024;
+const DRILL_MEDIA_BUCKET = 'drill-media';
 
 function validateDrillMedia(file: File) {
   if (file.size > MAX_DRILL_MEDIA_BYTES) {
@@ -44,6 +45,33 @@ function validateDrillMedia(file: File) {
   }
 
   return null;
+}
+
+function createDrillMediaObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
+}
+
+function getDrillMediaStoragePath(publicUrl: string) {
+  const marker = `/${DRILL_MEDIA_BUCKET}/`;
+
+  try {
+    const pathname = new URL(publicUrl).pathname;
+    const markerIndex = pathname.indexOf(marker);
+
+    if (markerIndex >= 0) {
+      return decodeURIComponent(pathname.slice(markerIndex + marker.length));
+    }
+  } catch {
+    // Fall through to the legacy path extraction below.
+  }
+
+  const urlParts = publicUrl.split('/');
+  return urlParts.slice(-2).join('/');
 }
 
 export function useDrills() {
@@ -249,10 +277,10 @@ export function useDrills() {
 
       // Upload file to storage
       const fileExt = getSafeFileExtension(file, DRILL_MEDIA_EXTENSIONS);
-      const fileName = `${drillId}/${Date.now()}.${fileExt}`;
+      const fileName = `${drillId}/${createDrillMediaObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('drill-media')
+        .from(DRILL_MEDIA_BUCKET)
         .upload(fileName, file);
 
       if (uploadError) {
@@ -261,7 +289,7 @@ export function useDrills() {
       }
 
       // Get public URL
-      const { data: urlData } = supabase.storage.from('drill-media').getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from(DRILL_MEDIA_BUCKET).getPublicUrl(fileName);
 
       // Determine type
       const type: AttachmentType = isSafeImageFile(file)
@@ -285,6 +313,14 @@ export function useDrills() {
 
       if (error || !data) {
         console.error('Error creating media record:', error);
+        const { error: cleanupError } = await supabase.storage
+          .from(DRILL_MEDIA_BUCKET)
+          .remove([fileName]);
+
+        if (cleanupError) {
+          console.error('Error cleaning up failed drill media upload:', cleanupError);
+        }
+
         return { success: false, error: 'Failed to save media record' };
       }
 
@@ -305,13 +341,6 @@ export function useDrills() {
         .eq('id', mediaId)
         .single();
 
-      if (media?.url) {
-        // Extract file path from URL and delete from storage
-        const urlParts = media.url.split('/');
-        const filePath = urlParts.slice(-2).join('/');
-        await supabase.storage.from('drill-media').remove([filePath]);
-      }
-
       // Delete the record
       const { error, count } = await supabase
         .from('drill_media')
@@ -325,6 +354,15 @@ export function useDrills() {
 
       if (count === 0) {
         return { success: false, error: STALE_MEDIA_ERROR };
+      }
+
+      if (media?.url) {
+        const filePath = getDrillMediaStoragePath(media.url);
+        const { error: storageError } = await supabase.storage.from(DRILL_MEDIA_BUCKET).remove([filePath]);
+
+        if (storageError) {
+          console.error('Error cleaning up deleted drill media file:', storageError);
+        }
       }
 
       return { success: true };
