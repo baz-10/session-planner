@@ -32,7 +32,7 @@ interface ParticipantWithProfile extends ConversationParticipant {
 }
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 interface TeamChatResult {

@@ -19,7 +19,7 @@ interface ConversationWithDetails extends Conversation {
 }
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 interface ChatViewProps {

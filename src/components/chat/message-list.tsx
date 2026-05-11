@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/auth-context';
 import type { Message, Profile } from '@/types/database';
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 interface MessageListProps {
@@ -55,6 +55,10 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
     return `${message.metadata?.file_name || 'File'} could not load. Open the conversation again to retry.`;
   };
 
+  const getSenderDisplayName = (message: MessageWithSender) => {
+    return message.sender?.full_name || message.sender?.email || 'Team member';
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading messages">
@@ -98,7 +102,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                   <div className={`w-8 h-8 flex-shrink-0 ${showAvatar ? '' : 'invisible'}`}>
                     {showAvatar && (
                       <div className="w-8 h-8 rounded-full bg-gray-300 text-white flex items-center justify-center text-sm font-medium">
-                        {message.sender.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                        {getSenderDisplayName(message).charAt(0).toUpperCase() || 'U'}
                       </div>
                     )}
                   </div>
@@ -115,7 +119,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                   {/* Sender name (for group chats) */}
                   {!isOwn && showAvatar && (
                     <div className="text-xs font-medium text-primary mb-1">
-                      {message.sender.full_name}
+                      {getSenderDisplayName(message)}
                     </div>
                   )}
 

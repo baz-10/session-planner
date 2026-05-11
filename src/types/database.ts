@@ -567,7 +567,7 @@ export interface ConversationWithParticipants extends Conversation {
 }
 
 export interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 // ============================================================================
