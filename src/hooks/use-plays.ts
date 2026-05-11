@@ -66,10 +66,13 @@ export function usePlays() {
 
   const getPlay = useCallback(
     async (playId: string): Promise<Play | null> => {
+      if (!currentTeam) return null;
+
       const { data, error } = await supabase
         .from('plays')
         .select('*')
         .eq('id', playId)
+        .eq('team_id', currentTeam.id)
         .single();
 
       if (error || !data) {
@@ -79,7 +82,7 @@ export function usePlays() {
 
       return data as Play;
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const createPlay = useCallback(
@@ -88,11 +91,15 @@ export function usePlays() {
         return { success: false, error: 'Not authenticated or no team selected' };
       }
 
+      if (input.team_id && input.team_id !== currentTeam.id) {
+        return { success: false, error: 'Select the target team before creating this play.' };
+      }
+
       setIsLoading(true);
       const { data, error } = await supabase
         .from('plays')
         .insert({
-          team_id: input.team_id || currentTeam.id,
+          team_id: currentTeam.id,
           organization_id: input.organization_id || null,
           name: input.name,
           description: input.description || null,
@@ -120,11 +127,16 @@ export function usePlays() {
 
   const updatePlay = useCallback(
     async (playId: string, updates: UpdatePlayInput): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before updating this play.' };
+      }
+
       setIsLoading(true);
       const { error, count } = await supabase
         .from('plays')
         .update(updates, { count: 'exact' })
-        .eq('id', playId);
+        .eq('id', playId)
+        .eq('team_id', currentTeam.id);
       setIsLoading(false);
 
       if (error) {
@@ -138,15 +150,20 @@ export function usePlays() {
 
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const deletePlay = useCallback(
     async (playId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before deleting this play.' };
+      }
+
       const { error, count } = await supabase
         .from('plays')
         .delete({ count: 'exact' })
-        .eq('id', playId);
+        .eq('id', playId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error deleting play:', error);
@@ -159,7 +176,7 @@ export function usePlays() {
 
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const duplicatePlay = useCallback(
