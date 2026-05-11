@@ -202,17 +202,26 @@ export function LoginForm() {
           <p className="text-text-secondary mb-8">Sign in to your account to continue</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+            <div
+              role="alert"
+              className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+            >
               {error}
             </div>
           )}
           {!error && infoMessage && (
-            <div className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in">
+            <div
+              role="status"
+              className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in"
+            >
               {infoMessage}
             </div>
           )}
           {!error && statusHint && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-fade-in">
+            <div
+              role="status"
+              className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-fade-in"
+            >
               {statusHint}
             </div>
           )}
@@ -257,6 +266,7 @@ export function LoginForm() {
             <button
               type="submit"
               disabled={isSubmitting}
+              aria-busy={isSubmitting}
               className="btn-primary w-full py-3"
             >
               {isSubmitting ? (

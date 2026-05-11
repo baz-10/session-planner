@@ -216,6 +216,7 @@ export function SignupForm() {
                   ([type, info]) => (
                     <button
                       key={type}
+                      type="button"
                       onClick={() => handleTypeSelect(type)}
                       className="w-full p-5 bg-white border-2 border-border rounded-xl hover:border-teal hover:bg-teal-glow transition-all text-left group"
                     >
@@ -243,6 +244,7 @@ export function SignupForm() {
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => setStep('type')}
                 className="mb-6 text-sm text-text-secondary hover:text-navy flex items-center transition-colors"
               >
@@ -259,7 +261,10 @@ export function SignupForm() {
               </p>
 
               {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+                <div
+                  role="alert"
+                  className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+                >
                   {error}
                 </div>
               )}
@@ -326,6 +331,7 @@ export function SignupForm() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
+                  aria-busy={isSubmitting}
                   className="btn-primary w-full py-3"
                 >
                   {isSubmitting ? (

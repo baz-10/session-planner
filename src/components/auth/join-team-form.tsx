@@ -59,13 +59,19 @@ export function JoinTeamForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+        <div
+          role="alert"
+          className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm"
+        >
           {error}
         </div>
       )}
 
       {success && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
+        <div
+          role="status"
+          className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm"
+        >
           {success}
         </div>
       )}
@@ -110,6 +116,7 @@ export function JoinTeamForm({
       <button
         type="submit"
         disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+        aria-busy={isSubmitting}
         className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? 'Joining...' : 'Join Team'}

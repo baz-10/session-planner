@@ -287,6 +287,7 @@ export function OnboardingFlow({
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : 'Continue'}
@@ -302,6 +303,7 @@ export function OnboardingFlow({
             <div className="space-y-3">
               {isCoach && (
                 <button
+                  type="button"
                   onClick={() => setStep('create-team')}
                   className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
                 >
@@ -312,6 +314,7 @@ export function OnboardingFlow({
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => setStep('join-team')}
                 className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
               >
@@ -321,8 +324,10 @@ export function OnboardingFlow({
                 </div>
               </button>
               <button
+                type="button"
                 onClick={handleComplete}
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full p-4 text-gray-500 hover:text-gray-700 text-sm"
               >
                 {isSubmitting ? 'Finishing...' : 'Skip for now'}
@@ -335,6 +340,7 @@ export function OnboardingFlow({
         return (
           <div>
             <button
+              type="button"
               onClick={() => setStep('team-choice')}
               className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
             >
@@ -381,6 +387,7 @@ export function OnboardingFlow({
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Creating...' : 'Create Team'}
@@ -393,6 +400,7 @@ export function OnboardingFlow({
         return (
           <div>
             <button
+              type="button"
               onClick={() => setStep('team-choice')}
               className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
             >
@@ -408,14 +416,14 @@ export function OnboardingFlow({
                   Team Code
                 </label>
                 <input
-	                  type="text"
-	                  value={teamCode}
-	                  onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
-	                  required
-	                  autoCapitalize="characters"
-	                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-2xl tracking-widest font-mono"
-	                  placeholder="ABC123"
-	                />
+                  type="text"
+                  value={teamCode}
+                  onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
+                  required
+                  autoCapitalize="characters"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-2xl tracking-widest font-mono"
+                  placeholder="ABC123"
+                />
                 <p className="mt-1 text-sm text-gray-500">
                   Ask your coach for the 6-character team code
                 </p>
@@ -439,10 +447,11 @@ export function OnboardingFlow({
                 </div>
               )}
               <button
-	                type="submit"
-	                disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
-	                className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
-	              >
+                type="submit"
+                disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+                aria-busy={isSubmitting}
+                className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
+              >
                 {isSubmitting ? 'Joining...' : 'Join Team'}
               </button>
             </form>
@@ -517,6 +526,7 @@ export function OnboardingFlow({
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Adding players...' : 'Continue'}
@@ -538,8 +548,10 @@ export function OnboardingFlow({
               Your account is ready. Let&apos;s get started.
             </p>
             <button
+              type="button"
               onClick={handleComplete}
               disabled={isSubmitting}
+              aria-busy={isSubmitting}
               className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
             >
               {isSubmitting ? 'Finishing...' : 'Go to Dashboard'}
@@ -553,7 +565,10 @@ export function OnboardingFlow({
     <div className="w-full max-w-md mx-auto">
       <div className="bg-white rounded-lg shadow-md p-8">
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+          <div
+            role="alert"
+            className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm"
+          >
             {error}
           </div>
         )}
