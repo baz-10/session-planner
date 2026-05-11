@@ -8,7 +8,7 @@ import { ConversationList, ChatView, NewChatModal } from '@/components/chat';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface ConversationWithDetails extends Conversation {

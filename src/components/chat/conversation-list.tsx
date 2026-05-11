@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/auth-context';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface ConversationWithDetails extends Conversation {
@@ -70,13 +70,17 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
     return unsubscribe;
   }, [conversationIdKey, loadConversations, subscribeToConversations]);
 
+  const getParticipantDisplayName = (participant?: ParticipantWithProfile | null) => {
+    return participant?.user?.full_name || participant?.user?.email || 'Team member';
+  };
+
   const getConversationName = (conv: ConversationWithDetails) => {
     if (conv.name) return conv.name;
 
     // For DMs, show the other person's name
     if (conv.type === 'direct') {
       const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name || 'Unknown';
+      return getParticipantDisplayName(otherParticipant);
     }
 
     return 'Conversation';
@@ -85,7 +89,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   const renderConversationAvatar = (conv: ConversationWithDetails) => {
     if (conv.type === 'direct') {
       const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';
+      return getParticipantDisplayName(otherParticipant).charAt(0).toUpperCase() || 'U';
     }
 
     if (conv.type === 'team' || conv.type === 'group') {

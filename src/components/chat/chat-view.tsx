@@ -9,7 +9,7 @@ import { MessageInput } from './message-input';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface ConversationWithDetails extends Conversation {
@@ -34,14 +34,22 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [readStatusError, setReadStatusError] = useState('');
+  const participants = conversation.participants || [];
+
+  const getDirectParticipant = () => {
+    return participants.find((participant) => participant.user_id !== user?.id);
+  };
+
+  const getParticipantDisplayName = (participant?: ParticipantWithProfile | null) => {
+    return participant?.user?.full_name || participant?.user?.email || 'Team member';
+  };
 
   const getConversationName = () => {
     if (conversation.name) return conversation.name;
 
     // For DMs, show the other person's name
     if (conversation.type === 'direct') {
-      const otherParticipant = conversation.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name || 'Unknown';
+      return getParticipantDisplayName(getDirectParticipant());
     }
 
     return 'Conversation';
@@ -132,8 +140,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           {conversation.type === 'coaches' && <ShieldCheck className="h-5 w-5" aria-hidden="true" />}
           {conversation.type === 'group' && <Users className="h-5 w-5" aria-hidden="true" />}
           {conversation.type === 'direct' && (() => {
-            const otherParticipant = conversation.participants.find((p) => p.user_id !== user?.id);
-            return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';
+            return getParticipantDisplayName(getDirectParticipant()).charAt(0).toUpperCase() || 'U';
           })()}
         </div>
 
@@ -141,7 +148,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           <h2 className="font-semibold text-gray-900">{getConversationName()}</h2>
           {conversation.type !== 'direct' && (
             <p className="text-sm text-gray-500">
-              {conversation.participants.length} members
+              {participants.length} members
             </p>
           )}
         </div>

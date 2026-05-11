@@ -561,7 +561,7 @@ export interface PostWithDetails extends Post {
 }
 
 export interface ConversationWithParticipants extends Conversation {
-  participants: (ConversationParticipant & { user: Profile })[];
+  participants: (ConversationParticipant & { user: Profile | null })[];
   last_message: Message | null;
   unread_count: number;
 }

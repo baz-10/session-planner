@@ -28,7 +28,7 @@ interface ConversationWithDetails extends Conversation {
 }
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface MessageWithSender extends Message {
@@ -199,7 +199,8 @@ export function useChat() {
 
         if (!currentTeamMemberIds) return true;
 
-        return conversation.participants.some(
+        const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
+        return participants.some(
           (participant: ConversationParticipant) =>
             participant.user_id !== user.id && currentTeamMemberIds?.has(participant.user_id)
         );
