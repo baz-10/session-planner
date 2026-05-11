@@ -26,6 +26,8 @@ export async function updateSession(request: NextRequest) {
     '/auth/callback',
     '/forgot-password',
     '/reset-password',
+    '/privacy',
+    '/terms',
   ];
   const normalizedPathname = normalizePathname(request.nextUrl.pathname);
 
