@@ -1025,60 +1025,69 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         }
 
         setIsSaving(true);
-        const draftResult = await createSession({
-          team_id: targetTeamId,
-          name: `${session.name || 'Session'} · ${variant.label}`,
-          date: session.date || undefined,
-          start_time: session.start_time || undefined,
-          duration: session.duration || undefined,
-          location: session.location || undefined,
-          defensive_emphasis: session.defensive_emphasis || undefined,
-          offensive_emphasis: session.offensive_emphasis || undefined,
-          quote: session.quote || undefined,
-          announcements: session.announcements || undefined,
-        });
 
-        if (!draftResult.success || !draftResult.session) {
-          setIsSaving(false);
+        try {
+          const draftResult = await createSession({
+            team_id: targetTeamId,
+            name: `${session.name || 'Session'} · ${variant.label}`,
+            date: session.date || undefined,
+            start_time: session.start_time || undefined,
+            duration: session.duration || undefined,
+            location: session.location || undefined,
+            defensive_emphasis: session.defensive_emphasis || undefined,
+            offensive_emphasis: session.offensive_emphasis || undefined,
+            quote: session.quote || undefined,
+            announcements: session.announcements || undefined,
+          });
+
+          if (!draftResult.success || !draftResult.session) {
+            showStatus({
+              type: 'error',
+              text: `Failed to create Autopilot draft: ${draftResult.error || 'Please try again.'}`,
+            });
+            return;
+          }
+
+          let failedCount = 0;
+          for (let index = 0; index < variant.activities.length; index += 1) {
+            const generated = variant.activities[index];
+            const additionalCategoryIds = normalizeAdditionalCategoryIds(
+              generated.drillId ? drillCategoryIdsByDrillId[generated.drillId] || [] : [],
+              generated.categoryId || null
+            );
+            const insertResult = await addActivity({
+              session_id: draftResult.session.id,
+              drill_id: generated.drillId,
+              sort_order: index,
+              name: generated.name,
+              duration: clampActivityDuration(generated.duration),
+              category_id: generated.categoryId,
+              additional_category_ids: additionalCategoryIds,
+              notes: generated.notes,
+            });
+
+            if (!insertResult.success) {
+              failedCount += 1;
+            }
+          }
+
+          if (failedCount > 0) {
+            const draftWarning: SessionBuilderStatus = {
+              type: 'warning',
+              text: `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`,
+            };
+            storeDeferredSessionBuilderStatus(draftResult.session.id, draftWarning);
+          }
+          router.push(`/dashboard/sessions/${draftResult.session.id}`);
+        } catch (error) {
+          console.error('Failed to create Autopilot draft:', error);
           showStatus({
             type: 'error',
-            text: `Failed to create Autopilot draft: ${draftResult.error || 'Please try again.'}`,
+            text: 'Failed to create Autopilot draft. Check your connection and try again.',
           });
-          return;
+        } finally {
+          setIsSaving(false);
         }
-
-        let failedCount = 0;
-        for (let index = 0; index < variant.activities.length; index += 1) {
-          const generated = variant.activities[index];
-          const additionalCategoryIds = normalizeAdditionalCategoryIds(
-            generated.drillId ? drillCategoryIdsByDrillId[generated.drillId] || [] : [],
-            generated.categoryId || null
-          );
-          const insertResult = await addActivity({
-            session_id: draftResult.session.id,
-            drill_id: generated.drillId,
-            sort_order: index,
-            name: generated.name,
-            duration: clampActivityDuration(generated.duration),
-            category_id: generated.categoryId,
-            additional_category_ids: additionalCategoryIds,
-            notes: generated.notes,
-          });
-
-          if (!insertResult.success) {
-            failedCount += 1;
-          }
-        }
-
-        setIsSaving(false);
-        if (failedCount > 0) {
-          const draftWarning: SessionBuilderStatus = {
-            type: 'warning',
-            text: `Created the draft, but ${failedCount} Autopilot activities failed to save. Please review it before sharing.`,
-          };
-          storeDeferredSessionBuilderStatus(draftResult.session.id, draftWarning);
-        }
-        router.push(`/dashboard/sessions/${draftResult.session.id}`);
         return;
       }
 

@@ -282,24 +282,33 @@ export function useSessions() {
       }
 
       setIsLoading(true);
-      const { error, count } = await supabase
-        .from('sessions')
-        .update(updates, { count: 'exact' })
-        .eq('id', sessionId)
-        .eq('team_id', currentTeam.id);
 
-      setIsLoading(false);
+      try {
+        const { error, count } = await supabase
+          .from('sessions')
+          .update(updates, { count: 'exact' })
+          .eq('id', sessionId)
+          .eq('team_id', currentTeam.id);
 
-      if (error) {
-        console.error('Error updating session:', error);
-        return { success: false, error: 'Failed to update session' };
+        if (error) {
+          console.error('Error updating session:', error);
+          return { success: false, error: error.message || 'Failed to update session' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_SESSION_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating session:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update session',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      if (count === 0) {
-        return { success: false, error: STALE_SESSION_ERROR };
-      }
-
-      return { success: true };
     },
     [supabase, currentTeam]
   );
