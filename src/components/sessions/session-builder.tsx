@@ -1427,16 +1427,25 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
     if (session.id) {
       setIsSaving(true);
-      const result = await duplicateSession(session.id, newName);
-      if (result.success && result.session) {
-        router.push(`/dashboard/sessions/${result.session.id}`);
-      } else {
+      try {
+        const result = await duplicateSession(session.id, newName);
+        if (result.success && result.session) {
+          router.push(`/dashboard/sessions/${result.session.id}`);
+        } else {
+          showStatus({
+            type: 'error',
+            text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+          });
+        }
+      } catch (error) {
+        console.error('Duplicate session error:', error);
         showStatus({
           type: 'error',
-          text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+          text: 'Failed to duplicate plan. Check your connection and try again.',
         });
+      } finally {
+        setIsSaving(false);
       }
-      setIsSaving(false);
     }
   }, [
     canManageSessions,

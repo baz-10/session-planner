@@ -27,6 +27,11 @@ type SessionListActionMessage = {
   text: string;
 };
 
+type PendingSessionAction = {
+  id: string;
+  type: 'delete' | 'duplicate';
+};
+
 export function SessionsList() {
   const { currentTeam, teamMemberships, isLoading: authLoading } = useAuth();
   const { getSessions, deleteSession, duplicateSession } = useSessions();
@@ -34,10 +39,12 @@ export function SessionsList() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionMessage, setActionMessage] = useState<SessionListActionMessage | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingSessionAction | null>(null);
   const { confirmAction, confirmDialog } = useConfirmDialog();
   const { promptForText, textPromptDialog } = useTextPromptDialog();
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const hasPendingAction = pendingAction !== null;
 
   const loadSessions = useCallback(async () => {
     setIsLoading(true);
@@ -88,18 +95,29 @@ export function SessionsList() {
 
     if (!confirmed) return;
 
-    const result = await deleteSession(id);
-    if (result.success) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      setActionMessage({
-        type: 'success',
-        text: `"${name}" was deleted.`,
-      });
-    } else {
+    setPendingAction({ id, type: 'delete' });
+    try {
+      const result = await deleteSession(id);
+      if (result.success) {
+        setSessions((prev) => prev.filter((s) => s.id !== id));
+        setActionMessage({
+          type: 'success',
+          text: `"${name}" was deleted.`,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: `Failed to delete plan: ${result.error || 'Please try again.'}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting practice plan:', error);
       setActionMessage({
         type: 'error',
-        text: `Failed to delete plan: ${result.error || 'Please try again.'}`,
+        text: 'Failed to delete plan. Check your connection and try again.',
       });
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -123,18 +141,29 @@ export function SessionsList() {
 
     if (!newName) return;
 
-    const result = await duplicateSession(id, newName);
-    if (result.success) {
-      await loadSessions();
-      setActionMessage({
-        type: 'success',
-        text: `"${newName}" was created.`,
-      });
-    } else {
+    setPendingAction({ id, type: 'duplicate' });
+    try {
+      const result = await duplicateSession(id, newName);
+      if (result.success) {
+        await loadSessions();
+        setActionMessage({
+          type: 'success',
+          text: `"${newName}" was created.`,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error duplicating practice plan:', error);
       setActionMessage({
         type: 'error',
-        text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+        text: 'Failed to duplicate plan. Check your connection and try again.',
       });
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -318,7 +347,9 @@ export function SessionsList() {
                   <button
                     type="button"
                     onClick={() => handleDuplicate(session.id, session.name)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                    disabled={hasPendingAction}
+                    aria-busy={pendingAction?.id === session.id && pendingAction.type === 'duplicate'}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy disabled:cursor-wait disabled:opacity-50"
                     aria-label={`Duplicate ${session.name}`}
                   >
                     <Copy className="h-4 w-4" />
@@ -326,7 +357,9 @@ export function SessionsList() {
                   <button
                     type="button"
                     onClick={() => handleDelete(session.id, session.name)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600"
+                    disabled={hasPendingAction}
+                    aria-busy={pendingAction?.id === session.id && pendingAction.type === 'delete'}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600 disabled:cursor-wait disabled:opacity-50"
                     aria-label={`Delete ${session.name}`}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -415,16 +448,24 @@ export function SessionsList() {
                         <Edit3 className="h-5 w-5" />
                       </Link>
                       <button
+                        type="button"
                         onClick={() => handleDuplicate(session.id, session.name)}
-                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
+                        disabled={hasPendingAction}
+                        aria-busy={pendingAction?.id === session.id && pendingAction.type === 'duplicate'}
+                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors disabled:cursor-wait disabled:opacity-50"
                         title="Duplicate"
+                        aria-label={`Duplicate ${session.name}`}
                       >
                         <Copy className="h-5 w-5" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(session.id, session.name)}
-                        className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        disabled={hasPendingAction}
+                        aria-busy={pendingAction?.id === session.id && pendingAction.type === 'delete'}
+                        className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:cursor-wait disabled:opacity-50"
                         title="Delete"
+                        aria-label={`Delete ${session.name}`}
                       >
                         <Trash2 className="h-5 w-5" />
                       </button>

@@ -92,12 +92,6 @@ export function TimeAllocationChart({
         <h3 className="font-medium text-gray-900">
           Practice Time Allocation Chart (By Category)
         </h3>
-        <button
-          onClick={() => {}}
-          className="px-3 py-1 text-sm bg-primary text-white rounded hover:bg-primary-light"
-        >
-          Refresh Chart
-        </button>
       </div>
 
       <div className="flex gap-6">
@@ -184,6 +178,7 @@ export function TimeAllocationChart({
       {/* Print button */}
       <div className="mt-4 flex justify-center">
         <button
+          type="button"
           onClick={() => window.print()}
           className="px-4 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-light"
         >
