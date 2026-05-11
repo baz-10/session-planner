@@ -130,6 +130,8 @@ export default function TeamSettingsPage() {
   }, [currentTeam?.id, getTeamMembers, membersReloadKey]);
 
   const copyCode = async () => {
+    if (inviteActionInFlight) return;
+
     if (!currentTeam?.team_code) {
       showInviteFeedback({
         type: 'error',
@@ -157,6 +159,8 @@ export default function TeamSettingsPage() {
   };
 
   const copyLink = async () => {
+    if (inviteActionInFlight) return false;
+
     if (!inviteLink) {
       showInviteFeedback({
         type: 'error',
@@ -185,6 +189,8 @@ export default function TeamSettingsPage() {
   };
 
   const shareInvite = async () => {
+    if (inviteActionInFlight) return;
+
     if (!currentTeam?.team_code || !inviteLink) {
       showInviteFeedback({
         type: 'error',
@@ -219,6 +225,7 @@ export default function TeamSettingsPage() {
 
   const sendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (inviteActionInFlight) return;
     if (!currentTeam) return;
     if (!currentTeam.team_code || !inviteLink) {
       showInviteFeedback({
@@ -255,6 +262,7 @@ export default function TeamSettingsPage() {
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!newTeamName.trim()) {
       setFormError('Please enter a team name');
       return;
@@ -287,6 +295,7 @@ export default function TeamSettingsPage() {
 
   const handleJoinTeam = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     const normalizedCode = normalizeTeamCode(joinCode);
     if (normalizedCode.length !== TEAM_CODE_LENGTH) {
       setFormError('Please enter a valid 6-character team code');
