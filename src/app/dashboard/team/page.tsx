@@ -103,14 +103,23 @@ export default function TeamSettingsPage() {
       if (!currentTeam?.id) return;
       setIsLoading(true);
       setMembersLoadError('');
-      const result = await getTeamMembers(currentTeam.id);
-      if (!cancelled && result.success && result.members) {
-        setMembers(result.members);
-      } else if (!cancelled) {
-        setMembers([]);
-        setMembersLoadError(result.error || 'Failed to load team members.');
+      try {
+        const result = await getTeamMembers(currentTeam.id);
+        if (!cancelled && result.success && result.members) {
+          setMembers(result.members);
+        } else if (!cancelled) {
+          setMembers([]);
+          setMembersLoadError(result.error || 'Failed to load team members.');
+        }
+      } catch (error) {
+        console.error('Unexpected error loading team members:', error);
+        if (!cancelled) {
+          setMembers([]);
+          setMembersLoadError('Failed to load team members.');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-      if (!cancelled) setIsLoading(false);
     }
     void loadMembers();
     return () => { cancelled = true; };
@@ -230,21 +239,26 @@ export default function TeamSettingsPage() {
     setIsSubmitting(true);
     setFormError('');
 
-    const result = await createTeam({
-      name: newTeamName.trim(),
-      sport: newTeamSport,
-    });
+    try {
+      const result = await createTeam({
+        name: newTeamName.trim(),
+        sport: newTeamSport,
+      });
 
-    setIsSubmitting(false);
+      if (!result.success) {
+        setFormError(result.error || 'Failed to create team');
+        return;
+      }
 
-    if (!result.success) {
-      setFormError(result.error || 'Failed to create team');
-      return;
+      // Team created successfully - page will re-render with currentTeam
+      setShowCreateForm(false);
+      setNewTeamName('');
+    } catch (error) {
+      console.error('Unexpected error creating team:', error);
+      setFormError('Failed to create team. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Team created successfully - page will re-render with currentTeam
-    setShowCreateForm(false);
-    setNewTeamName('');
   };
 
   const handleJoinTeam = async (e: React.FormEvent) => {
@@ -258,18 +272,23 @@ export default function TeamSettingsPage() {
     setIsSubmitting(true);
     setFormError('');
 
-    const result = await joinTeamByCode(normalizedCode, joinRole);
+    try {
+      const result = await joinTeamByCode(normalizedCode, joinRole);
 
-    setIsSubmitting(false);
+      if (!result.success) {
+        setFormError(result.error || 'Failed to join team');
+        return;
+      }
 
-    if (!result.success) {
-      setFormError(result.error || 'Failed to join team');
-      return;
+      // Joined successfully - page will re-render with currentTeam
+      setShowJoinForm(false);
+      setJoinCode('');
+    } catch (error) {
+      console.error('Unexpected error joining team:', error);
+      setFormError('Failed to join team. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Joined successfully - page will re-render with currentTeam
-    setShowJoinForm(false);
-    setJoinCode('');
   };
 
   const handleMemberRoleChange = async (member: any, role: TeamRole) => {
@@ -401,7 +420,7 @@ export default function TeamSettingsPage() {
         {showCreateForm && (
           <MobileListCard>
             <h3 className="text-lg font-semibold text-navy mb-4">Create Your Team</h3>
-            <form onSubmit={handleCreateTeam} className="space-y-4">
+            <form onSubmit={handleCreateTeam} className="space-y-4" aria-busy={isSubmitting}>
               <div className="form-group">
                 <label htmlFor="teamName" className="label">Team Name</label>
                 <input
@@ -458,7 +477,7 @@ export default function TeamSettingsPage() {
         {showJoinForm && (
           <MobileListCard>
             <h3 className="text-lg font-semibold text-navy mb-4">Join a Team</h3>
-            <form onSubmit={handleJoinTeam} className="space-y-4">
+            <form onSubmit={handleJoinTeam} className="space-y-4" aria-busy={isSubmitting}>
               <div className="form-group">
                 <label htmlFor="teamCode" className="label">Team Code</label>
                 <input
@@ -567,6 +586,7 @@ export default function TeamSettingsPage() {
                 </span>
               </div>
               <button
+                type="button"
                 onClick={copyCode}
                 disabled={!hasInviteCode}
                 className={`btn min-h-12 justify-center ${copied ? 'btn-accent' : 'btn-secondary'} sm:min-w-[112px]`}
@@ -611,6 +631,7 @@ export default function TeamSettingsPage() {
           {/* Share Options */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
+              type="button"
               onClick={shareInvite}
               disabled={!hasInviteCode || !inviteLink}
               className="btn-primary min-h-12 justify-center py-3"
@@ -621,6 +642,7 @@ export default function TeamSettingsPage() {
               Share Invite
             </button>
             <button
+              type="button"
               onClick={copyLink}
               disabled={!inviteLink}
               className={`${linkCopied ? 'btn-accent' : 'btn-secondary'} min-h-12 justify-center py-3`}
@@ -693,22 +715,22 @@ export default function TeamSettingsPage() {
         </div>
 
         {memberActionError && (
-          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div role="alert" className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {memberActionError}
           </div>
         )}
         {memberActionSuccess && (
-          <div className="mb-4 rounded-2xl border border-teal/20 bg-teal-glow px-4 py-3 text-sm font-medium text-teal-dark">
+          <div role="status" className="mb-4 rounded-2xl border border-teal/20 bg-teal-glow px-4 py-3 text-sm font-medium text-teal-dark">
             {memberActionSuccess}
           </div>
         )}
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center justify-center py-8" role="status" aria-label="Loading team members">
+            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
           </div>
         ) : membersLoadError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             <p>{membersLoadError}</p>
             <button
               type="button"

@@ -72,25 +72,38 @@ export default function OrganizationSettingsPage() {
       setMembersLoadError('');
       setTeamsLoadError('');
 
-      const [membersResult, teamsResult] = await Promise.all([
-        getOrganizationMembers(currentOrganization.id),
-        getOrganizationTeams(currentOrganization.id),
-      ]);
+      try {
+        const [membersResult, teamsResult] = await Promise.all([
+          getOrganizationMembers(currentOrganization.id),
+          getOrganizationTeams(currentOrganization.id),
+        ]);
 
-      if (!cancelled) {
-        if (membersResult.success && membersResult.members) {
-          setMembers(membersResult.members);
-        } else {
+        if (!cancelled) {
+          if (membersResult.success && membersResult.members) {
+            setMembers(membersResult.members);
+          } else {
+            setMembers([]);
+            setMembersLoadError(membersResult.error || 'Failed to load organization members.');
+          }
+          if (teamsResult.success && teamsResult.teams) {
+            setTeams(teamsResult.teams);
+          } else {
+            setTeams([]);
+            setTeamsLoadError(teamsResult.error || 'Failed to load organization teams.');
+          }
+        }
+      } catch (loadError) {
+        console.error('Unexpected error loading organization data:', loadError);
+        if (!cancelled) {
           setMembers([]);
-          setMembersLoadError(membersResult.error || 'Failed to load organization members.');
-        }
-        if (teamsResult.success && teamsResult.teams) {
-          setTeams(teamsResult.teams);
-        } else {
           setTeams([]);
-          setTeamsLoadError(teamsResult.error || 'Failed to load organization teams.');
+          setMembersLoadError('Failed to load organization members.');
+          setTeamsLoadError('Failed to load organization teams.');
         }
-        setIsLoading(false);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
     loadData();
@@ -184,15 +197,21 @@ export default function OrganizationSettingsPage() {
     setUpdatingMemberId(memberId);
     setError(null);
     setActionFeedback('');
-    const result = await updateMemberRole(currentOrganization.id, memberId, newRole);
-    setUpdatingMemberId('');
-    if (result.success) {
-      setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
-      );
-      setActionFeedback('Organization role updated.');
-    } else {
-      setError(result.error || 'Failed to update role');
+    try {
+      const result = await updateMemberRole(currentOrganization.id, memberId, newRole);
+      if (result.success) {
+        setMembers((prev) =>
+          prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
+        );
+        setActionFeedback('Organization role updated.');
+      } else {
+        setError(result.error || 'Failed to update role');
+      }
+    } catch (updateError) {
+      console.error('Unexpected error updating organization role:', updateError);
+      setError('Failed to update role.');
+    } finally {
+      setUpdatingMemberId('');
     }
   };
 
@@ -224,13 +243,19 @@ export default function OrganizationSettingsPage() {
     setUpdatingMemberId(memberId);
     setError(null);
     setActionFeedback('');
-    const result = await removeMember(currentOrganization.id, memberId);
-    setUpdatingMemberId('');
-    if (result.success) {
-      setMembers((prev) => prev.filter((m) => m.id !== memberId));
-      setActionFeedback('Organization member removed.');
-    } else {
-      setError(result.error || 'Failed to remove member');
+    try {
+      const result = await removeMember(currentOrganization.id, memberId);
+      if (result.success) {
+        setMembers((prev) => prev.filter((m) => m.id !== memberId));
+        setActionFeedback('Organization member removed.');
+      } else {
+        setError(result.error || 'Failed to remove member');
+      }
+    } catch (removeError) {
+      console.error('Unexpected error removing organization member:', removeError);
+      setError('Failed to remove member.');
+    } finally {
+      setUpdatingMemberId('');
     }
   };
 
@@ -526,6 +551,7 @@ export default function OrganizationSettingsPage() {
                       <option value="admin">Admin</option>
                     </select>
                     <button
+                      type="button"
                       onClick={() => handleRemoveMember(member.id)}
                       disabled={controlsDisabled}
                       className="btn-ghost text-error p-2 disabled:cursor-not-allowed disabled:opacity-40"

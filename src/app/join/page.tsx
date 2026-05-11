@@ -62,38 +62,44 @@ function JoinPageContent() {
 
     setIsSubmitting(true);
 
-    const result = await joinTeamByCode(normalizedCode, role);
+    try {
+      const result = await joinTeamByCode(normalizedCode, role);
 
-    if (!result.success) {
-      setError(result.error || 'Failed to join team');
-      setIsSubmitting(false);
-      return;
-    }
+      if (!result.success) {
+        setError(result.error || 'Failed to join team');
+        setIsSubmitting(false);
+        return;
+      }
 
-    const parentSetupTeamId = role === 'parent' ? result.team?.id : null;
-    if (parentSetupTeamId && user?.id) {
-      storePendingParentTeamSetupId(user.id, parentSetupTeamId);
-    }
+      const parentSetupTeamId = role === 'parent' ? result.team?.id : null;
+      if (parentSetupTeamId && user?.id) {
+        storePendingParentTeamSetupId(user.id, parentSetupTeamId);
+      }
 
-    setSuccess(
-      role === 'parent'
-        ? `Successfully joined ${result.team?.name}! Redirecting to add your players...`
-        : `Successfully joined ${result.team?.name}! Redirecting...`
-    );
-    setTimeout(() => {
-      router.push(
-        parentSetupTeamId
-          ? `/onboarding?parentTeamId=${encodeURIComponent(parentSetupTeamId)}`
-          : '/dashboard'
+      setSuccess(
+        role === 'parent'
+          ? `Successfully joined ${result.team?.name}! Redirecting to add your players...`
+          : `Successfully joined ${result.team?.name}! Redirecting...`
       );
-    }, 1500);
+      setTimeout(() => {
+        router.push(
+          parentSetupTeamId
+            ? `/onboarding?parentTeamId=${encodeURIComponent(parentSetupTeamId)}`
+            : '/dashboard'
+        );
+      }, 1500);
+    } catch (submitError) {
+      console.error('Unexpected error joining team from invite:', submitError);
+      setError('Failed to join team. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col items-center gap-4" role="status" aria-label="Loading join page">
+          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
           <p className="text-text-secondary">Loading...</p>
         </div>
       </div>
@@ -182,7 +188,7 @@ function JoinPageContent() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
             <div className="form-group">
               <label htmlFor="teamCode" className="label">Team Code</label>
               <input
@@ -195,6 +201,7 @@ function JoinPageContent() {
                 className="input text-center text-2xl tracking-widest font-mono"
                 placeholder="ABC123"
                 autoComplete="off"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -205,6 +212,7 @@ function JoinPageContent() {
                 value={role}
                 onChange={(e) => setRole(e.target.value as InviteJoinRole)}
                 className="input"
+                disabled={isSubmitting}
               >
                 <option value="player">Player</option>
                 <option value="parent">Parent / Guardian</option>
@@ -217,11 +225,12 @@ function JoinPageContent() {
             <button
               type="submit"
               disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+              aria-busy={isSubmitting}
               className="btn-primary w-full py-3"
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -249,8 +258,8 @@ export default function JoinPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          <div className="flex flex-col items-center gap-4" role="status" aria-label="Loading join page">
+            <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
             <p className="text-text-secondary">Loading...</p>
           </div>
         </div>
