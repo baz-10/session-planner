@@ -2,6 +2,11 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/types/database';
 
+function normalizePathname(pathname: string): string {
+  if (pathname === '/') return pathname;
+  return pathname.replace(/\/+$/, '') || '/';
+}
+
 /**
  * Update session middleware for Supabase Auth.
  * This middleware refreshes the user's session and handles token refresh.
@@ -53,17 +58,18 @@ export async function updateSession(request: NextRequest) {
     '/forgot-password',
     '/reset-password',
   ];
+  const normalizedPathname = normalizePathname(request.nextUrl.pathname);
 
   const isPublicRoute = publicRoutes.some(
     (route) =>
-      request.nextUrl.pathname === route ||
-      request.nextUrl.pathname.startsWith('/api/auth/')
+      normalizedPathname === route ||
+      normalizedPathname.startsWith('/api/auth/')
   );
   // API route handlers return JSON auth errors and handle signed cron requests.
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
+  const isApiRoute = normalizedPathname.startsWith('/api/');
 
   // Redirect unauthenticated users to login for protected routes
-  if (!user && !isPublicRoute && !isApiRoute && !request.nextUrl.pathname.startsWith('/_next')) {
+  if (!user && !isPublicRoute && !isApiRoute && !normalizedPathname.startsWith('/_next')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     const redirectTarget = `${request.nextUrl.pathname}${request.nextUrl.search}`;
@@ -72,7 +78,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
+  if (user && (normalizedPathname === '/login' || normalizedPathname === '/signup')) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);
