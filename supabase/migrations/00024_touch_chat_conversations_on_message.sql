@@ -24,3 +24,13 @@ CREATE TRIGGER touch_conversation_on_message_insert
   EXECUTE FUNCTION public.touch_conversation_on_message_insert();
 
 REVOKE ALL ON FUNCTION public.touch_conversation_on_message_insert() FROM PUBLIC;
+
+UPDATE conversations
+SET updated_at = latest_messages.latest_message_at
+FROM (
+  SELECT conversation_id, MAX(created_at) AS latest_message_at
+  FROM messages
+  GROUP BY conversation_id
+) latest_messages
+WHERE conversations.id = latest_messages.conversation_id
+  AND conversations.updated_at < latest_messages.latest_message_at;
