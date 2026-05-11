@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ChevronLeft, ShieldCheck, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { MessageList } from './message-list';
@@ -119,9 +120,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
             className="p-1 text-gray-500 hover:text-gray-700 rounded md:hidden"
             aria-label="Back to conversations"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
           </button>
         )}
 
@@ -129,9 +128,9 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
           conversation.type === 'direct' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
         }`}>
-          {conversation.type === 'team' && '👥'}
-          {conversation.type === 'coaches' && '🏀'}
-          {conversation.type === 'group' && '👥'}
+          {conversation.type === 'team' && <Users className="h-5 w-5" aria-hidden="true" />}
+          {conversation.type === 'coaches' && <ShieldCheck className="h-5 w-5" aria-hidden="true" />}
+          {conversation.type === 'group' && <Users className="h-5 w-5" aria-hidden="true" />}
           {conversation.type === 'direct' && (() => {
             const otherParticipant = conversation.participants.find((p) => p.user_id !== user?.id);
             return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';

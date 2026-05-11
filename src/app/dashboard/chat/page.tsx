@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { MessageCircle, Plus, ShieldCheck, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { ConversationList, ChatView, NewChatModal } from '@/components/chat';
@@ -113,9 +114,7 @@ export default function ChatPage() {
       <div className="flex items-center justify-center h-[calc(100vh-100px)]">
         <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 text-text-muted">
-            <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+            <Users className="h-full w-full" aria-hidden="true" />
           </div>
           <p className="text-text-secondary">Select a team to view messages</p>
         </div>
@@ -141,9 +140,7 @@ export default function ChatPage() {
             aria-label="Start a new conversation"
             title="New conversation"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="h-6 w-6" aria-hidden="true" />
           </button>
         </div>
 
@@ -162,9 +159,7 @@ export default function ChatPage() {
             className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
           >
             <div className="w-10 h-10 rounded-full bg-teal-glow text-teal flex items-center justify-center">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+              <Users className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="text-left">
               <div className="font-medium text-navy">Team Chat</div>
@@ -182,9 +177,7 @@ export default function ChatPage() {
               className="w-full flex items-center gap-3 p-3 hover:bg-whisper rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
             >
               <div className="w-10 h-10 rounded-full bg-navy/10 text-navy flex items-center justify-center">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6l7 4-7 4-7-4 7-4zm0 8l7 4-7 4-7-4 7-4z" />
-                </svg>
+                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="text-left">
                 <div className="font-medium text-navy">Coaches Chat</div>
@@ -220,9 +213,7 @@ export default function ChatPage() {
           <div className="flex-1 flex items-center justify-center bg-background">
             <div className="text-center">
               <div className="w-20 h-20 mx-auto mb-4 text-text-muted">
-                <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
+                <MessageCircle className="h-full w-full" aria-hidden="true" />
               </div>
               <p className="text-navy font-medium mb-1">No conversation selected</p>
               <p className="text-text-secondary text-sm">Choose a conversation to start messaging</p>
