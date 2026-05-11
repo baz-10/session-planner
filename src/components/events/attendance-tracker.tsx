@@ -14,7 +14,7 @@ interface AttendanceRecordWithDetails extends AttendanceRecord {
 interface AttendanceTrackerProps {
   eventId: string;
   existingRecords: AttendanceRecordWithDetails[];
-  onUpdate: () => void;
+  onUpdate: () => void | Promise<void>;
 }
 
 interface PlayerAttendance {
@@ -47,6 +47,7 @@ export function AttendanceTracker({
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
 
   const loadPlayers = useCallback(async () => {
     if (!currentTeam) {
@@ -103,6 +104,7 @@ export function AttendanceTracker({
   }, [players, existingRecords]);
 
   const updatePlayerStatus = (playerId: string, status: AttendanceStatus) => {
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       const player = newMap.get(playerId);
@@ -114,6 +116,7 @@ export function AttendanceTracker({
   };
 
   const updatePlayerNotes = (playerId: string, notes: string) => {
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       const player = newMap.get(playerId);
@@ -127,6 +130,7 @@ export function AttendanceTracker({
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError('');
+    setSaveMessage('');
 
     const records = Array.from(attendance.values()).map((a) => ({
       playerId: a.playerId,
@@ -134,18 +138,25 @@ export function AttendanceTracker({
       notes: a.notes || undefined,
     }));
 
-    const result = await recordAttendance(eventId, records);
+    try {
+      const result = await recordAttendance(eventId, records);
 
-    if (result.success) {
-      onUpdate();
-    } else {
-      setSaveError(result.error || 'Failed to save attendance.');
+      if (result.success) {
+        await onUpdate();
+        setSaveMessage('Attendance saved.');
+      } else {
+        setSaveError(result.error || 'Failed to save attendance.');
+      }
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      setSaveError('Failed to save attendance. Refresh and try again.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsSaving(false);
   };
 
   const markAllAs = (status: AttendanceStatus) => {
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       newMap.forEach((player, id) => {
@@ -157,8 +168,8 @@ export function AttendanceTracker({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      <div className="flex h-32 items-center justify-center" role="status" aria-label="Loading attendance">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
@@ -167,7 +178,7 @@ export function AttendanceTracker({
     return (
       <div className="text-center py-8 text-gray-500">
         {loadError ? (
-          <div className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div role="alert" className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {loadError}
           </div>
         ) : (
@@ -187,8 +198,13 @@ export function AttendanceTracker({
   return (
     <div className="space-y-4">
       {saveError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {saveError}
+        </div>
+      )}
+      {saveMessage && (
+        <div role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+          {saveMessage}
         </div>
       )}
 
@@ -200,6 +216,7 @@ export function AttendanceTracker({
             <button
               key={opt.value}
               onClick={() => markAllAs(opt.value)}
+              disabled={isSaving}
               className="min-h-10 rounded border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50"
             >
               {opt.label}
@@ -255,6 +272,8 @@ export function AttendanceTracker({
                 <button
                   key={opt.value}
                   onClick={() => updatePlayerStatus(player.playerId, opt.value)}
+                  disabled={isSaving}
+                  aria-pressed={player.status === opt.value}
                   className={`min-h-10 rounded px-3 py-1 text-sm font-medium transition-colors ${
                     player.status === opt.value
                       ? opt.color.replace('100', '500').replace('700', 'white')
@@ -287,6 +306,8 @@ export function AttendanceTracker({
               value={player.notes}
               onChange={(e) => updatePlayerNotes(player.playerId, e.target.value)}
               placeholder="Notes..."
+              disabled={isSaving}
+              aria-label={`Attendance notes for ${player.playerName}`}
               className="min-h-10 w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary md:flex-1"
             />
           </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { type KeyboardEvent, useState } from 'react';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 import {
   CalendarDays,
@@ -39,6 +40,8 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 
 export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
   const { getRsvpCounts, getUserRsvp, submitRsvp } = useEvents();
+  const [submittingStatus, setSubmittingStatus] = useState<RsvpStatus | null>(null);
+  const [rsvpError, setRsvpError] = useState('');
 
   const eventDate = new Date(event.start_time);
   const isEventPast = isPast(eventDate);
@@ -52,8 +55,33 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
   };
 
   const handleRsvp = async (status: RsvpStatus) => {
-    await submitRsvp(event.id, status);
-    onRsvp?.();
+    setSubmittingStatus(status);
+    setRsvpError('');
+
+    try {
+      const result = await submitRsvp(event.id, status);
+
+      if (!result.success) {
+        setRsvpError(result.error || 'Failed to submit RSVP.');
+        return;
+      }
+
+      onRsvp?.();
+    } catch (error) {
+      console.error('Error submitting event card RSVP:', error);
+      setRsvpError('Failed to submit RSVP. Refresh and try again.');
+    } finally {
+      setSubmittingStatus(null);
+    }
+  };
+
+  const handleCardKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
   };
 
   const TypeIcon =
@@ -68,8 +96,12 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
   return (
     <div
       onClick={onClick}
+      onKeyDown={handleCardKeyDown}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Open ${event.title}` : undefined}
       className={`overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,31,51,0.07)] ${
-        onClick ? 'cursor-pointer transition hover:border-teal hover:shadow-lg' : ''
+        onClick ? 'cursor-pointer transition hover:border-teal hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-teal/40' : ''
       } ${isEventPast ? 'opacity-75' : ''}`}
     >
       {/* Header with type badge */}
@@ -147,46 +179,61 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
           </div>
 
           {!isEventPast && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2" aria-busy={submittingStatus !== null}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRsvp('going');
                 }}
+                disabled={submittingStatus !== null}
+                aria-pressed={userRsvp?.status === 'going'}
                 className={`min-h-10 rounded-xl text-xs font-extrabold transition-colors ${
                   userRsvp?.status === 'going'
                     ? 'bg-green-500 text-white'
                     : 'bg-green-50 text-green-700 hover:bg-green-100'
-                }`}
+                  }`}
               >
-                Going
+                {submittingStatus === 'going' ? 'Saving...' : 'Going'}
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRsvp('maybe');
                 }}
+                disabled={submittingStatus !== null}
+                aria-pressed={userRsvp?.status === 'maybe'}
                 className={`min-h-10 rounded-xl text-xs font-extrabold transition-colors ${
                   userRsvp?.status === 'maybe'
                     ? 'bg-yellow-500 text-white'
                     : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
-                }`}
+                  }`}
               >
-                Maybe
+                {submittingStatus === 'maybe' ? 'Saving...' : 'Maybe'}
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRsvp('not_going');
                 }}
+                disabled={submittingStatus !== null}
+                aria-pressed={userRsvp?.status === 'not_going'}
                 className={`min-h-10 rounded-xl text-xs font-extrabold transition-colors ${
                   userRsvp?.status === 'not_going'
                     ? 'bg-red-500 text-white'
                     : 'bg-red-50 text-red-700 hover:bg-red-100'
-                }`}
+                  }`}
               >
-                Not Going
+                {submittingStatus === 'not_going' ? 'Saving...' : 'Not Going'}
               </button>
+            </div>
+          )}
+
+          {rsvpError && (
+            <div
+              role="alert"
+              className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+            >
+              {rsvpError}
             </div>
           )}
         </div>

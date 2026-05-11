@@ -17,7 +17,7 @@ interface EventWithDetails extends Event {
 
 interface RsvpPanelProps {
   event: EventWithDetails;
-  onUpdate: () => void;
+  onUpdate: () => void | Promise<void>;
 }
 
 interface LinkedPlayer {
@@ -79,14 +79,21 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   const handleRsvp = async (status: RsvpStatus, playerId?: string) => {
     setIsSubmitting(true);
     setRsvpError('');
-    const result = await submitRsvp(event.id, status, { playerId });
-    if (!result.success) {
-      setRsvpError(result.error || 'Failed to submit RSVP.');
+    try {
+      const result = await submitRsvp(event.id, status, { playerId });
+
+      if (!result.success) {
+        setRsvpError(result.error || 'Failed to submit RSVP.');
+        return;
+      }
+
+      await onUpdate();
+    } catch (error) {
+      console.error('Error submitting RSVP:', error);
+      setRsvpError('Failed to submit RSVP. Refresh and try again.');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-    onUpdate();
-    setIsSubmitting(false);
   };
 
   const userRsvp = getUserRsvp(event.rsvps);
@@ -105,7 +112,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   return (
     <div className="space-y-6">
       {rsvpError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {rsvpError}
         </div>
       )}
@@ -120,6 +127,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                 key={status}
                 onClick={() => handleRsvp(status)}
                 disabled={isSubmitting}
+                aria-pressed={userRsvp?.status === status}
                 className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
                   userRsvp?.status === status
                     ? status === 'going'
@@ -143,7 +151,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
 
       {/* Parent RSVP for linked players */}
       {isParent && linkedPlayersError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {linkedPlayersError}
         </div>
       )}
@@ -169,6 +177,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                       key={status}
                       onClick={() => handleRsvp(status, player_id)}
                       disabled={isSubmitting}
+                      aria-pressed={playerRsvp?.status === status}
                       className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                         playerRsvp?.status === status
                           ? status === 'going'
