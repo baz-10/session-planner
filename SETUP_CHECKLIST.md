@@ -24,7 +24,7 @@ git diff --check
 git diff --cached --check
 npm run lint
 npm run audit:mobile
-npm audit --omit=dev --audit-level=high
+npm audit --audit-level=high
 NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy SUPABASE_SERVICE_ROLE_KEY=dummy npm run build
 ```
 
@@ -142,6 +142,6 @@ Deployment Protection before asking external testers to use a preview URL.
   approved Playwright session.
 - Previously committed environment tokens should be rotated or revoked from the
   provider side if still valid.
-- Full dev-dependency audit currently requires a Capacitor CLI major-version
-  upgrade to clear a `tar` advisory. The production web audit is the beta web
-  release gate, but resolve the Capacitor toolchain before native beta builds.
+- Native iOS sync requires CocoaPods on the build machine. `npx cap doctor` and
+  placeholder `npm run cap:sync` currently stop at the missing local CocoaPods
+  prerequisite in this environment.

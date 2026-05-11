@@ -6,8 +6,8 @@ This guide covers building and running the Session Planner iOS app using Capacit
 
 1. **macOS** - Required for iOS development
 2. **Xcode 15+** - Download from Mac App Store
-3. **CocoaPods** - Install with `sudo gem install cocoapods`
-4. **Node.js 18+** - For building the web app
+3. **CocoaPods** - Install with `sudo gem install cocoapods` or Homebrew
+4. **Node.js 20+** - Required by the Capacitor 7 CLI and for building the web app
 
 ## Project Structure
 
@@ -48,6 +48,9 @@ npm run cap:sync
 ```
 
 Direct `npx cap sync` also works after `out/` has been prepared.
+
+The native toolchain is pinned to Capacitor 7.6.x. Run `npx cap doctor` before
+native beta work; iOS sync will stop until CocoaPods is installed locally.
 
 ### Hosted Next.js App URL
 
