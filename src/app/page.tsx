@@ -15,8 +15,8 @@ const features = [
     ),
     title: 'Practice Planning',
     description: 'Build structured sessions with timed drills. Drag, drop, and customize every minute of practice.',
-    stat: '10K+',
-    statLabel: 'Sessions created',
+    stat: 'Timed',
+    statLabel: 'Practice blocks',
   },
   {
     icon: (
@@ -26,8 +26,8 @@ const features = [
     ),
     title: 'Team Management',
     description: 'Organize rosters, track player info, and manage multiple teams under one organization.',
-    stat: '500+',
-    statLabel: 'Teams active',
+    stat: 'Roles',
+    statLabel: 'Coach, parent, player',
   },
   {
     icon: (
@@ -37,8 +37,8 @@ const features = [
     ),
     title: 'Event Scheduling',
     description: 'Schedule games, practices, and tournaments. Collect RSVPs and track attendance effortlessly.',
-    stat: '98%',
-    statLabel: 'RSVP rate',
+    stat: 'RSVP',
+    statLabel: 'Attendance tracking',
   },
   {
     icon: (
@@ -48,30 +48,8 @@ const features = [
     ),
     title: 'Team Communication',
     description: 'Keep everyone in sync with team feed, direct messages, and real-time chat.',
-    stat: '50K+',
-    statLabel: 'Messages sent',
-  },
-];
-
-// Testimonials
-const testimonials = [
-  {
-    quote: "Session Planner transformed how I run practices. My players are more engaged and parents always know what's happening.",
-    author: 'Coach Mike Reynolds',
-    role: 'U14 Basketball',
-    avatar: 'MR',
-  },
-  {
-    quote: "Finally, an app that understands what coaches actually need. The practice builder alone saves me hours every week.",
-    author: 'Sarah Chen',
-    role: 'Club Director, Elite Soccer Academy',
-    avatar: 'SC',
-  },
-  {
-    quote: "Our organization manages 12 teams now. The multi-team support and parent communication features are game-changers.",
-    author: 'David Thompson',
-    role: 'Youth Sports Administrator',
-    avatar: 'DT',
+    stat: 'Chat',
+    statLabel: 'Team messaging',
   },
 ];
 
@@ -129,9 +107,6 @@ export default function HomePage() {
               <a href="#features" className={`text-sm font-medium transition-colors ${
                 scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
               }`}>Features</a>
-              <a href="#testimonials" className={`text-sm font-medium transition-colors ${
-                scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
-              }`}>Testimonials</a>
               <a href="#pricing" className={`text-sm font-medium transition-colors ${
                 scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
               }`}>Pricing</a>
@@ -197,7 +172,7 @@ export default function HomePage() {
                   href="/signup"
                   className="group inline-flex items-center justify-center gap-3 px-8 py-4 bg-teal text-white rounded-xl text-lg font-semibold hover:bg-teal-dark transition-all animate-pulse-glow"
                 >
-                  Start Free Trial
+                  Start Free
                   <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
@@ -384,53 +359,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-24 bg-whisper relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-sm font-semibold text-teal uppercase tracking-wider mb-4">Testimonials</p>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-navy mb-6">
-              Loved by coaches<br />
-              <span className="text-text-secondary">across the country</span>
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-2xl p-8 shadow-sm border border-border hover:shadow-lg transition-shadow"
-              >
-                {/* Stars */}
-                <div className="flex gap-1 mb-6">
-                  {[...Array(5)].map((_, j) => (
-                    <svg key={j} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                  ))}
-                </div>
-
-                <p className="text-text-secondary mb-8 leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</p>
-
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-navy flex items-center justify-center">
-                    <span className="text-white font-semibold">{testimonial.avatar}</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-navy">{testimonial.author}</p>
-                    <p className="text-sm text-text-muted">{testimonial.role}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Pricing / CTA Section */}
-      <section id="pricing" className="py-24 bg-white relative">
+      <section id="pricing" className="py-24 bg-whisper relative">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-teal-glow rounded-full mb-8">
             <span className="text-sm font-semibold text-teal">Free Forever</span>
@@ -441,8 +371,8 @@ export default function HomePage() {
           </h2>
 
           <p className="text-xl text-text-secondary max-w-2xl mx-auto mb-12">
-            Join thousands of coaches who&apos;ve upgraded their game.
-            Create your free account in seconds—no credit card required.
+            Create a beta account in seconds and start planning your next practice.
+            No credit card required.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -465,7 +395,7 @@ export default function HomePage() {
 
           {/* Feature checklist */}
           <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-text-secondary">
-            {['Unlimited sessions', 'Up to 3 teams', 'Team chat', 'RSVP tracking', 'Mobile app access'].map((feature, i) => (
+            {['Unlimited sessions', 'Up to 3 teams', 'Team chat', 'RSVP tracking', 'Responsive web app'].map((feature, i) => (
               <div key={i} className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-teal" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />

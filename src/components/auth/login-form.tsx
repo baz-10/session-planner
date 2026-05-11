@@ -180,19 +180,18 @@ export function LoginForm() {
               <span className="text-teal-light">Win.</span>
             </h1>
             <p className="text-lg text-white/70 max-w-md">
-              Join thousands of coaches building better practice sessions with time-tracked activities and real-time collaboration.
+              Plan better practice sessions with time-tracked activities, team communication, and real-time collaboration.
             </p>
           </div>
 
-          {/* Stats */}
-          <div className="flex gap-12 mt-12">
-            <div>
-              <div className="stat-number-lg text-teal-light">10K+</div>
-              <div className="text-sm text-white/60 mt-1">Active Coaches</div>
+          <div className="grid gap-3 mt-12 text-white/75">
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-teal-light" />
+              <span>Session builder with timed activity blocks</span>
             </div>
-            <div>
-              <div className="stat-number-lg text-teal-light">50K+</div>
-              <div className="text-sm text-white/60 mt-1">Sessions Planned</div>
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-teal-light" />
+              <span>Team invites, roles, chat, and event RSVPs</span>
             </div>
           </div>
         </div>
