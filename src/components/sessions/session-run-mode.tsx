@@ -408,9 +408,22 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     (sum, activity) => sum + secondsForActivity(activity),
     0
   );
+  const plannedProgressSeconds = runState
+    ? activities.reduce((sum, activity, index) => {
+        if (runState.completedActivityIds.includes(activity.id)) {
+          return sum + secondsForActivity(activity);
+        }
+
+        if (index === runState.activeIndex && runState.status !== 'complete') {
+          return sum + Math.max(0, secondsForActivity(activity) - runState.remainingSeconds);
+        }
+
+        return sum;
+      }, 0)
+    : 0;
   const progressPercent =
     totalPlannedSeconds > 0 && runState
-      ? Math.min(100, Math.round((runState.elapsedSeconds / totalPlannedSeconds) * 100))
+      ? Math.min(100, Math.round((plannedProgressSeconds / totalPlannedSeconds) * 100))
       : 0;
   const activeProgressPercent =
     activeActivity && runState
