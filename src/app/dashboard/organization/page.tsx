@@ -142,7 +142,7 @@ export default function OrganizationSettingsPage() {
     if (!currentOrganization) return;
 
     if (!organizationInviteCode || !organizationInviteLink) {
-      setError('Organization invite code is unavailable. Apply the latest database migrations first.');
+      setError('Organization invite link is unavailable. Apply the latest database migrations and refresh.');
       return;
     }
 
@@ -272,8 +272,8 @@ export default function OrganizationSettingsPage() {
   if (!currentOrganization) {
     return (
       <div className="p-6 md:p-8">
-        <div className="flex items-center justify-center py-8">
-          <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+        <div className="flex items-center justify-center py-8" role="status" aria-label="Loading organization">
+          <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
         </div>
       </div>
     );
@@ -288,9 +288,14 @@ export default function OrganizationSettingsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
           {error}
-          <button onClick={() => setError(null)} className="float-right text-red-500 hover:text-red-700">
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            aria-label="Dismiss organization error"
+            className="float-right text-red-500 hover:text-red-700"
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -299,7 +304,7 @@ export default function OrganizationSettingsPage() {
       )}
 
       {actionFeedback && (
-        <div className="bg-teal-glow border border-teal/20 text-teal-dark px-4 py-3 rounded-lg mb-6">
+        <div role="status" className="bg-teal-glow border border-teal/20 text-teal-dark px-4 py-3 rounded-lg mb-6">
           {actionFeedback}
         </div>
       )}
@@ -377,11 +382,11 @@ export default function OrganizationSettingsPage() {
         </h3>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center justify-center py-8" role="status" aria-label="Loading organization teams">
+            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
           </div>
         ) : teamsLoadError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             {teamsLoadError}
           </div>
         ) : teams.length === 0 ? (
@@ -474,11 +479,11 @@ export default function OrganizationSettingsPage() {
         </h3>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center justify-center py-8" role="status" aria-label="Loading organization members">
+            <div className="w-8 h-8 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
           </div>
         ) : membersLoadError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
             {membersLoadError}
           </div>
         ) : members.length === 0 ? (
