@@ -60,25 +60,29 @@ export function AttendanceTracker({
     setIsLoading(true);
     setLoadError('');
 
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .eq('team_id', currentTeam.id)
-      .eq('status', 'active')
-      .order('last_name');
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .eq('team_id', currentTeam.id)
+        .eq('status', 'active')
+        .order('last_name');
 
-    if (error) {
-      console.error('Error loading players for attendance:', error);
+      if (error) {
+        console.error('Error loading players for attendance:', error);
+        setPlayers([]);
+        setLoadError('Players could not load for attendance. Refresh and try again.');
+        return;
+      }
+
+      setPlayers((data || []) as Player[]);
+    } catch (error) {
+      console.error('Unexpected error loading players for attendance:', error);
       setPlayers([]);
       setLoadError('Players could not load for attendance. Refresh and try again.');
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    if (data) {
-      setPlayers(data as Player[]);
-    }
-    setIsLoading(false);
   }, [currentTeam, supabase]);
 
   useEffect(() => {
@@ -128,6 +132,8 @@ export function AttendanceTracker({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     setIsSaving(true);
     setSaveError('');
     setSaveMessage('');
@@ -156,6 +162,8 @@ export function AttendanceTracker({
   };
 
   const markAllAs = (status: AttendanceStatus) => {
+    if (isSaving) return;
+
     setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
@@ -179,7 +187,14 @@ export function AttendanceTracker({
       <div className="text-center py-8 text-gray-500">
         {loadError ? (
           <div role="alert" className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {loadError}
+            <p>{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadPlayers()}
+              className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-bold text-red-700 shadow-sm hover:bg-red-100"
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <p>No players on this team yet.</p>
@@ -214,9 +229,11 @@ export function AttendanceTracker({
           <span className="w-full text-sm text-gray-500 sm:w-auto">Mark all as:</span>
           {ATTENDANCE_OPTIONS.map((opt) => (
             <button
+              type="button"
               key={opt.value}
               onClick={() => markAllAs(opt.value)}
               disabled={isSaving}
+              aria-busy={isSaving}
               className="min-h-10 rounded border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50"
             >
               {opt.label}
@@ -224,8 +241,10 @@ export function AttendanceTracker({
           ))}
         </div>
         <button
+          type="button"
           onClick={handleSave}
           disabled={isSaving}
+          aria-busy={isSaving}
           className="min-h-11 w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-light disabled:opacity-50 sm:w-auto"
         >
           {isSaving ? 'Saving...' : 'Save Attendance'}
@@ -270,9 +289,11 @@ export function AttendanceTracker({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:gap-1">
               {ATTENDANCE_OPTIONS.map((opt) => (
                 <button
+                  type="button"
                   key={opt.value}
                   onClick={() => updatePlayerStatus(player.playerId, opt.value)}
                   disabled={isSaving}
+                  aria-busy={isSaving}
                   aria-pressed={player.status === opt.value}
                   className={`min-h-10 rounded px-3 py-1 text-sm font-medium transition-colors ${
                     player.status === opt.value

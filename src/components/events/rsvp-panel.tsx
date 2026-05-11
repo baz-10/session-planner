@@ -46,25 +46,31 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
     }
 
     setLinkedPlayersError('');
-    const { data, error } = await supabase
-      .from('parent_player_links')
-      .select(`
-        player_id,
-        player:players!inner(*)
-      `)
-      .eq('parent_user_id', user.id)
-      .eq('can_rsvp', true)
-      .eq('player.team_id', currentTeam.id);
+    try {
+      const { data, error } = await supabase
+        .from('parent_player_links')
+        .select(`
+          player_id,
+          player:players!inner(*)
+        `)
+        .eq('parent_user_id', user.id)
+        .eq('can_rsvp', true)
+        .eq('player.team_id', currentTeam.id);
 
-    if (error) {
-      console.error('Error loading linked players for RSVP:', error);
+      if (error) {
+        console.error('Error loading linked players for RSVP:', error);
+        setLinkedPlayers([]);
+        setLinkedPlayersError('Your linked players could not load. Refresh and try again.');
+        return;
+      }
+
+      if (data) {
+        setLinkedPlayers(data as LinkedPlayer[]);
+      }
+    } catch (error) {
+      console.error('Unexpected error loading linked players for RSVP:', error);
       setLinkedPlayers([]);
       setLinkedPlayersError('Your linked players could not load. Refresh and try again.');
-      return;
-    }
-
-    if (data) {
-      setLinkedPlayers(data as LinkedPlayer[]);
     }
   }, [currentTeam?.id, supabase, user]);
 
@@ -77,6 +83,8 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   }, [isParent, loadLinkedPlayers]);
 
   const handleRsvp = async (status: RsvpStatus, playerId?: string) => {
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
     setRsvpError('');
     try {
@@ -130,7 +138,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                 disabled={isSubmitting}
                 aria-busy={isSubmitting}
                 aria-pressed={userRsvp?.status === status}
-                className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+                className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   userRsvp?.status === status
                     ? status === 'going'
                       ? 'bg-green-500 text-white'
@@ -182,7 +190,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                       disabled={isSubmitting}
                       aria-busy={isSubmitting}
                       aria-pressed={playerRsvp?.status === status}
-                      className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                         playerRsvp?.status === status
                           ? status === 'going'
                             ? 'bg-green-500 text-white'
@@ -219,6 +227,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as RsvpStatus | 'all')}
+            disabled={isSubmitting}
             className="px-3 py-1 border border-gray-300 rounded-md text-sm"
           >
             <option value="all">All ({event.rsvps.length})</option>

@@ -58,6 +58,7 @@ export function useEvents() {
       startDate?: string;
       endDate?: string;
       upcoming?: boolean;
+      throwOnError?: boolean;
     }): Promise<EventWithDetails[]> => {
       if (!currentTeam) return [];
 
@@ -91,6 +92,9 @@ export function useEvents() {
 
       if (error) {
         console.error('Error fetching events:', error);
+        if (options?.throwOnError) {
+          throw new Error('Failed to load events');
+        }
         return [];
       }
 
@@ -103,7 +107,7 @@ export function useEvents() {
    * Get a single event by ID
    */
   const getEvent = useCallback(
-    async (eventId: string): Promise<EventWithDetails | null> => {
+    async (eventId: string, options?: { throwOnError?: boolean }): Promise<EventWithDetails | null> => {
       if (!currentTeam) return null;
 
       const { data, error } = await supabase
@@ -120,6 +124,9 @@ export function useEvents() {
 
       if (error) {
         console.error('Error fetching event:', error);
+        if (options?.throwOnError) {
+          throw new Error('Failed to load event');
+        }
         return null;
       }
 
@@ -138,36 +145,40 @@ export function useEvents() {
       }
 
       setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .insert({
+            team_id: currentTeam.id,
+            type: input.type,
+            title: input.title,
+            description: input.description || null,
+            location: input.location || null,
+            start_time: input.start_time,
+            meet_time: input.meet_time || null,
+            end_time: input.end_time || null,
+            duration: input.duration || null,
+            session_id: input.session_id || null,
+            rsvp_limit: input.rsvp_limit || null,
+            rsvp_deadline: input.rsvp_deadline || null,
+            opponent: input.opponent || null,
+            created_by: user.id,
+          })
+          .select()
+          .single();
 
-      const { data, error } = await supabase
-        .from('events')
-        .insert({
-          team_id: currentTeam.id,
-          type: input.type,
-          title: input.title,
-          description: input.description || null,
-          location: input.location || null,
-          start_time: input.start_time,
-          meet_time: input.meet_time || null,
-          end_time: input.end_time || null,
-          duration: input.duration || null,
-          session_id: input.session_id || null,
-          rsvp_limit: input.rsvp_limit || null,
-          rsvp_deadline: input.rsvp_deadline || null,
-          opponent: input.opponent || null,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+        if (error || !data) {
+          console.error('Error creating event:', error);
+          return { success: false, error: 'Failed to create event' };
+        }
 
-      setIsLoading(false);
-
-      if (error || !data) {
-        console.error('Error creating event:', error);
+        return { success: true, event: data as Event };
+      } catch (error) {
+        console.error('Unexpected error creating event:', error);
         return { success: false, error: 'Failed to create event' };
+      } finally {
+        setIsLoading(false);
       }
-
-      return { success: true, event: data as Event };
     },
     [user, currentTeam, supabase]
   );
@@ -185,25 +196,29 @@ export function useEvents() {
       }
 
       setIsLoading(true);
+      try {
+        const { error, count } = await supabase
+          .from('events')
+          .update(updates, { count: 'exact' })
+          .eq('id', eventId)
+          .eq('team_id', currentTeam.id);
 
-      const { error, count } = await supabase
-        .from('events')
-        .update(updates, { count: 'exact' })
-        .eq('id', eventId)
-        .eq('team_id', currentTeam.id);
+        if (error) {
+          console.error('Error updating event:', error);
+          return { success: false, error: 'Failed to update event' };
+        }
 
-      setIsLoading(false);
+        if (count === 0) {
+          return { success: false, error: STALE_EVENT_ERROR };
+        }
 
-      if (error) {
-        console.error('Error updating event:', error);
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating event:', error);
         return { success: false, error: 'Failed to update event' };
+      } finally {
+        setIsLoading(false);
       }
-
-      if (count === 0) {
-        return { success: false, error: STALE_EVENT_ERROR };
-      }
-
-      return { success: true };
     },
     [supabase, currentTeam]
   );

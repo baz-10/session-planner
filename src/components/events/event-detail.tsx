@@ -75,6 +75,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [showEditForm, setShowEditForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'rsvp' | 'attendance' | 'plan'>('rsvp');
   const [actionError, setActionError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
@@ -83,16 +84,25 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const loadEvent = useCallback(async () => {
     setIsLoading(true);
     setActionError('');
-    const data = await getEvent(eventId);
-    setEvent(data);
+    try {
+      const data = await getEvent(eventId, { throwOnError: true });
+      setEvent(data);
 
-    // Load session details if linked
-    if (data?.session_id) {
-      const session = await getSession(data.session_id);
-      setSessionDetails(session);
+      // Load session details if linked
+      if (data?.session_id) {
+        const session = await getSession(data.session_id);
+        setSessionDetails(session);
+      } else {
+        setSessionDetails(null);
+      }
+    } catch (error) {
+      console.error('Unexpected error loading event:', error);
+      setEvent(null);
+      setSessionDetails(null);
+      setActionError('Event details could not load. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   }, [eventId, getEvent, getSession]);
 
   useEffect(() => {
@@ -100,7 +110,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   }, [loadEvent]);
 
   const handleDelete = async () => {
-    if (!event) return;
+    if (!event || isDeleting) return;
 
     let deleteSeries = false;
 
@@ -138,11 +148,20 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
       }
     }
 
-    const result = await deleteEvent(eventId, { deleteSeries });
-    if (result.success) {
-      onBack();
-    } else {
-      setActionError(result.error || 'Failed to delete event.');
+    setIsDeleting(true);
+    setActionError('');
+    try {
+      const result = await deleteEvent(eventId, { deleteSeries });
+      if (result.success) {
+        onBack();
+      } else {
+        setActionError(result.error || 'Failed to delete event.');
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting event:', error);
+      setActionError('Failed to delete event. Check your connection and try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -158,7 +177,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">Event not found</p>
-        <button onClick={onBack} className="mt-4 text-primary hover:underline">
+        {actionError && (
+          <div role="alert" className="mx-auto mt-4 max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
+        <button type="button" onClick={onBack} className="mt-4 text-primary hover:underline">
           Go back
         </button>
       </div>
@@ -173,6 +197,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex items-start justify-between mb-4">
           <button
+            type="button"
             onClick={onBack}
             className="flex items-center gap-1 text-gray-500 hover:text-gray-700"
           >
@@ -185,23 +210,28 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
           {isAdminOrCoach && (
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowEditForm(true)}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                disabled={isDeleting}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Edit
               </button>
               <button
+                type="button"
                 onClick={handleDelete}
-                className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                disabled={isDeleting}
+                aria-busy={isDeleting}
+                className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Delete
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           )}
         </div>
 
         {actionError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {actionError}
           </div>
         )}
@@ -320,6 +350,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
         <div className="border-b border-gray-200">
           <nav className="flex">
             <button
+              type="button"
               onClick={() => setActiveTab('rsvp')}
               className={`px-6 py-3 text-sm font-medium border-b-2 ${
                 activeTab === 'rsvp'
@@ -331,6 +362,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             </button>
             {isEventPast && isAdminOrCoach && (
               <button
+                type="button"
                 onClick={() => setActiveTab('attendance')}
                 className={`px-6 py-3 text-sm font-medium border-b-2 ${
                   activeTab === 'attendance'
@@ -343,6 +375,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             )}
             {event.session_id && (
               <button
+                type="button"
                 onClick={() => setActiveTab('plan')}
                 className={`px-6 py-3 text-sm font-medium border-b-2 ${
                   activeTab === 'plan'
@@ -454,7 +487,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
           onClose={() => setShowEditForm(false)}
           onSuccess={() => {
             setShowEditForm(false);
-            loadEvent();
+            void loadEvent();
           }}
         />
       )}
