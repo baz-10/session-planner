@@ -3,13 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
-
-function sanitizeNextPath(nextValue: string | null): string {
-  if (!nextValue || !nextValue.startsWith('/') || nextValue.startsWith('//')) {
-    return '/onboarding';
-  }
-  return nextValue;
-}
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 export function CallbackHandler() {
   const router = useRouter();
@@ -19,7 +13,7 @@ export function CallbackHandler() {
   useEffect(() => {
     const handleCallback = async () => {
       const code = searchParams.get('code');
-      const next = sanitizeNextPath(searchParams.get('next'));
+      const next = sanitizeLocalRedirect(searchParams.get('next'), '/onboarding');
 
       if (code) {
         const supabase = getBrowserSupabaseClient();

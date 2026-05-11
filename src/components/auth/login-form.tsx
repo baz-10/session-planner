@@ -4,22 +4,16 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 const PASSWORD_SIGN_IN_TIMEOUT_MS = 60000;
 const OAUTH_TIMEOUT_MS = 20000;
 const SLOW_REQUEST_HINT_MS = 8000;
 
-function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) {
-    return fallback;
-  }
-  return value;
-}
-
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/dashboard');
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '/dashboard');
   const infoMessage = searchParams.get('message') || '';
 
   const { signIn, signInWithGoogle, signInWithApple, isLoading } = useAuth();

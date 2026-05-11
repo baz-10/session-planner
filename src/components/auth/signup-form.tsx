@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { TeamRole } from '@/types/database';
 
 type UserType = 'coach' | 'player' | 'parent';
@@ -29,17 +30,10 @@ const userTypeInfo: Record<UserType, { label: string; description: string; icon:
   },
 };
 
-function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) {
-    return fallback;
-  }
-  return value;
-}
-
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/onboarding');
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '/onboarding');
   const { signUp, signInWithGoogle, signInWithApple, isLoading } = useAuth();
 
   const [step, setStep] = useState<'type' | 'details'>('type');

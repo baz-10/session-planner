@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization, OrganizationMember, OrgRole } from '@/types/database';
 
 const AUTH_INIT_TIMEOUT_MS = 30000;
@@ -466,8 +467,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Auth actions
   const buildCallbackUrl = (redirectTo?: string) => {
     const callbackUrl = new URL('/callback', window.location.origin);
-    if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
-      callbackUrl.searchParams.set('next', redirectTo);
+    const nextPath = sanitizeLocalRedirect(redirectTo, '');
+    if (nextPath) {
+      callbackUrl.searchParams.set('next', nextPath);
     }
     return callbackUrl.toString();
   };
