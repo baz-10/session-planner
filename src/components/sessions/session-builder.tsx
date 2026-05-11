@@ -1108,7 +1108,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         // Empty persisted session: insert the generated plan directly.
         let didPersistAllChanges = true;
 
-        const persistedActivities: ActivityWithCategory[] = [];
+        const nextActivities: ActivityWithCategory[] = [];
         for (let index = 0; index < variant.activities.length; index += 1) {
           const generated = variant.activities[index];
           const additionalCategoryIds = normalizeAdditionalCategoryIds(
@@ -1128,7 +1128,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
           if (insertResult.success && insertResult.activity) {
             const insertedActivity = insertResult.activity;
-            persistedActivities.push({
+            nextActivities.push({
               ...insertedActivity,
               category:
                 categories.find((category) => category.id === insertedActivity.category_id) ||
@@ -1136,18 +1136,45 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
             });
           } else {
             didPersistAllChanges = false;
+            nextActivities.push({
+              additional_category_ids: additionalCategoryIds,
+              id: `temp-${Date.now()}-${index}`,
+              session_id: session.id,
+              drill_id: generated.drillId || null,
+              name: generated.name,
+              duration: clampActivityDuration(generated.duration),
+              category_id: generated.categoryId || null,
+              notes: generated.notes || null,
+              sort_order: index,
+              groups: [],
+              linked_play_id: null,
+              linked_play_name_snapshot: null,
+              linked_play_version_snapshot: null,
+              linked_play_snapshot: null,
+              linked_play_thumbnail_data_url: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              category:
+                categories.find((category) => category.id === generated.categoryId) ||
+                categories.find(
+                  (category) =>
+                    generated.categoryName &&
+                    category.name.toLowerCase() === generated.categoryName.toLowerCase()
+                ) ||
+                null,
+            });
           }
         }
 
         setSession((prev) => ({
           ...prev,
-          activities: normalizeActivitySortOrder(persistedActivities),
+          activities: normalizeActivitySortOrder(nextActivities),
         }));
 
         if (!didPersistAllChanges) {
           showStatus({
             type: 'warning',
-            text: 'Autopilot plan was partially applied. Some activity inserts failed. Please review the plan before sharing.',
+            text: 'Autopilot plan was partially applied. Failed activity inserts were kept locally so you can retry Save Plan before sharing.',
           });
           setHasUnsavedChanges(true);
         }
