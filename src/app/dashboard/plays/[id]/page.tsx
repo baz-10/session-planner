@@ -1,7 +1,7 @@
 import { PlayDetailClient } from './play-detail-client';
 
 export async function generateStaticParams() {
-  return [{ id: 'placeholder' }];
+  return [];
 }
 
 export const dynamicParams = true;
