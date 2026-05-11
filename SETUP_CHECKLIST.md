@@ -6,7 +6,7 @@ Use this checklist before sending the current beta build to testers.
 
 - PR: `beta-production-readiness-20260507` into `main`
 - Canonical Vercel project: `session-planner`
-- Duplicate Vercel project to fix or disconnect: `session-planner-hotfix`
+- Duplicate Vercel project to monitor or disconnect: `session-planner-hotfix`
 - Main deploy path: GitHub `main` branch to Vercel
 
 Do not commit local environment files, Vercel auth files, or generated Supabase
@@ -26,6 +26,13 @@ npm run lint
 npm run audit:mobile
 npm audit --omit=dev --audit-level=high
 NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy SUPABASE_SERVICE_ROLE_KEY=dummy npm run build
+```
+
+If a secondary Vercel project is still connected without Supabase environment
+variables, also verify the app can prerender without those values:
+
+```bash
+env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY -u SUPABASE_SERVICE_ROLE_KEY npm run build
 ```
 
 Expected Git author for this repo:
@@ -106,13 +113,15 @@ Run these with real test accounts on the canonical Vercel deployment:
 Capture failures with screenshot, account role, route, expected result, actual
 result, console excerpt, and network/API response where available.
 
-## Known External Blockers
+## Remaining External Gates
 
-- `session-planner-hotfix` still reports a failing Vercel status for PR builds.
-  Its build logs fail with `Supabase environment variables are not configured`
-  while prerendering `/dashboard/plays/placeholder`. Either disconnect that
-  duplicate project from the repository or align its Supabase environment
-  variables with the canonical `session-planner` project.
+- Both connected Vercel projects should be green before merge. As of commit
+  `ee85a8b`, `session-planner` and `session-planner-hotfix` both deploy
+  successfully, but `session-planner` remains the canonical beta target.
 - Live Supabase migration state must be verified from the Supabase project.
+- Authenticated smoke tests require real beta/test accounts on the canonical
+  deployment.
+- Rendered browser QA still needs to be run with an available Browser or
+  approved Playwright session.
 - Previously committed environment tokens should be rotated or revoked from the
   provider side if still valid.
