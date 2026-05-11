@@ -93,6 +93,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   };
 
   const handleCreate = async () => {
+    if (isCreating) return;
     if (selectedIds.length === 0) return;
 
     setIsCreating(true);
