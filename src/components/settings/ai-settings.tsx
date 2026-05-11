@@ -352,7 +352,8 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
 
           <p className="text-sm text-gray-500">
-            Your API key stays on this device and is only sent to OpenAI when you use AI features.
+            Your API key stays in this browser tab session. It is sent through Session Planner&apos;s
+            AI API and OpenAI only when you validate the key or use AI features.
             You can get an API key from{' '}
             <a
               href="https://platform.openai.com/api-keys"

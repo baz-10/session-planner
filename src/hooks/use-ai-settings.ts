@@ -10,18 +10,31 @@ export interface AISettings {
   preferredModel: string;
 }
 
-const STORAGE_KEY = 'session_planner_ai_settings';
+const API_KEY_STORAGE_KEY = 'session_planner_ai_settings';
 
 function storageKeyForUser(userId: string): string {
-  return `${STORAGE_KEY}:${userId}`;
+  return `${API_KEY_STORAGE_KEY}:${userId}`;
 }
 
 function readStoredApiKey(userId: string): string | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const value = window.localStorage.getItem(storageKeyForUser(userId))?.trim();
-    return value || null;
+    const storageKey = storageKeyForUser(userId);
+    const sessionValue = window.sessionStorage.getItem(storageKey)?.trim();
+    if (sessionValue) return sessionValue;
+
+    const legacyLocalValue = window.localStorage.getItem(storageKey)?.trim();
+    if (!legacyLocalValue) return null;
+
+    try {
+      window.sessionStorage.setItem(storageKey, legacyLocalValue);
+    } catch {
+      // Keep the key in memory for this render if session storage is unavailable.
+    }
+
+    window.localStorage.removeItem(storageKey);
+    return legacyLocalValue;
   } catch {
     return null;
   }
@@ -30,14 +43,22 @@ function readStoredApiKey(userId: string): string | null {
 function writeStoredApiKey(userId: string, apiKey: string | null) {
   if (typeof window === 'undefined') return;
 
+  const storageKey = storageKeyForUser(userId);
+
   try {
     if (apiKey) {
-      window.localStorage.setItem(storageKeyForUser(userId), apiKey);
+      window.sessionStorage.setItem(storageKey, apiKey);
     } else {
-      window.localStorage.removeItem(storageKeyForUser(userId));
+      window.sessionStorage.removeItem(storageKey);
     }
   } catch {
-    // Local persistence can fail in private browsing; keep in-memory state.
+    // Session persistence can fail in private browsing; keep in-memory state.
+  }
+
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // Best-effort cleanup of the legacy persistent API key cache.
   }
 }
 
@@ -69,17 +90,21 @@ export function useAISettings() {
 
       const profileSettings = isRecord(profile?.settings) ? profile.settings : {};
       const aiSettings = isRecord(profileSettings.ai) ? profileSettings.ai : {};
-      const localApiKey = readStoredApiKey(user.id);
+      const sessionApiKey = readStoredApiKey(user.id);
       const legacyProfileApiKey =
         typeof aiSettings.openaiApiKey === 'string' ? aiSettings.openaiApiKey.trim() : '';
 
-      if (legacyProfileApiKey && !localApiKey) {
+      if (legacyProfileApiKey && !sessionApiKey) {
         writeStoredApiKey(user.id, legacyProfileApiKey);
       }
 
+      const openaiApiKey = sessionApiKey || legacyProfileApiKey || null;
+
       const nextSettings = {
-        openaiApiKey: localApiKey || legacyProfileApiKey || null,
-        aiEnabled: typeof aiSettings.aiEnabled === 'boolean' ? aiSettings.aiEnabled : false,
+        openaiApiKey,
+        aiEnabled:
+          Boolean(openaiApiKey) &&
+          (typeof aiSettings.aiEnabled === 'boolean' ? aiSettings.aiEnabled : false),
         preferredModel:
           typeof aiSettings.preferredModel === 'string'
             ? aiSettings.preferredModel
@@ -145,7 +170,7 @@ export function useAISettings() {
 
         const updatedSettings = {
           openaiApiKey: nextApiKey,
-          aiEnabled: newSettings.aiEnabled ?? settings.aiEnabled,
+          aiEnabled: Boolean(nextApiKey) && (newSettings.aiEnabled ?? settings.aiEnabled),
           preferredModel: newSettings.preferredModel ?? settings.preferredModel,
         };
         const safeProfileAISettings = {
@@ -155,7 +180,7 @@ export function useAISettings() {
         };
         delete safeProfileAISettings.openaiApiKey;
 
-        // Keep user API keys local-only; profile settings are visible to teammates.
+        // Keep user API keys out of profile settings; profile rows can be visible to teammates.
         const { error } = await (supabase as any)
           .from('profiles')
           .update({
