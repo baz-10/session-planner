@@ -492,12 +492,6 @@ export function useChat() {
         return { success: false, error: 'Failed to send message' };
       }
 
-      // Update conversation updated_at
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', input.conversation_id);
-
       return { success: true, message: message as Message };
     },
     [user, supabase]
