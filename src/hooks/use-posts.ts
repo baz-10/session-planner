@@ -77,6 +77,40 @@ function createPostAttachmentObjectName(fileExtension: string) {
   return `${uniqueId}.${fileExtension}`;
 }
 
+function getPostAttachmentStoragePath(publicUrl: string) {
+  const urlWithoutQuery = publicUrl.split(/[?#]/)[0];
+  const marker = `/${POST_ATTACHMENT_BUCKET}/`;
+  const markerIndex = urlWithoutQuery.indexOf(marker);
+
+  if (markerIndex >= 0) {
+    const storagePath = decodeURIComponent(urlWithoutQuery.slice(markerIndex + marker.length));
+    return storagePath || null;
+  }
+
+  try {
+    const pathname = new URL(publicUrl).pathname;
+    const pathMarkerIndex = pathname.indexOf(marker);
+
+    if (pathMarkerIndex >= 0) {
+      const storagePath = decodeURIComponent(pathname.slice(pathMarkerIndex + marker.length));
+      return storagePath || null;
+    }
+  } catch {
+    // Fall through to the legacy path extraction below.
+  }
+
+  const fallbackPath = urlWithoutQuery.split('/').filter(Boolean).slice(-4).join('/');
+  return fallbackPath || null;
+}
+
+function getUniquePostAttachmentStoragePaths(attachments: Array<{ url: string | null }>) {
+  const paths = attachments
+    .map((attachment) => (attachment.url ? getPostAttachmentStoragePath(attachment.url) : null))
+    .filter((path): path is string => Boolean(path));
+
+  return Array.from(new Set(paths));
+}
+
 export function usePosts() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -360,6 +394,17 @@ export function usePosts() {
    */
   const deletePost = useCallback(
     async (postId: string): Promise<{ success: boolean; error?: string }> => {
+      const { data: attachments, error: attachmentLookupError } = await supabase
+        .from('post_attachments')
+        .select('url')
+        .eq('post_id', postId);
+
+      if (attachmentLookupError) {
+        console.error('Error loading post attachments before delete:', attachmentLookupError);
+      }
+
+      const attachmentPaths = getUniquePostAttachmentStoragePaths(attachments || []);
+
       const { error, count } = await supabase
         .from('posts')
         .delete({ count: 'exact' })
@@ -372,6 +417,16 @@ export function usePosts() {
 
       if (count === 0) {
         return { success: false, error: STALE_POST_ERROR };
+      }
+
+      if (attachmentPaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove(attachmentPaths);
+
+        if (storageError) {
+          console.error('Error cleaning up deleted post attachment files:', storageError);
+        }
       }
 
       return { success: true };
@@ -414,6 +469,18 @@ export function usePosts() {
    */
   const deleteAttachment = useCallback(
     async (attachmentId: string): Promise<{ success: boolean; error?: string }> => {
+      const { data: attachment, error: attachmentLookupError } = await supabase
+        .from('post_attachments')
+        .select('url')
+        .eq('id', attachmentId)
+        .maybeSingle();
+
+      if (attachmentLookupError) {
+        console.error('Error loading post attachment before delete:', attachmentLookupError);
+      }
+
+      const attachmentPath = attachment?.url ? getPostAttachmentStoragePath(attachment.url) : null;
+
       const { error, count } = await supabase
         .from('post_attachments')
         .delete({ count: 'exact' })
@@ -426,6 +493,16 @@ export function usePosts() {
 
       if (count === 0) {
         return { success: false, error: 'This attachment could not be deleted. Refresh and try again.' };
+      }
+
+      if (attachmentPath) {
+        const { error: storageError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove([attachmentPath]);
+
+        if (storageError) {
+          console.error('Error cleaning up deleted post attachment file:', storageError);
+        }
       }
 
       return { success: true };
