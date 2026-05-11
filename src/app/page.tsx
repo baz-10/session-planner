@@ -448,6 +448,10 @@ export default function HomePage() {
               <p className="text-white/60 text-sm leading-relaxed">
                 Beta access and support run through your coach or organization admin while public support channels are finalized.
               </p>
+              <ul className="mt-4 space-y-3 text-white/60 text-sm">
+                <li><a href="/privacy" className="hover:text-white transition-colors">Privacy notice</a></li>
+                <li><a href="/terms" className="hover:text-white transition-colors">Terms of use</a></li>
+              </ul>
             </div>
           </div>
 
@@ -455,6 +459,10 @@ export default function HomePage() {
             <p className="text-white/40 text-sm">
               © {new Date().getFullYear()} Session Planner. All rights reserved.
             </p>
+            <div className="flex items-center gap-5 text-sm text-white/40">
+              <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+              <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+            </div>
           </div>
         </div>
       </footer>

@@ -127,6 +127,9 @@ Deployment Protection before asking external testers to use a preview URL.
 - Beta tester links must be publicly reachable or explicitly provisioned for
   every tester; Vercel-protected preview links are not sufficient for external
   beta rollout.
+- Public `/privacy` and `/terms` pages exist for beta, but final legal,
+  retention, child-safety, and support wording still needs owner/legal review
+  before a broader public rollout.
 - Live Supabase migration state must be verified from the Supabase project.
 - Authenticated smoke tests require real beta/test accounts on the canonical
   deployment.

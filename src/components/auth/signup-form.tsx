@@ -383,6 +383,18 @@ export function SignupForm() {
                     'Create Account'
                   )}
                 </button>
+
+                <p className="text-center text-xs leading-5 text-text-muted">
+                  By creating an account, you agree to the{' '}
+                  <Link href="/terms" className="font-semibold text-teal hover:text-teal-dark">
+                    Beta Terms
+                  </Link>{' '}
+                  and acknowledge the{' '}
+                  <Link href="/privacy" className="font-semibold text-teal hover:text-teal-dark">
+                    Privacy Notice
+                  </Link>
+                  .
+                </p>
               </form>
 
               <div className="my-8 flex items-center gap-4">
