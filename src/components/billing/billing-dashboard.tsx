@@ -66,6 +66,7 @@ export function BillingDashboard() {
   const [isPayingKey, setIsPayingKey] = useState<string | null>(null);
   const [isRunningReminders, setIsRunningReminders] = useState(false);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [markingReminderId, setMarkingReminderId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(defaultInvoiceForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -192,6 +193,8 @@ export function BillingDashboard() {
 
   const handleCreateInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (invoiceSubmitting) return;
+
     setFormError(null);
 
     const parsedAmount = Math.round(Number(invoiceForm.amountDollars) * 100);
@@ -257,12 +260,14 @@ export function BillingDashboard() {
     recipientInstallmentId?: string,
     amountLabel?: string
   ) => {
+    if (isPayingKey !== null) return;
+
     const payingKey = recipientInstallmentId || invoiceId;
     setIsPayingKey(payingKey);
     const result = await createCheckoutSession(invoiceId, recipientInstallmentId);
-    setIsPayingKey(null);
 
     if (!result.success || !result.checkoutUrl) {
+      setIsPayingKey(null);
       setBanner({ type: 'error', text: result.error || 'Unable to start checkout.' });
       return;
     }
@@ -275,7 +280,7 @@ export function BillingDashboard() {
   };
 
   const handleRunReminders = async () => {
-    if (!currentTeam) {
+    if (!currentTeam || isRunningReminders) {
       return;
     }
 
@@ -301,17 +306,39 @@ export function BillingDashboard() {
   };
 
   const handleMarkReminderRead = async (reminderId: string) => {
-    const result = await markReminderRead(reminderId);
-    if (!result.success) {
-      setBanner({ type: 'error', text: result.error || 'Failed to mark reminder as read.' });
+    if (markingReminderId !== null) return;
+
+    setMarkingReminderId(reminderId);
+
+    try {
+      const result = await markReminderRead(reminderId);
+      if (!result.success) {
+        setBanner({ type: 'error', text: result.error || 'Failed to mark reminder as read.' });
+        return;
+      }
+
+      setReminders((prev) =>
+        prev.map((reminder) =>
+          reminder.id === reminderId ? { ...reminder, isRead: true } : reminder
+        )
+      );
+    } finally {
+      setMarkingReminderId(null);
+    }
+  };
+
+  const openCreateModal = () => {
+    if (invoiceSubmitting) {
       return;
     }
 
-    setReminders((prev) =>
-      prev.map((reminder) =>
-        reminder.id === reminderId ? { ...reminder, isRead: true } : reminder
-      )
-    );
+    if (members.length > 0) {
+      setInvoiceForm((prev) => ({
+        ...prev,
+        recipientUserIds: members.map((member) => member.userId),
+      }));
+    }
+    setShowCreateModal(true);
   };
 
   if (!currentTeam) {
@@ -363,9 +390,11 @@ export function BillingDashboard() {
                     <button
                       type="button"
                       onClick={() => handleMarkReminderRead(reminder.id)}
-                      className="text-xs text-primary hover:underline"
+                      disabled={markingReminderId !== null}
+                      aria-busy={markingReminderId === reminder.id}
+                      className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Mark read
+                      {markingReminderId === reminder.id ? 'Marking...' : 'Mark read'}
                     </button>
                   )}
                 </div>
@@ -416,16 +445,9 @@ export function BillingDashboard() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (members.length > 0) {
-                      setInvoiceForm((prev) => ({
-                        ...prev,
-                        recipientUserIds: members.map((member) => member.userId),
-                      }));
-                    }
-                    setShowCreateModal(true);
-                  }}
-                  className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+                  onClick={openCreateModal}
+                  disabled={invoiceSubmitting}
+                  className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Create Invoice
                 </button>
@@ -573,10 +595,12 @@ export function BillingDashboard() {
                 type="button"
                 aria-label="Close create invoice dialog"
                 onClick={() => {
+                  if (invoiceSubmitting) return;
                   setShowCreateModal(false);
                   resetCreateForm();
                 }}
-                className="p-2 rounded-md text-gray-500 hover:bg-gray-100"
+                disabled={invoiceSubmitting}
+                className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -768,10 +792,12 @@ export function BillingDashboard() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (invoiceSubmitting) return;
                     setShowCreateModal(false);
                     resetCreateForm();
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  disabled={invoiceSubmitting}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
