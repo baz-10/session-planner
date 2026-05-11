@@ -192,10 +192,10 @@ export default function TeamSettingsPage() {
   const sendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentTeam) return;
-    if (!currentTeam.team_code) {
+    if (!currentTeam.team_code || !inviteLink) {
       showInviteFeedback({
         type: 'error',
-        text: 'Team invite code is unavailable. Apply the latest database migrations and refresh.',
+        text: 'Team invite link is unavailable. Apply the latest database migrations and refresh.',
       });
       return;
     }
@@ -649,7 +649,7 @@ export default function TeamSettingsPage() {
                 aria-label="Email address to invite"
                 className="input flex-1"
               />
-              <button type="submit" disabled={!hasInviteCode} className="btn-accent whitespace-nowrap">
+              <button type="submit" disabled={!hasInviteCode || !inviteLink} className="btn-accent whitespace-nowrap">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
@@ -657,7 +657,7 @@ export default function TeamSettingsPage() {
               </button>
             </form>
             {inviteSent && (
-              <p className="text-sm text-teal mt-2 animate-fade-in">
+              <p role="status" className="text-sm text-teal mt-2 animate-fade-in">
                 Email client opened with invite!
               </p>
             )}

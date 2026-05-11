@@ -171,13 +171,13 @@ function JoinPageContent() {
           </p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+            <div role="alert" className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm animate-fade-in">
+            <div role="status" className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm animate-fade-in">
               {success}
             </div>
           )}
