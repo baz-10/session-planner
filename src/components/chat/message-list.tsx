@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { Paperclip } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import type { Message, Profile } from '@/types/database';
@@ -91,7 +92,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
             {/* Message */}
             <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showAvatar ? 'mb-2' : ''}`}>
-              <div className={`flex items-end gap-2 max-w-[75%] ${isOwn ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex max-w-[75%] min-w-0 items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 {!isOwn && (
                   <div className={`w-8 h-8 flex-shrink-0 ${showAvatar ? '' : 'invisible'}`}>
@@ -105,7 +106,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
                 {/* Message bubble */}
                 <div
-                  className={`rounded-2xl px-4 py-2 ${
+                  className={`min-w-0 rounded-2xl px-4 py-2 ${
                     isOwn
                       ? 'bg-primary text-white rounded-br-sm'
                       : 'bg-gray-100 text-gray-900 rounded-bl-sm'
@@ -155,10 +156,12 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={`Open shared file ${message.metadata.file_name || ''}`.trim()}
-                      className={`flex items-center gap-2 ${isOwn ? 'text-white' : 'text-primary'}`}
+                      className={`flex max-w-full min-w-0 items-center gap-2 ${isOwn ? 'text-white' : 'text-primary'}`}
                     >
-                      <span>📎</span>
-                      <span className="underline">{message.metadata.file_name || 'File'}</span>
+                      <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 break-words underline">
+                        {message.metadata.file_name || 'File'}
+                      </span>
                     </a>
                   )}
 
