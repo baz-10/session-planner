@@ -25,6 +25,8 @@ interface OrganizationMemberWithProfile {
   };
 }
 
+type OrgInviteAction = 'code' | 'link' | 'email';
+
 export default function OrganizationSettingsPage() {
   const { currentOrganization, currentOrganizationRole, organizationMemberships, user } = useAuth();
   const { getOrganizationMembers, getOrganizationTeams, updateMemberRole, removeMember } = useOrganization();
@@ -39,6 +41,7 @@ export default function OrganizationSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState('');
   const [updatingMemberId, setUpdatingMemberId] = useState('');
+  const [inviteAction, setInviteAction] = useState<OrgInviteAction | null>(null);
   const [pageOrigin, setPageOrigin] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
@@ -51,6 +54,7 @@ export default function OrganizationSettingsPage() {
     pageOrigin && organizationInviteCode
       ? `${pageOrigin}/dashboard/organization/setup?code=${encodeURIComponent(organizationInviteCode)}`
       : '';
+  const inviteActionInFlight = inviteAction !== null;
 
   useEffect(() => {
     setPageOrigin(window.location.origin);
@@ -119,39 +123,54 @@ export default function OrganizationSettingsPage() {
   };
 
   const copyOrganizationInviteCode = async () => {
+    if (inviteActionInFlight) return;
+
     if (!organizationInviteCode) {
       setError('Organization invite code is unavailable. Apply the latest database migrations first.');
       return;
     }
 
-    const didCopy = await copyTextToClipboard(organizationInviteCode);
-    if (!didCopy) {
-      setError('Organization invite code could not be copied. Select the code and copy it manually.');
-      return;
-    }
+    setInviteAction('code');
+    try {
+      const didCopy = await copyTextToClipboard(organizationInviteCode);
+      if (!didCopy) {
+        setError('Organization invite code could not be copied. Select the code and copy it manually.');
+        return;
+      }
 
-    setError(null);
-    showInviteFeedback('Organization invite code copied.');
+      setError(null);
+      showInviteFeedback('Organization invite code copied.');
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const copyOrganizationInviteLink = async () => {
+    if (inviteActionInFlight) return;
+
     if (!organizationInviteLink) {
       setError('Organization invite link is unavailable. Apply the latest database migrations first.');
       return;
     }
 
-    const didCopy = await copyTextToClipboard(organizationInviteLink);
-    if (!didCopy) {
-      setError('Organization invite link could not be copied. Try the email invite or copy the code.');
-      return;
-    }
+    setInviteAction('link');
+    try {
+      const didCopy = await copyTextToClipboard(organizationInviteLink);
+      if (!didCopy) {
+        setError('Organization invite link could not be copied. Try the email invite or copy the code.');
+        return;
+      }
 
-    setError(null);
-    showInviteFeedback('Organization invite link copied.');
+      setError(null);
+      showInviteFeedback('Organization invite link copied.');
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const sendEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (inviteActionInFlight) return;
     if (!currentOrganization) return;
 
     if (!organizationInviteCode || !organizationInviteLink) {
@@ -167,15 +186,20 @@ export default function OrganizationSettingsPage() {
         `New organization members join as members. An admin can promote trusted users after they join.\n\n` +
         `See you soon!`;
 
-    const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
-    if (!didOpen) {
-      setError('Enter an email address before sending an invite.');
-      return;
-    }
+    setInviteAction('email');
+    try {
+      const didOpen = openMailtoInvite({ to: inviteEmail, subject, body });
+      if (!didOpen) {
+        setError('Enter an email address before sending an invite.');
+        return;
+      }
 
-    setError(null);
-    showInviteFeedback('Email client opened with a member invite link.');
-    setInviteEmail('');
+      setError(null);
+      showInviteFeedback('Email client opened with a member invite link.');
+      setInviteEmail('');
+    } finally {
+      setInviteAction(null);
+    }
   };
 
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
@@ -371,7 +395,8 @@ export default function OrganizationSettingsPage() {
                 <button
                   type="button"
                   onClick={copyOrganizationInviteCode}
-                  disabled={!organizationInviteCode}
+                  disabled={!organizationInviteCode || inviteActionInFlight}
+                  aria-busy={inviteAction === 'code'}
                   className="btn-secondary min-h-10 justify-center whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Copy className="h-4 w-4" />
@@ -380,7 +405,8 @@ export default function OrganizationSettingsPage() {
                 <button
                   type="button"
                   onClick={copyOrganizationInviteLink}
-                  disabled={!organizationInviteLink}
+                  disabled={!organizationInviteLink || inviteActionInFlight}
+                  aria-busy={inviteAction === 'link'}
                   className="btn-secondary min-h-10 justify-center whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <LinkIcon className="h-4 w-4" />
@@ -457,19 +483,21 @@ export default function OrganizationSettingsPage() {
             Invited people join as members. Use the member list below to promote admins after they join.
           </p>
 
-          <form onSubmit={sendEmailInvite} className="flex flex-col sm:flex-row gap-3">
+          <form onSubmit={sendEmailInvite} className="flex flex-col sm:flex-row gap-3" aria-busy={inviteAction === 'email'}>
             <input
               type="email"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="email@example.com"
               required
+              disabled={inviteActionInFlight}
               aria-label="Email address to invite"
               className="input flex-1"
             />
             <button
               type="submit"
-              disabled={!organizationInviteCode || !organizationInviteLink}
+              disabled={!organizationInviteCode || !organizationInviteLink || inviteActionInFlight}
+              aria-busy={inviteAction === 'email'}
               className="btn-accent whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
