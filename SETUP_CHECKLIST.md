@@ -35,6 +35,11 @@ variables, also verify the app can prerender without those values:
 env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY -u SUPABASE_SERVICE_ROLE_KEY npm run build
 ```
 
+Treat that as a build-resilience check only. Browser-runtime QA and beta testing
+still require real `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` values because client auth flows need the public
+Supabase configuration after hydration.
+
 Expected Git author for this repo:
 
 ```bash
@@ -137,3 +142,6 @@ Deployment Protection before asking external testers to use a preview URL.
   approved Playwright session.
 - Previously committed environment tokens should be rotated or revoked from the
   provider side if still valid.
+- Full dev-dependency audit currently requires a Capacitor CLI major-version
+  upgrade to clear a `tar` advisory. The production web audit is the beta web
+  release gate, but resolve the Capacitor toolchain before native beta builds.
