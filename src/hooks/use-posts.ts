@@ -47,6 +47,7 @@ interface ReactionSummary {
 
 export const MAX_POST_ATTACHMENTS = 5;
 export const MAX_POST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const POST_ATTACHMENT_BUCKET = 'attachments';
 const STALE_POST_ERROR = 'This post could not be updated. It may have been removed or your access may have changed.';
 const STALE_COMMENT_ERROR =
   'This comment could not be updated. It may have been removed or your access may have changed.';
@@ -65,6 +66,15 @@ function validatePostAttachment(file: File): string | null {
   }
 
   return null;
+}
+
+function createPostAttachmentObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
 }
 
 export function usePosts() {
@@ -182,16 +192,16 @@ export function usePosts() {
     async (
       postId: string,
       file: File
-    ): Promise<{ success: boolean; attachment?: PostAttachment; error?: string }> => {
+    ): Promise<{ success: boolean; attachment?: PostAttachment; storagePath?: string; error?: string }> => {
       if (!user || !currentTeam) {
         return { success: false, error: 'Not authenticated' };
       }
 
       const fileExt = getSafeFileExtension(file, POST_ATTACHMENT_EXTENSIONS);
-      const filePath = `${currentTeam.id}/posts/${postId}/${Date.now()}.${fileExt}`;
+      const filePath = `${currentTeam.id}/posts/${postId}/${createPostAttachmentObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('attachments')
+        .from(POST_ATTACHMENT_BUCKET)
         .upload(filePath, file);
 
       if (uploadError) {
@@ -200,7 +210,7 @@ export function usePosts() {
       }
 
       const { data: publicUrl } = supabase.storage
-        .from('attachments')
+        .from(POST_ATTACHMENT_BUCKET)
         .getPublicUrl(filePath);
 
       // Determine attachment type
@@ -222,10 +232,18 @@ export function usePosts() {
 
       if (error) {
         console.error('Error saving attachment:', error);
+        const { error: cleanupError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove([filePath]);
+
+        if (cleanupError) {
+          console.error('Error cleaning up failed post attachment upload:', cleanupError);
+        }
+
         return { success: false, error: 'Failed to save attachment record' };
       }
 
-      return { success: true, attachment: attachment as PostAttachment };
+      return { success: true, attachment: attachment as PostAttachment, storagePath: filePath };
     },
     [user, currentTeam, supabase]
   );
@@ -275,14 +293,30 @@ export function usePosts() {
           return { success: false, error: 'Failed to create post' };
         }
 
+        const uploadedAttachmentPaths: string[] = [];
+
         for (const file of attachmentFiles || []) {
           const result = await uploadAttachment(post.id, file);
           if (!result.success) {
+            if (uploadedAttachmentPaths.length > 0) {
+              const { error: cleanupError } = await supabase.storage
+                .from(POST_ATTACHMENT_BUCKET)
+                .remove(uploadedAttachmentPaths);
+
+              if (cleanupError) {
+                console.error('Error cleaning up post attachments after failed post create:', cleanupError);
+              }
+            }
+
             await supabase.from('posts').delete().eq('id', post.id);
             return {
               success: false,
               error: result.error || 'Failed to upload one or more attachments.',
             };
+          }
+
+          if (result.storagePath) {
+            uploadedAttachmentPaths.push(result.storagePath);
           }
         }
 
