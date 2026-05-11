@@ -564,7 +564,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
 
       // If session is saved, persist to database
       if (session.id) {
-        const result = await updateActivity(activityId, normalizedUpdates);
+        const result = await updateActivity(activityId, normalizedUpdates, session.id);
         if (!result.success) {
           setSession((prev) => ({ ...prev, activities: previousActivities }));
           showStatus({
@@ -595,7 +595,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       if (!confirmed) return;
 
       if (session.id) {
-        const result = await deleteActivity(activityId);
+        const result = await deleteActivity(activityId, session.id);
         if (!result.success) {
           showStatus({
             type: 'error',
@@ -1544,7 +1544,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
               continue;
             }
 
-            const linkResult = await updateActivity(activityId, { drill_id: drillId });
+            const linkResult = await updateActivity(activityId, { drill_id: drillId }, session.id);
             if (linkResult.success) {
               linkedDrillByActivityId.set(activityId, drillId);
               if (existingDrillActivityIds.has(activityId)) {
