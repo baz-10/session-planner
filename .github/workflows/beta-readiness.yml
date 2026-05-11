@@ -60,5 +60,12 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
           SUPABASE_SERVICE_ROLE_KEY: dummy
 
+      - name: Public route smoke test
+        run: npm run smoke:public-routes
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+
       - name: Production build without Supabase env
         run: npm run build

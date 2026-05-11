@@ -26,6 +26,7 @@ npm run lint
 npm run audit:mobile
 npm audit --audit-level=high
 NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy SUPABASE_SERVICE_ROLE_KEY=dummy npm run build
+NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy SUPABASE_SERVICE_ROLE_KEY=dummy npm run smoke:public-routes
 ```
 
 If a secondary Vercel project is still connected without Supabase environment
