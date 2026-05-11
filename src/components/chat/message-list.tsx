@@ -51,8 +51,8 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading messages">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
@@ -143,6 +143,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                       href={message.metadata.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      aria-label={`Open shared file ${message.metadata.file_name || ''}`.trim()}
                       className={`flex items-center gap-2 ${isOwn ? 'text-white' : 'text-primary'}`}
                     >
                       <span>📎</span>

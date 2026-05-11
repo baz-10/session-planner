@@ -102,10 +102,19 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
     return message.content || '';
   };
 
+  const getConversationActionLabel = (conv: ConversationWithDetails) => {
+    const name = getConversationName(conv);
+    const unreadText = conv.unread_count > 0
+      ? `, ${conv.unread_count} unread message${conv.unread_count === 1 ? '' : 's'}`
+      : '';
+    const preview = getLastMessagePreview(conv.last_message);
+    return `Open ${name}${unreadText}. Last message: ${preview}`;
+  };
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      <div className="flex h-32 items-center justify-center" role="status" aria-label="Loading conversations">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
@@ -136,7 +145,10 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
       {conversations.map((conv) => (
         <button
           key={conv.id}
+          type="button"
           onClick={() => onSelectConversation(conv)}
+          aria-label={getConversationActionLabel(conv)}
+          aria-current={selectedId === conv.id ? 'true' : undefined}
           className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 text-left ${
             selectedId === conv.id ? 'bg-primary/5' : ''
           }`}

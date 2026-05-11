@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { Paperclip, Send } from 'lucide-react';
 import {
   CHAT_ATTACHMENT_EXTENSIONS,
   CHAT_ATTACHMENT_MIME_TYPES,
@@ -112,7 +113,7 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
   return (
     <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4">
       {error && (
-        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+        <div role="alert" className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
           {error}
         </div>
       )}
@@ -125,16 +126,17 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
           accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx"
           className="hidden"
           disabled={disabled || isSending}
+          aria-label="Attach file"
         />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isSending}
           className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full disabled:opacity-50"
+          aria-label="Attach file"
+          title="Attach file"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
+          <Paperclip className="h-6 w-6" aria-hidden="true" />
         </button>
 
         {/* Text input */}
@@ -148,6 +150,7 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
             }}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
+            aria-label="Message"
             rows={1}
             disabled={disabled || isSending}
             className="w-full px-4 py-2 bg-gray-100 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
@@ -160,13 +163,13 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
           type="submit"
           disabled={!message.trim() || disabled || isSending}
           className="p-2 bg-primary text-white rounded-full hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={isSending ? 'Sending message' : 'Send message'}
+          title="Send message"
         >
           {isSending ? (
-            <div className="w-6 h-6 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true" />
           ) : (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
+            <Send className="h-6 w-6" aria-hidden="true" />
           )}
         </button>
       </div>
