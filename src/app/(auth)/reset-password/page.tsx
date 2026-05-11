@@ -15,6 +15,8 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
 
     if (password !== confirmPassword) {
@@ -28,15 +30,22 @@ export default function ResetPasswordPage() {
     }
 
     setIsSubmitting(true);
-    const { error } = await updatePassword(password);
 
-    if (error) {
-      setError(error.message);
+    try {
+      const { error } = await updatePassword(password);
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      router.push('/login?message=Password%20updated.%20Please%20sign%20in.');
+    } catch (error) {
+      console.error('Unexpected error updating password:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update password');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    router.push('/login?message=Password%20updated.%20Please%20sign%20in.');
   };
 
   if (isLoading) {
@@ -88,7 +97,7 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
               <div className="form-group">
                 <label htmlFor="password" className="label">New Password</label>
                 <input
@@ -99,6 +108,7 @@ export default function ResetPasswordPage() {
                   required
                   minLength={8}
                   autoComplete="new-password"
+                  disabled={isSubmitting}
                   className="input"
                   placeholder="********"
                 />
@@ -114,6 +124,7 @@ export default function ResetPasswordPage() {
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   required
                   autoComplete="new-password"
+                  disabled={isSubmitting}
                   className="input"
                   placeholder="********"
                 />

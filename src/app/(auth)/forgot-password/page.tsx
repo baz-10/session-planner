@@ -13,19 +13,26 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setSent(false);
     setIsSubmitting(true);
 
-    const { error } = await resetPassword(email.trim());
+    try {
+      const { error } = await resetPassword(email.trim());
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setSent(true);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSent(true);
+      }
+    } catch (error) {
+      console.error('Unexpected error requesting password reset:', error);
+      setError(error instanceof Error ? error.message : 'Failed to send reset link');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   if (isLoading) {
@@ -74,7 +81,7 @@ export default function ForgotPasswordPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
           <div className="form-group">
             <label htmlFor="email" className="label">Email</label>
             <input
@@ -84,6 +91,7 @@ export default function ForgotPasswordPage() {
               onChange={(event) => setEmail(event.target.value)}
               required
               autoComplete="email"
+              disabled={isSubmitting}
               className="input"
               placeholder="coach@team.com"
             />
