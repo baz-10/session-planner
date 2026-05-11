@@ -96,6 +96,7 @@ export default function OrganizationSetupPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Create Option */}
           <button
+            type="button"
             onClick={() => setMode('create')}
             className="card card-hover p-6 text-left transition-all hover:border-teal"
           >
@@ -112,6 +113,7 @@ export default function OrganizationSetupPage() {
 
           {/* Join Option */}
           <button
+            type="button"
             onClick={() => setMode('join')}
             className="card card-hover p-6 text-left transition-all hover:border-teal"
           >
@@ -141,6 +143,7 @@ export default function OrganizationSetupPage() {
       <div className="p-6 md:p-8 max-w-xl mx-auto">
         <div className="mb-8">
           <button
+            type="button"
             onClick={() => {
               setMode('choose');
               setError(null);
@@ -162,7 +165,7 @@ export default function OrganizationSetupPage() {
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="card p-6">
+        <form onSubmit={handleCreate} className="card p-6" aria-busy={isLoading}>
           <div className="form-group">
             <label htmlFor="orgName" className="label">
               Organization Name *
@@ -209,7 +212,7 @@ export default function OrganizationSetupPage() {
             >
               Cancel
             </button>
-            <button type="submit" className="btn-primary flex-1" disabled={isLoading}>
+            <button type="submit" className="btn-primary flex-1" disabled={isLoading} aria-busy={isLoading}>
               {isLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
@@ -235,6 +238,7 @@ export default function OrganizationSetupPage() {
     <div className="p-6 md:p-8 max-w-xl mx-auto">
       <div className="mb-8">
         <button
+          type="button"
           onClick={() => {
             setMode('choose');
             setError(null);
@@ -256,7 +260,7 @@ export default function OrganizationSetupPage() {
         </div>
       )}
 
-      <form onSubmit={handleJoin} className="card p-6">
+      <form onSubmit={handleJoin} className="card p-6" aria-busy={isLoading}>
         <div className="form-group">
           <label htmlFor="organizationCode" className="label">
             Organization Invite Code *
@@ -294,6 +298,7 @@ export default function OrganizationSetupPage() {
             type="submit"
             className="btn-primary flex-1"
             disabled={isLoading || organizationCode.length !== ORGANIZATION_CODE_LENGTH}
+            aria-busy={isLoading}
           >
             {isLoading ? (
               <>

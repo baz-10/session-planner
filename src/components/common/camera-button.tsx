@@ -100,13 +100,16 @@ export function CameraButton({
       case 'icon':
         return (
           <button
+            type="button"
+            aria-label={label}
+            aria-busy={isCapturing}
             onClick={handleClick}
             disabled={isCapturing}
             className={`p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg disabled:opacity-50 ${className}`}
             title={label}
           >
             {isCapturing ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" />
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" aria-hidden="true" />
             ) : (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -129,13 +132,16 @@ export function CameraButton({
       case 'fab':
         return (
           <button
+            type="button"
+            aria-label={label}
+            aria-busy={isCapturing}
             onClick={handleClick}
             disabled={isCapturing}
             className={`fixed bottom-6 right-6 p-4 bg-primary text-white rounded-full shadow-lg hover:bg-primary-light disabled:opacity-50 z-50 ${className}`}
             title={label}
           >
             {isCapturing ? (
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent" />
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent" aria-hidden="true" />
             ) : (
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -158,12 +164,14 @@ export function CameraButton({
       default:
         return (
           <button
+            type="button"
+            aria-busy={isCapturing}
             onClick={handleClick}
             disabled={isCapturing}
             className={`px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2 ${className}`}
           >
             {isCapturing ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" />
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" aria-hidden="true" />
             ) : (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -193,13 +201,19 @@ export function CameraButton({
       {/* Source Options Modal */}
       {showOptions && (
         <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4 sm:items-center">
-          <div className="bg-white rounded-t-xl sm:rounded-xl w-full max-w-sm overflow-hidden animate-slide-up">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camera-options-title"
+            className="bg-white rounded-t-xl sm:rounded-xl w-full max-w-sm overflow-hidden animate-slide-up"
+          >
             <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-center">Add Photo</h3>
+              <h3 id="camera-options-title" className="text-lg font-semibold text-center">Add Photo</h3>
             </div>
 
             <div className="p-2">
               <button
+                type="button"
                 onClick={() => handleCapture('camera')}
                 className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 rounded-lg"
               >
@@ -231,6 +245,7 @@ export function CameraButton({
               </button>
 
               <button
+                type="button"
                 onClick={() => handleCapture('gallery')}
                 className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 rounded-lg"
               >
@@ -258,6 +273,7 @@ export function CameraButton({
 
             <div className="p-2 border-t border-gray-200">
               <button
+                type="button"
                 onClick={() => setShowOptions(false)}
                 className="w-full px-4 py-3 text-center text-gray-500 font-medium hover:bg-gray-50 rounded-lg"
               >

@@ -65,6 +65,7 @@ export function BillingDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPayingKey, setIsPayingKey] = useState<string | null>(null);
   const [isRunningReminders, setIsRunningReminders] = useState(false);
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(defaultInvoiceForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -81,16 +82,22 @@ export function BillingDashboard() {
 
     setIsRefreshing(true);
 
-    const [invoiceData, memberData, reminderData] = await Promise.all([
-      getInvoices({ status: statusFilter }),
-      canManageBilling ? getBillableMembers() : Promise.resolve([]),
-      getMyReminders({ unreadOnly: false, limit: 20 }),
-    ]);
+    try {
+      const [invoiceData, memberData, reminderData] = await Promise.all([
+        getInvoices({ status: statusFilter }),
+        canManageBilling ? getBillableMembers() : Promise.resolve([]),
+        getMyReminders({ unreadOnly: false, limit: 20 }),
+      ]);
 
-    setInvoices(invoiceData);
-    setMembers(memberData);
-    setReminders(reminderData);
-    setIsRefreshing(false);
+      setInvoices(invoiceData);
+      setMembers(memberData);
+      setReminders(reminderData);
+    } catch (error) {
+      console.error('Failed to load billing dashboard data:', error);
+      setBanner({ type: 'error', text: 'Unable to refresh billing data right now.' });
+    } finally {
+      setIsRefreshing(false);
+    }
   }, [
     canManageBilling,
     currentTeam,
@@ -153,6 +160,7 @@ export function BillingDashboard() {
   }, [invoices, statusFilter]);
 
   const unreadReminders = reminders.filter((reminder) => !reminder.isRead);
+  const invoiceSubmitting = isCreatingInvoice || isLoading;
 
   const handleRecipientToggle = (userId: string) => {
     setInvoiceForm((prev) => {
@@ -209,33 +217,39 @@ export function BillingDashboard() {
       return;
     }
 
-    const result = await createInvoice({
-      team_id: currentTeam?.id || '',
-      title: invoiceForm.title.trim(),
-      description: invoiceForm.description.trim() || undefined,
-      amount_cents: parsedAmount,
-      due_date: invoiceForm.dueDate || undefined,
-      allow_partial: invoiceForm.allowPartial || invoiceForm.useInstallments,
-      currency: 'usd',
-      installment_count: installmentCount,
-      installment_frequency_days: invoiceForm.useInstallments
-        ? clampInt(Number(invoiceForm.installmentFrequencyDays), 1, 90)
-        : undefined,
-      first_installment_due_date: invoiceForm.useInstallments
-        ? invoiceForm.firstInstallmentDueDate
-        : undefined,
-      recipient_user_ids: invoiceForm.recipientUserIds,
-    });
+    setIsCreatingInvoice(true);
 
-    if (!result.success) {
-      setFormError(result.error || 'Unable to create invoice.');
-      return;
+    try {
+      const result = await createInvoice({
+        team_id: currentTeam?.id || '',
+        title: invoiceForm.title.trim(),
+        description: invoiceForm.description.trim() || undefined,
+        amount_cents: parsedAmount,
+        due_date: invoiceForm.dueDate || undefined,
+        allow_partial: invoiceForm.allowPartial || invoiceForm.useInstallments,
+        currency: 'usd',
+        installment_count: installmentCount,
+        installment_frequency_days: invoiceForm.useInstallments
+          ? clampInt(Number(invoiceForm.installmentFrequencyDays), 1, 90)
+          : undefined,
+        first_installment_due_date: invoiceForm.useInstallments
+          ? invoiceForm.firstInstallmentDueDate
+          : undefined,
+        recipient_user_ids: invoiceForm.recipientUserIds,
+      });
+
+      if (!result.success) {
+        setFormError(result.error || 'Unable to create invoice.');
+        return;
+      }
+
+      setShowCreateModal(false);
+      resetCreateForm();
+      setBanner({ type: 'success', text: 'Invoice created successfully.' });
+      await loadData();
+    } finally {
+      setIsCreatingInvoice(false);
     }
-
-    setShowCreateModal(false);
-    resetCreateForm();
-    setBanner({ type: 'success', text: 'Invoice created successfully.' });
-    await loadData();
   };
 
   const handlePayInvoice = async (
@@ -266,20 +280,24 @@ export function BillingDashboard() {
     }
 
     setIsRunningReminders(true);
-    const result = await runReminderNudges(currentTeam.id);
-    setIsRunningReminders(false);
 
-    if (!result.success) {
-      setBanner({ type: 'error', text: result.error || 'Failed to run reminder nudges.' });
-      return;
+    try {
+      const result = await runReminderNudges(currentTeam.id);
+
+      if (!result.success) {
+        setBanner({ type: 'error', text: result.error || 'Failed to run reminder nudges.' });
+        return;
+      }
+
+      setBanner({
+        type: 'success',
+        text: `Reminder run complete. ${result.created || 0} nudges created, ${result.overdueMarked || 0} installments marked overdue.`,
+      });
+
+      await loadData();
+    } finally {
+      setIsRunningReminders(false);
     }
-
-    setBanner({
-      type: 'success',
-      text: `Reminder run complete. ${result.created || 0} nudges created, ${result.overdueMarked || 0} installments marked overdue.`,
-    });
-
-    await loadData();
   };
 
   const handleMarkReminderRead = async (reminderId: string) => {
@@ -308,6 +326,7 @@ export function BillingDashboard() {
     <div className="space-y-6">
       {banner && (
         <div
+          role={banner.type === 'error' ? 'alert' : 'status'}
           className={`rounded-md border px-4 py-3 text-sm ${
             banner.type === 'success'
               ? 'bg-green-50 border-green-200 text-green-700'
@@ -342,6 +361,7 @@ export function BillingDashboard() {
                   </div>
                   {!reminder.isRead && (
                     <button
+                      type="button"
                       onClick={() => handleMarkReminderRead(reminder.id)}
                       className="text-xs text-primary hover:underline"
                     >
@@ -371,6 +391,7 @@ export function BillingDashboard() {
 
           <div className="flex flex-wrap items-center gap-2">
             <select
+              aria-label="Filter invoices by status"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as 'all' | InvoiceStatus)}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -385,13 +406,16 @@ export function BillingDashboard() {
             {canManageBilling && (
               <>
                 <button
+                  type="button"
                   onClick={handleRunReminders}
                   disabled={isRunningReminders}
+                  aria-busy={isRunningReminders}
                   className="px-4 py-2 border border-primary text-primary rounded-md hover:bg-primary/5 disabled:opacity-50"
                 >
                   {isRunningReminders ? 'Running Nudges...' : 'Run Reminder Nudges'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     if (members.length > 0) {
                       setInvoiceForm((prev) => ({
@@ -494,6 +518,7 @@ export function BillingDashboard() {
                         {currentRecipient ? (
                           nextInstallment ? (
                             <button
+                              type="button"
                               onClick={() =>
                                 handlePayInvoice(
                                   invoice.id,
@@ -502,6 +527,7 @@ export function BillingDashboard() {
                                 )
                               }
                               disabled={isPayingKey !== null}
+                              aria-busy={isPayingKey === nextInstallment.id}
                               className="px-3 py-1.5 text-sm border border-primary text-primary rounded-md hover:bg-primary/5 disabled:opacity-50"
                             >
                               {isPayingKey === nextInstallment.id
@@ -510,10 +536,12 @@ export function BillingDashboard() {
                             </button>
                           ) : myDue > 0 ? (
                             <button
+                              type="button"
                               onClick={() =>
                                 handlePayInvoice(invoice.id, undefined, formatCurrency(myDue))
                               }
                               disabled={isPayingKey !== null}
+                              aria-busy={isPayingKey === invoice.id}
                               className="px-3 py-1.5 text-sm border border-primary text-primary rounded-md hover:bg-primary/5 disabled:opacity-50"
                             >
                               {isPayingKey === invoice.id
@@ -542,6 +570,8 @@ export function BillingDashboard() {
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Create Invoice</h3>
               <button
+                type="button"
+                aria-label="Close create invoice dialog"
                 onClick={() => {
                   setShowCreateModal(false);
                   resetCreateForm();
@@ -554,9 +584,9 @@ export function BillingDashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateInvoice} className="p-5 space-y-4">
+            <form onSubmit={handleCreateInvoice} className="p-5 space-y-4" aria-busy={invoiceSubmitting}>
               {formError && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {formError}
                 </div>
               )}
@@ -747,10 +777,11 @@ export function BillingDashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={invoiceSubmitting}
+                  aria-busy={invoiceSubmitting}
                   className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
                 >
-                  {isLoading ? 'Creating...' : 'Create Invoice'}
+                  {invoiceSubmitting ? 'Creating...' : 'Create Invoice'}
                 </button>
               </div>
             </form>
