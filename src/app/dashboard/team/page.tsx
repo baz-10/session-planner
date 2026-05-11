@@ -159,9 +159,7 @@ export default function TeamSettingsPage() {
     }
   };
 
-  const copyLink = async () => {
-    if (inviteActionInFlight) return false;
-
+  const copyInviteLinkToClipboard = async (successMessage?: string) => {
     if (!inviteLink) {
       showInviteFeedback({
         type: 'error',
@@ -170,20 +168,30 @@ export default function TeamSettingsPage() {
       return false;
     }
 
+    const didCopy = await copyTextToClipboard(inviteLink);
+    if (didCopy) {
+      setLinkCopied(true);
+      if (linkTimerRef.current) clearTimeout(linkTimerRef.current);
+      linkTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
+      if (successMessage) {
+        showInviteFeedback({ type: 'success', text: successMessage });
+      }
+      return true;
+    }
+
+    showInviteFeedback({
+      type: 'error',
+      text: 'Invite link could not be copied. Try the email invite or copy the team code.',
+    });
+    return false;
+  };
+
+  const copyLink = async () => {
+    if (inviteActionInFlight) return false;
+
     setInviteAction('link');
     try {
-      const didCopy = await copyTextToClipboard(inviteLink);
-      if (didCopy) {
-        setLinkCopied(true);
-        linkTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
-        return true;
-      }
-
-      showInviteFeedback({
-        type: 'error',
-        text: 'Invite link could not be copied. Try the email invite or copy the team code.',
-      });
-      return false;
+      return await copyInviteLinkToClipboard();
     } finally {
       setInviteAction(null);
     }
@@ -214,10 +222,10 @@ export default function TeamSettingsPage() {
           if (err instanceof DOMException && err.name === 'AbortError') {
             return;
           }
-          await copyLink();
+          await copyInviteLinkToClipboard('Invite link copied.');
         }
       } else {
-        await copyLink();
+        await copyInviteLinkToClipboard('Invite link copied.');
       }
     } finally {
       setInviteAction(null);
