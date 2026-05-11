@@ -18,11 +18,19 @@ const QUICK_REACTIONS = ['👍', '❤️', '🎉', '😂', '😮', '😢'];
 
 export function ReactionPicker({ reactions, onReact, disabled = false }: ReactionPickerProps) {
   const [showPicker, setShowPicker] = useState(false);
+  const [isReacting, setIsReacting] = useState(false);
+  const isDisabled = disabled || isReacting;
 
-  const handleReact = (emoji: string) => {
-    if (disabled) return;
-    onReact(emoji);
-    setShowPicker(false);
+  const handleReact = async (emoji: string) => {
+    if (isDisabled) return;
+
+    setIsReacting(true);
+    try {
+      await onReact(emoji);
+      setShowPicker(false);
+    } finally {
+      setIsReacting(false);
+    }
   };
 
   return (
@@ -33,7 +41,8 @@ export function ReactionPicker({ reactions, onReact, disabled = false }: Reactio
           type="button"
           key={reaction.emoji}
           onClick={() => handleReact(reaction.emoji)}
-          disabled={disabled}
+          disabled={isDisabled}
+          aria-busy={isReacting}
           className={`flex items-center gap-1 px-2 py-1 rounded-full text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
             reaction.hasReacted
               ? 'bg-primary/10 text-primary border border-primary/30'
@@ -50,7 +59,8 @@ export function ReactionPicker({ reactions, onReact, disabled = false }: Reactio
         <button
           type="button"
           onClick={() => setShowPicker(!showPicker)}
-          disabled={disabled}
+          disabled={isDisabled}
+          aria-busy={isReacting}
           aria-expanded={showPicker}
           aria-label="Add reaction"
           className="flex items-center justify-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-md disabled:cursor-not-allowed disabled:opacity-50"
@@ -73,7 +83,8 @@ export function ReactionPicker({ reactions, onReact, disabled = false }: Reactio
                     type="button"
                     key={emoji}
                     onClick={() => handleReact(emoji)}
-                    disabled={disabled}
+                    disabled={isDisabled}
+                    aria-busy={isReacting}
                     className="w-8 h-8 flex items-center justify-center text-xl hover:bg-gray-100 rounded disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {emoji}
