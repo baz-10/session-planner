@@ -113,11 +113,20 @@ Run these with real test accounts on the canonical Vercel deployment:
 Capture failures with screenshot, account role, route, expected result, actual
 result, console excerpt, and network/API response where available.
 
+Before sharing a URL with beta testers, verify it is not behind Vercel
+Authentication or other deployment protection. On 2026-05-11 the PR preview
+alias returned HTTP 401 for `/`, `/login/`, and `/join/?role=parent`; use the
+public production alias after merge, or disable/grant access through Vercel
+Deployment Protection before asking external testers to use a preview URL.
+
 ## Remaining External Gates
 
 - Both connected Vercel projects should be green before merge. `session-planner`
   remains the canonical beta target; `session-planner-hotfix` is a duplicate
   project that should be monitored or disconnected.
+- Beta tester links must be publicly reachable or explicitly provisioned for
+  every tester; Vercel-protected preview links are not sufficient for external
+  beta rollout.
 - Live Supabase migration state must be verified from the Supabase project.
 - Authenticated smoke tests require real beta/test accounts on the canonical
   deployment.
