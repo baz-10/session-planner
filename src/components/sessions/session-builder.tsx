@@ -1285,6 +1285,8 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   );
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
+
     if (!session.name?.trim()) {
       showStatus({
         type: 'error',
@@ -1411,10 +1413,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     } finally {
       setIsSaving(false);
     }
-  }, [session, currentTeam, canManageSessions, createSession, updateSession, persistUnsavedActivities, router, showStatus]);
+  }, [session, currentTeam, canManageSessions, createSession, updateSession, persistUnsavedActivities, router, showStatus, isSaving]);
 
   // Save as new (duplicate)
   const handleSaveAsNew = useCallback(async () => {
+    if (isSaving) return;
+
     if (!canManageSessions) {
       showStatus({
         type: 'error',
@@ -1464,10 +1468,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     promptForText,
     router,
     showStatus,
+    isSaving,
   ]);
 
   // Print session
   const handlePrint = useCallback(() => {
+    if (isSaving) return;
     if (!session.name) return;
     const result = printSessionPlan(session as SessionWithActivities, currentTeam?.name || '', {
       categories,
@@ -1481,9 +1487,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         text: result.error,
       });
     }
-  }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName, showStatus]);
+  }, [session, currentTeam, categories, drillCategoryIdsByDrillId, displayName, showStatus, isSaving]);
 
   const handleSaveActivitiesToLibrary = useCallback(async () => {
+    if (isSaving || isSavingActivitiesToLibrary) return;
+
     if (!canManageSessions) return;
 
     const activities = (session.activities || []) as ActivityWithCategory[];
@@ -1632,10 +1640,12 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
     } finally {
       setIsSavingActivitiesToLibrary(false);
     }
-  }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext, showStatus]);
+  }, [canManageSessions, session.activities, session.id, getDrills, createDrill, updateActivity, loadDrillCategoryContext, showStatus, isSaving, isSavingActivitiesToLibrary]);
 
   // Clear form
   const handleClear = useCallback(async () => {
+    if (isSaving) return;
+
     if (!canManageSessions) return;
 
     if (session.id) {
@@ -1701,7 +1711,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
       activities: [],
     });
     setHasUnsavedChanges(false);
-  }, [canManageSessions, confirmAction, hasUnsavedChanges, loadSession, session.id, showStatus]);
+  }, [canManageSessions, confirmAction, hasUnsavedChanges, loadSession, session.id, showStatus, isSaving]);
 
   const activities = useMemo(
     () => (session.activities || []) as ActivityWithCategory[],
