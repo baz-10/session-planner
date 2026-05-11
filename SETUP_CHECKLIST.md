@@ -97,6 +97,16 @@ current beta-readiness migrations:
 
 Do not treat a green Vercel build as proof that migrations are applied.
 
+With a direct database URL and `psql` available locally, verify the live beta
+migrations with:
+
+```bash
+SUPABASE_DB_URL=postgresql://... npm run verify:supabase-migrations
+```
+
+By default this checks the current beta-readiness migration range (`00009` and
+newer). Set `VERIFY_ALL_MIGRATIONS=1` to compare every local migration file.
+
 ## Beta Smoke Test
 
 Run these with real test accounts on the canonical Vercel deployment:
