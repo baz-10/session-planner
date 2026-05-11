@@ -116,13 +116,24 @@ export default function DashboardLayout({
   };
 
   useEffect(() => {
+    const isOrganizationInviteSetup =
+      pathname === '/dashboard/organization/setup' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('code');
+
     if (!isLoading && !user) {
       const redirectTarget =
         typeof window !== 'undefined'
           ? `${window.location.pathname}${window.location.search}`
           : pathname;
       router.replace(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
-    } else if (!isLoading && user && profile && !profile.onboarding_completed) {
+    } else if (
+      !isLoading &&
+      user &&
+      profile &&
+      !profile.onboarding_completed &&
+      !isOrganizationInviteSetup
+    ) {
       router.replace('/onboarding');
     }
   }, [isLoading, pathname, profile, router, user]);
