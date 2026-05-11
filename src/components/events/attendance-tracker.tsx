@@ -193,14 +193,14 @@ export function AttendanceTracker({
       )}
 
       {/* Quick actions */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <span className="text-sm text-gray-500">Mark all as:</span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-full text-sm text-gray-500 sm:w-auto">Mark all as:</span>
           {ATTENDANCE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => markAllAs(opt.value)}
-              className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+              className="min-h-10 rounded border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50"
             >
               {opt.label}
             </button>
@@ -209,14 +209,14 @@ export function AttendanceTracker({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
+          className="min-h-11 w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-light disabled:opacity-50 sm:w-auto"
         >
           {isSaving ? 'Saving...' : 'Save Attendance'}
         </button>
       </div>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-4 gap-2 text-center">
+      <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
         <div className="bg-green-50 rounded-lg p-2">
           <div className="text-lg font-bold text-green-600">{stats.present}</div>
           <div className="text-xs text-gray-500">Present</div>
@@ -238,24 +238,24 @@ export function AttendanceTracker({
       {/* Player list */}
       <div className="border rounded-lg divide-y">
         {Array.from(attendance.values()).map((player) => (
-          <div key={player.playerId} className="p-3 flex items-center gap-4">
+          <div key={player.playerId} className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:gap-4">
             {/* Player info */}
-            <div className="w-48 flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 md:w-48 md:shrink-0">
               {player.jerseyNumber && (
-                <span className="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
                   {player.jerseyNumber}
                 </span>
               )}
-              <span className="font-medium">{player.playerName}</span>
+              <span className="truncate font-medium">{player.playerName}</span>
             </div>
 
             {/* Status buttons */}
-            <div className="flex gap-1">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:gap-1">
               {ATTENDANCE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => updatePlayerStatus(player.playerId, opt.value)}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  className={`min-h-10 rounded px-3 py-1 text-sm font-medium transition-colors ${
                     player.status === opt.value
                       ? opt.color.replace('100', '500').replace('700', 'white')
                       : opt.color + ' hover:opacity-80'
@@ -287,7 +287,7 @@ export function AttendanceTracker({
               value={player.notes}
               onChange={(e) => updatePlayerNotes(player.playerId, e.target.value)}
               placeholder="Notes..."
-              className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+              className="min-h-10 w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary md:flex-1"
             />
           </div>
         ))}
