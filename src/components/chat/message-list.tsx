@@ -49,6 +49,11 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
     return current.sender_id !== next.sender_id;
   };
 
+  const getAttachmentFallbackLabel = (message: MessageWithSender) => {
+    if (message.type === 'image') return 'Image could not load. Open the conversation again to retry.';
+    return `${message.metadata?.file_name || 'File'} could not load. Open the conversation again to retry.`;
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading messages">
@@ -138,6 +143,12 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                     </div>
                   )}
 
+                  {message.type === 'image' && !message.metadata?.file_url && (
+                    <p className="text-sm italic" role="status">
+                      {getAttachmentFallbackLabel(message)}
+                    </p>
+                  )}
+
                   {message.type === 'file' && message.metadata?.file_url && (
                     <a
                       href={message.metadata.file_url}
@@ -149,6 +160,12 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                       <span>📎</span>
                       <span className="underline">{message.metadata.file_name || 'File'}</span>
                     </a>
+                  )}
+
+                  {message.type === 'file' && !message.metadata?.file_url && (
+                    <p className="text-sm italic" role="status">
+                      {getAttachmentFallbackLabel(message)}
+                    </p>
                   )}
 
                   {message.type === 'system' && (

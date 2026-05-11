@@ -12,7 +12,7 @@ interface TeamMemberWithProfile extends TeamMember {
 
 interface NewChatModalProps {
   onClose: () => void;
-  onConversationCreated: (conversationId: string) => void;
+  onConversationCreated: (conversationId: string) => void | Promise<void>;
 }
 
 export function NewChatModal({ onClose, onConversationCreated }: NewChatModalProps) {
@@ -75,6 +75,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   });
 
   const toggleSelection = (userId: string) => {
+    setError('');
     if (mode === 'dm') {
       setSelectedIds([userId]);
     } else {
@@ -90,33 +91,35 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
     setIsCreating(true);
     setError('');
 
-    if (mode === 'dm') {
-      const result = await getOrCreateDM(selectedIds[0]);
-      if (result.success && result.conversation) {
-        onConversationCreated(result.conversation.id);
-        setIsCreating(false);
-        onClose();
-      } else {
-        setError(result.error || 'Failed to create direct message. Please try again.');
-        setIsCreating(false);
-      }
-      return;
-    } else {
-      if (!groupName.trim()) {
-        setError('Enter a group name before creating the chat.');
-        setIsCreating(false);
+    try {
+      if (mode === 'dm') {
+        const result = await getOrCreateDM(selectedIds[0]);
+        if (result.success && result.conversation) {
+          await onConversationCreated(result.conversation.id);
+          onClose();
+        } else {
+          setError(result.error || 'Failed to create direct message. Please try again.');
+        }
         return;
       }
+
+      if (!groupName.trim()) {
+        setError('Enter a group name before creating the chat.');
+        return;
+      }
+
       const result = await createGroupChat(groupName.trim(), selectedIds);
       if (result.success && result.conversation) {
-        onConversationCreated(result.conversation.id);
-        setIsCreating(false);
+        await onConversationCreated(result.conversation.id);
         onClose();
       } else {
         setError(result.error || 'Failed to create group chat. Please try again.');
-        setIsCreating(false);
       }
-      return;
+    } catch (createError) {
+      console.error('Error creating conversation:', createError);
+      setError('Conversation could not be created. Check your connection and try again.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -134,7 +137,8 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 rounded"
+            disabled={isCreating}
+            className="p-1 text-gray-500 hover:text-gray-700 rounded disabled:cursor-wait disabled:opacity-50"
             aria-label="Close new conversation dialog"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -144,7 +148,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
         </div>
 
         {error && (
-          <div className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+          <div role="alert" className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
             {error}
           </div>
         )}
@@ -157,6 +161,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
               onClick={() => {
                 setMode('dm');
                 setSelectedIds([]);
+                setError('');
               }}
               aria-pressed={mode === 'dm'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -170,6 +175,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
               onClick={() => {
                 setMode('group');
                 setSelectedIds([]);
+                setError('');
               }}
               aria-pressed={mode === 'group'}
               className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -187,7 +193,10 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             <input
               type="text"
               value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
+              onChange={(e) => {
+                setGroupName(e.target.value);
+                setError('');
+              }}
               placeholder="Group name"
               aria-label="Group chat name"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
@@ -210,11 +219,11 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
         {/* Members list */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            <div className="flex items-center justify-center py-8" role="status" aria-label="Loading team members">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" aria-hidden="true"></div>
             </div>
           ) : memberLoadError ? (
-            <div className="px-4 py-8 text-center">
+            <div role="alert" className="px-4 py-8 text-center">
               <p className="mb-3 text-sm font-medium text-red-700">{memberLoadError}</p>
               <button
                 type="button"
@@ -278,7 +287,8 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md"
+            disabled={isCreating}
+            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md disabled:cursor-wait disabled:opacity-50"
           >
             Cancel
           </button>

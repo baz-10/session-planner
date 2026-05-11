@@ -124,7 +124,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
       <div className="text-center py-8 text-gray-500">
         {loadError ? (
           <>
-            <p className="px-4 text-sm font-medium text-red-600">{loadError}</p>
+            <p role="alert" className="px-4 text-sm font-medium text-red-600">{loadError}</p>
             <button
               type="button"
               onClick={() => void loadConversations()}

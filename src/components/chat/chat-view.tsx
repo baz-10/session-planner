@@ -153,7 +153,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       {loadError ? (
         <div className="flex flex-1 items-center justify-center bg-background px-6 text-center">
           <div>
-            <p className="text-sm font-semibold text-red-600">{loadError}</p>
+            <p role="alert" className="text-sm font-semibold text-red-600">{loadError}</p>
             <button
               type="button"
               onClick={() => void loadMessages()}

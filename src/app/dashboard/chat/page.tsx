@@ -136,8 +136,10 @@ export default function ChatPage() {
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h1 className="text-xl font-bold text-navy">Messages</h1>
           <button
+            type="button"
             onClick={() => setShowNewChat(true)}
             className="p-2 text-teal hover:bg-teal-glow rounded-full transition-colors"
+            aria-label="Start a new conversation"
             title="New conversation"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
