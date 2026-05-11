@@ -3,29 +3,31 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { ClipboardList, UserRound, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { TeamRole } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 type UserType = 'coach' | 'player' | 'parent';
 
-const userTypeInfo: Record<UserType, { label: string; description: string; icon: string; role: TeamRole }> = {
+const userTypeInfo: Record<UserType, { label: string; description: string; Icon: LucideIcon; role: TeamRole }> = {
   coach: {
     label: "I'm a Coach",
     description: 'Create and manage teams, plan practices, track attendance',
-    icon: '🏀',
+    Icon: ClipboardList,
     role: 'coach',
   },
   player: {
     label: "I'm a Player",
     description: 'Join your team, view schedules, RSVP to events',
-    icon: '👟',
+    Icon: UserRound,
     role: 'player',
   },
   parent: {
     label: "I'm a Parent",
     description: 'Manage your children, RSVP on their behalf, stay informed',
-    icon: '👨‍👩‍👧‍👦',
+    Icon: Users,
     role: 'parent',
   },
 };
@@ -145,6 +147,8 @@ export function SignupForm() {
     redirectTo === '/onboarding'
       ? '/login'
       : `/login?redirect=${encodeURIComponent(redirectTo)}`;
+  const selectedUserTypeInfo = userType ? userTypeInfo[userType] : null;
+  const SelectedUserTypeIcon = selectedUserTypeInfo?.Icon;
 
   return (
     <div className="min-h-screen flex">
@@ -228,25 +232,31 @@ export function SignupForm() {
 
               <div className="space-y-3">
                 {(Object.entries(userTypeInfo) as [UserType, typeof userTypeInfo.coach][]).map(
-                  ([type, info]) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => handleTypeSelect(type)}
-                      disabled={isSubmitting}
-                      className="w-full p-5 bg-white border-2 border-border rounded-xl hover:border-teal hover:bg-teal-glow transition-all text-left group disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="text-3xl">{info.icon}</span>
-                        <div>
-                          <div className="font-semibold text-navy group-hover:text-teal-dark">
-                            {info.label}
+                  ([type, info]) => {
+                    const RoleIcon = info.Icon;
+
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => handleTypeSelect(type)}
+                        disabled={isSubmitting}
+                        className="w-full p-5 bg-white border-2 border-border rounded-xl hover:border-teal hover:bg-teal-glow transition-all text-left group disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <div className="flex items-start gap-4">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-glow text-teal-dark">
+                            <RoleIcon className="h-6 w-6" aria-hidden="true" />
+                          </span>
+                          <div>
+                            <div className="font-semibold text-navy group-hover:text-teal-dark">
+                              {info.label}
+                            </div>
+                            <div className="text-sm text-text-secondary mt-1">{info.description}</div>
                           </div>
-                          <div className="text-sm text-text-secondary mt-1">{info.description}</div>
                         </div>
-                      </div>
-                    </button>
-                  )
+                      </button>
+                    );
+                  }
                 )}
               </div>
 
@@ -273,8 +283,10 @@ export function SignupForm() {
 
               <h2 className="text-3xl font-bold text-navy mb-2">Create account</h2>
               <p className="text-text-secondary mb-8 flex items-center gap-2">
-                <span className="text-xl">{userType && userTypeInfo[userType].icon}</span>
-                {userType && userTypeInfo[userType].label}
+                {SelectedUserTypeIcon && (
+                  <SelectedUserTypeIcon className="h-5 w-5 text-teal" aria-hidden="true" />
+                )}
+                {selectedUserTypeInfo?.label}
               </p>
 
               {error && (

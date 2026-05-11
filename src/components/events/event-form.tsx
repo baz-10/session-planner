@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
+import { CalendarDays, ClipboardList, Target, Trophy } from 'lucide-react';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
 import type { Event, Session, EventType, CreateEventInput } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 interface EventFormProps {
   event?: Event | null;
@@ -12,11 +14,11 @@ interface EventFormProps {
   onSuccess: () => void;
 }
 
-const EVENT_TYPES: { value: EventType; label: string; icon: string }[] = [
-  { value: 'practice', label: 'Practice', icon: '🏀' },
-  { value: 'game', label: 'Game', icon: '🏆' },
-  { value: 'tournament', label: 'Tournament', icon: '🎯' },
-  { value: 'other', label: 'Other', icon: '📅' },
+const EVENT_TYPES: { value: EventType; label: string; Icon: LucideIcon }[] = [
+  { value: 'practice', label: 'Practice', Icon: ClipboardList },
+  { value: 'game', label: 'Game', Icon: Trophy },
+  { value: 'tournament', label: 'Tournament', Icon: Target },
+  { value: 'other', label: 'Other', Icon: CalendarDays },
 ];
 const EVENT_FORM_ID = 'event-form';
 
@@ -159,22 +161,27 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               Event Type
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {EVENT_TYPES.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setType(t.value)}
-                  disabled={isSaving}
-                  className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-colors ${
-                    type === t.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-gray-200 hover:border-gray-300'
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  <span className="text-2xl">{t.icon}</span>
-                  <span className="text-xs font-medium">{t.label}</span>
-                </button>
-              ))}
+              {EVENT_TYPES.map((t) => {
+                const TypeIcon = t.Icon;
+                const isSelected = type === t.value;
+
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setType(t.value)}
+                    disabled={isSaving}
+                    className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-colors ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <TypeIcon className="h-6 w-6" aria-hidden="true" />
+                    <span className="text-xs font-medium">{t.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
