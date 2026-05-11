@@ -78,6 +78,8 @@ export function SessionsList() {
   }, [currentTeam, authLoading, loadSessions]);
 
   const handleDelete = async (id: string, name: string) => {
+    if (hasPendingAction) return;
+
     if (!canManageSessions) {
       setActionMessage({
         type: 'error',
@@ -122,6 +124,8 @@ export function SessionsList() {
   };
 
   const handleDuplicate = async (id: string, name: string) => {
+    if (hasPendingAction) return;
+
     if (!canManageSessions) {
       setActionMessage({
         type: 'error',
