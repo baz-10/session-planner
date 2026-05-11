@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { AlertCircle, BookOpen } from 'lucide-react';
 import { useDrills } from '@/hooks/use-drills';
 import { DrillForm } from './drill-form';
 import { CategoryManager } from './category-manager';
@@ -237,7 +238,9 @@ export function DrillLibrary() {
       {/* Drill List */}
       {loadError ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-6xl mb-4">!</div>
+          <div className="mb-4 flex justify-center text-red-500">
+            <AlertCircle className="h-12 w-12" aria-hidden="true" />
+          </div>
           <h2 className="text-xl font-semibold mb-2">Could not load drills</h2>
           <p className="text-gray-600 mb-6">{loadError}</p>
           <button
@@ -250,7 +253,9 @@ export function DrillLibrary() {
         </div>
       ) : visibleDrills.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-6xl mb-4">📚</div>
+          <div className="mb-4 flex justify-center text-primary">
+            <BookOpen className="h-12 w-12" aria-hidden="true" />
+          </div>
           <h2 className="text-xl font-semibold mb-2">
             {searchQuery || selectedTag ? 'No Drills Found' : 'No Drills Yet'}
           </h2>

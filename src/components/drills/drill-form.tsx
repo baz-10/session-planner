@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { FileText, ImageIcon, Paperclip, Plus, Video } from 'lucide-react';
 import { useDrills } from '@/hooks/use-drills';
 import { useConfirmDialog } from '@/components/ui';
 import type { Drill, DrillCategory, DrillMedia } from '@/types/database';
@@ -162,10 +163,10 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   };
 
   const getMediaIcon = (type: string) => {
-    if (type.startsWith('image/')) return '🖼️';
-    if (type.startsWith('video/')) return '🎬';
-    if (type === 'application/pdf') return '📄';
-    return '📎';
+    if (type.startsWith('image/')) return <ImageIcon className="h-4 w-4" aria-hidden="true" />;
+    if (type.startsWith('video/')) return <Video className="h-4 w-4" aria-hidden="true" />;
+    if (type === 'application/pdf') return <FileText className="h-4 w-4" aria-hidden="true" />;
+    return <Paperclip className="h-4 w-4" aria-hidden="true" />;
   };
 
   return (
@@ -316,13 +317,13 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                       key={m.id}
                       className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
                     >
-                      <div className="flex items-center gap-2">
-                        <span>{getMediaIcon(m.type)}</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-gray-500">{getMediaIcon(m.type)}</span>
                         <a
                           href={m.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline truncate max-w-[200px]"
+                          className="min-w-0 max-w-[200px] truncate text-sm text-primary hover:underline"
                         >
                           {m.filename}
                         </a>
@@ -367,9 +368,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
+                    <Plus className="h-5 w-5 text-gray-400" aria-hidden="true" />
                     <span className="text-sm text-gray-600">Add images, videos, or PDFs</span>
                   </>
                 )}

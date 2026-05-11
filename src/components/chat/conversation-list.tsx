@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { ImageIcon, MessageCircle, Paperclip, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
@@ -81,25 +82,47 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
     return 'Conversation';
   };
 
-  const getConversationAvatar = (conv: ConversationWithDetails) => {
-    if (conv.type === 'team') return '👥';
-    if (conv.type === 'coaches') return '🏀';
-    if (conv.type === 'group') return '👥';
-
-    // For DMs, show the other person's initial
+  const renderConversationAvatar = (conv: ConversationWithDetails) => {
     if (conv.type === 'direct') {
       const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
       return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';
     }
 
-    return '💬';
+    if (conv.type === 'team' || conv.type === 'group') {
+      return <Users className="h-5 w-5" aria-hidden="true" />;
+    }
+
+    return <MessageCircle className="h-5 w-5" aria-hidden="true" />;
   };
 
-  const getLastMessagePreview = (message: Message | null) => {
+  const getLastMessagePreviewText = (message: Message | null) => {
     if (!message) return 'No messages yet';
-    if (message.type === 'image') return '📷 Image';
-    if (message.type === 'file') return '📎 File';
+    if (message.type === 'image') return 'Image';
+    if (message.type === 'file') return 'File';
     return message.content || '';
+  };
+
+  const renderLastMessagePreview = (message: Message | null) => {
+    const text = getLastMessagePreviewText(message);
+    if (message?.type === 'image') {
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{text}</span>
+        </span>
+      );
+    }
+
+    if (message?.type === 'file') {
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{text}</span>
+        </span>
+      );
+    }
+
+    return text;
   };
 
   const getConversationActionLabel = (conv: ConversationWithDetails) => {
@@ -107,7 +130,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
     const unreadText = conv.unread_count > 0
       ? `, ${conv.unread_count} unread message${conv.unread_count === 1 ? '' : 's'}`
       : '';
-    const preview = getLastMessagePreview(conv.last_message);
+    const preview = getLastMessagePreviewText(conv.last_message);
     return `Open ${name}${unreadText}. Last message: ${preview}`;
   };
 
@@ -157,7 +180,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0 ${
             conv.type === 'direct' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
           }`}>
-            {getConversationAvatar(conv)}
+            {renderConversationAvatar(conv)}
           </div>
 
           {/* Content */}
@@ -174,7 +197,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
             </div>
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500 truncate">
-                {getLastMessagePreview(conv.last_message)}
+                {renderLastMessagePreview(conv.last_message)}
               </p>
               {conv.unread_count > 0 && (
                 <span className="ml-2 w-5 h-5 bg-primary text-white text-xs rounded-full flex items-center justify-center flex-shrink-0">

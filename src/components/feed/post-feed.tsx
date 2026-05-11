@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Megaphone } from 'lucide-react';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
 import { PostCard } from './post-card';
@@ -124,7 +125,9 @@ export function PostFeed() {
       {/* Posts list */}
       {posts.length === 0 && !isLoading && !loadError ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-6xl mb-4">📢</div>
+          <div className="mb-4 flex justify-center text-primary">
+            <Megaphone className="h-12 w-12" aria-hidden="true" />
+          </div>
           <h2 className="text-xl font-semibold mb-2">No Posts Yet</h2>
           <p className="text-gray-600">
             {canPost

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { Download, FileAudio, FileSpreadsheet, FileText, Paperclip } from 'lucide-react';
 import type { PostAttachment } from '@/types/database';
 
 interface AttachmentGalleryProps {
@@ -32,11 +33,16 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
 
   const getFileIcon = (filename: string | null) => {
     const ext = filename?.split('.').pop()?.toLowerCase();
-    if (ext === 'pdf') return '📄';
-    if (['doc', 'docx'].includes(ext || '')) return '📝';
-    if (['xls', 'xlsx'].includes(ext || '')) return '📊';
-    if (['mp3', 'wav', 'ogg'].includes(ext || '')) return '🎵';
-    return '📎';
+    if (ext === 'pdf' || ['doc', 'docx'].includes(ext || '')) {
+      return <FileText className="h-6 w-6" aria-hidden="true" />;
+    }
+    if (['xls', 'xlsx'].includes(ext || '')) {
+      return <FileSpreadsheet className="h-6 w-6" aria-hidden="true" />;
+    }
+    if (['mp3', 'wav', 'ogg'].includes(ext || '')) {
+      return <FileAudio className="h-6 w-6" aria-hidden="true" />;
+    }
+    return <Paperclip className="h-6 w-6" aria-hidden="true" />;
   };
 
   return (
@@ -99,7 +105,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
               aria-label={`Open ${doc.filename || 'attached document'}`}
             >
-              <span className="text-2xl">{getFileIcon(doc.filename)}</span>
+              <span className="text-gray-500">{getFileIcon(doc.filename)}</span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900 truncate">
                   {doc.filename || 'Document'}
@@ -108,9 +114,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
                   {formatFileSize(doc.size_bytes)}
                 </div>
               </div>
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
+              <Download className="h-5 w-5 text-gray-400" aria-hidden="true" />
             </a>
           ))}
         </div>
