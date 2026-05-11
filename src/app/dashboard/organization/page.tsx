@@ -39,6 +39,7 @@ export default function OrganizationSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState('');
   const [updatingMemberId, setUpdatingMemberId] = useState('');
+  const [pageOrigin, setPageOrigin] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -47,9 +48,13 @@ export default function OrganizationSettingsPage() {
   const adminCount = members.filter((member) => member.role === 'admin').length;
   const organizationInviteCode = currentOrganization?.organization_code || '';
   const organizationInviteLink =
-    typeof window !== 'undefined' && organizationInviteCode
-      ? `${window.location.origin}/dashboard/organization/setup?code=${encodeURIComponent(organizationInviteCode)}`
+    pageOrigin && organizationInviteCode
+      ? `${pageOrigin}/dashboard/organization/setup?code=${encodeURIComponent(organizationInviteCode)}`
       : '';
+
+  useEffect(() => {
+    setPageOrigin(window.location.origin);
+  }, []);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -432,7 +437,11 @@ export default function OrganizationSettingsPage() {
               aria-label="Email address to invite"
               className="input flex-1"
             />
-            <button type="submit" className="btn-accent whitespace-nowrap">
+            <button
+              type="submit"
+              disabled={!organizationInviteCode || !organizationInviteLink}
+              className="btn-accent whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
+            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -445,7 +454,7 @@ export default function OrganizationSettingsPage() {
             </button>
           </form>
           {inviteFeedback && (
-            <p className="text-sm text-teal mt-2 animate-fade-in">{inviteFeedback}</p>
+            <p role="status" className="text-sm text-teal mt-2 animate-fade-in">{inviteFeedback}</p>
           )}
         </div>
       )}

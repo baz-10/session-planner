@@ -35,6 +35,7 @@ export default function TeamSettingsPage() {
   const [memberActionError, setMemberActionError] = useState('');
   const [memberActionSuccess, setMemberActionSuccess] = useState('');
   const [updatingMemberId, setUpdatingMemberId] = useState('');
+  const [pageOrigin, setPageOrigin] = useState('');
 
   // Create/Join team state
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -55,9 +56,9 @@ export default function TeamSettingsPage() {
   const hasInviteCode = Boolean(currentTeam?.team_code);
 
   const buildInviteLink = (role?: InviteJoinRole) => {
-    if (typeof window === 'undefined' || !currentTeam?.team_code) return '';
+    if (!pageOrigin || !currentTeam?.team_code) return '';
 
-    const url = new URL('/join', window.location.origin);
+    const url = new URL('/join', pageOrigin);
     url.searchParams.set('code', currentTeam.team_code);
     if (role) {
       url.searchParams.set('role', role);
@@ -73,6 +74,10 @@ export default function TeamSettingsPage() {
   const linkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
   const inviteFeedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setPageOrigin(window.location.origin);
+  }, []);
 
   // Cleanup timers on unmount
   useEffect(() => {
