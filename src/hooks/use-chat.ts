@@ -52,6 +52,8 @@ interface ChatLoadOptions {
 }
 
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const CHAT_ATTACHMENT_BUCKET = 'chat-attachments';
+const SIGNED_CHAT_ATTACHMENT_URL_SECONDS = 60 * 60;
 const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
 const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
 const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
@@ -89,6 +91,41 @@ export function useChat() {
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
+
+  const attachSignedAttachmentUrls = useCallback(
+    async (messages: MessageWithSender[]): Promise<MessageWithSender[]> => {
+      return Promise.all(
+        messages.map(async (message) => {
+          if (message.type !== 'image' && message.type !== 'file') {
+            return message;
+          }
+
+          const metadata = message.metadata || {};
+          if (!metadata.file_path) {
+            return message;
+          }
+
+          const { data, error } = await supabase.storage
+            .from(metadata.file_bucket || CHAT_ATTACHMENT_BUCKET)
+            .createSignedUrl(metadata.file_path, SIGNED_CHAT_ATTACHMENT_URL_SECONDS);
+
+          if (error || !data?.signedUrl) {
+            console.error('Error creating signed chat attachment URL:', error);
+            return message;
+          }
+
+          return {
+            ...message,
+            metadata: {
+              ...metadata,
+              file_url: data.signedUrl,
+            },
+          };
+        })
+      );
+    },
+    [supabase]
+  );
 
   /**
    * Get all conversations for the current user
@@ -344,9 +381,10 @@ export function useChat() {
         return [];
       }
 
-      return (data || []).reverse() as MessageWithSender[];
+      const messages = (data || []).reverse() as MessageWithSender[];
+      return attachSignedAttachmentUrls(messages);
     },
-    [supabase]
+    [supabase, attachSignedAttachmentUrls]
   );
 
   /**
@@ -401,7 +439,7 @@ export function useChat() {
       const filePath = `${currentTeam.id}/chat/${conversationId}/${createAttachmentObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('attachments')
+        .from(CHAT_ATTACHMENT_BUCKET)
         .upload(filePath, file);
 
       if (uploadError) {
@@ -409,16 +447,13 @@ export function useChat() {
         return { success: false, error: 'Failed to upload file' };
       }
 
-      const { data: publicUrl } = supabase.storage
-        .from('attachments')
-        .getPublicUrl(filePath);
-
       // Determine message type
       let messageType: MessageType = 'file';
       if (isSafeImageFile(file)) messageType = 'image';
 
       const metadata: MessageMetadata = {
-        file_url: publicUrl.publicUrl,
+        file_bucket: CHAT_ATTACHMENT_BUCKET,
+        file_path: filePath,
         file_name: file.name,
         file_size: file.size,
       };
@@ -430,7 +465,7 @@ export function useChat() {
       });
 
       if (!result.success) {
-        await supabase.storage.from('attachments').remove([filePath]);
+        await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).remove([filePath]);
       }
 
       return result;
@@ -499,7 +534,8 @@ export function useChat() {
               .single();
 
             if (data) {
-              onMessage(data as MessageWithSender);
+              const [message] = await attachSignedAttachmentUrls([data as MessageWithSender]);
+              onMessage(message);
             }
           }
         )
@@ -511,7 +547,7 @@ export function useChat() {
         supabase.removeChannel(channel);
       };
     },
-    [supabase]
+    [supabase, attachSignedAttachmentUrls]
   );
 
   /**

@@ -509,6 +509,8 @@ export interface Message {
 
 export interface MessageMetadata {
   file_url?: string;
+  file_bucket?: string;
+  file_path?: string;
   file_name?: string;
   file_size?: number;
   image_width?: number;

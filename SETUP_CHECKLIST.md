@@ -80,6 +80,7 @@ current beta-readiness migrations:
 - `00024_touch_chat_conversations_on_message.sql`
 - `00025_create_player_with_parent_link.sql`
 - `00026_atomic_chat_creation.sql`
+- `00027_private_chat_attachments.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 
