@@ -209,7 +209,6 @@ export function OnboardingFlow({
     }
 
     setIsSubmitting(false);
-    onParentSetupComplete?.();
     setStep('complete');
   };
 
@@ -230,9 +229,27 @@ export function OnboardingFlow({
   };
 
   const handleComplete = async () => {
-    await updateProfile({ onboarding_completed: true });
-    await refreshTeamMemberships();
+    setError('');
+    setIsSubmitting(true);
+
+    const { error } = await updateProfile({ onboarding_completed: true });
+    if (error) {
+      setError(error.message || 'Failed to finish onboarding. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      await refreshTeamMemberships();
+    } catch (refreshError) {
+      console.error('Failed to refresh teams after onboarding:', refreshError);
+      setError('Your profile was saved, but teams could not refresh. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
+
     onParentSetupComplete?.();
+    setIsSubmitting(false);
     router.push('/dashboard');
   };
 
@@ -305,9 +322,10 @@ export function OnboardingFlow({
               </button>
               <button
                 onClick={handleComplete}
+                disabled={isSubmitting}
                 className="w-full p-4 text-gray-500 hover:text-gray-700 text-sm"
               >
-                Skip for now
+                {isSubmitting ? 'Finishing...' : 'Skip for now'}
               </button>
             </div>
           </div>
@@ -521,9 +539,10 @@ export function OnboardingFlow({
             </p>
             <button
               onClick={handleComplete}
-              className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+              disabled={isSubmitting}
+              className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
             >
-              Go to Dashboard
+              {isSubmitting ? 'Finishing...' : 'Go to Dashboard'}
             </button>
           </div>
         );
