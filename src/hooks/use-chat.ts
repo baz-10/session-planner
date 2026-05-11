@@ -15,7 +15,6 @@ import type {
   ConversationParticipant,
   Message,
   Profile,
-  ChatType,
   MessageType,
   MessageMetadata,
   CreateMessageInput,
@@ -55,7 +54,6 @@ interface ChatLoadOptions {
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
 const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
-const TEAM_CHAT_SYNC_ERROR = 'Team chat could not sync team members. Refresh and try again.';
 const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
 const CHAT_READ_STATUS_ERROR = 'Messages loaded, but read status could not update. Refresh and try again.';
 const DIRECT_CHAT_CREATE_ERROR =
@@ -224,119 +222,25 @@ export function useChat() {
   /**
    * Get or create a team chat conversation
    */
-  const addTeamChatParticipants = useCallback(
-    async (conversationId: string, type: 'team' | 'coaches') => {
-      if (!currentTeam || !user) {
-        return { success: false, error: 'Not authenticated' };
-      }
-
-      const { data: members, error: membersError } = await supabase
-        .from('team_members')
-        .select('user_id, role')
-        .eq('team_id', currentTeam.id);
-
-      if (membersError) {
-        console.error('Error fetching team chat participants:', membersError);
-        return { success: false, error: TEAM_CHAT_SYNC_ERROR };
-      }
-
-      const participantIds = new Set<string>([user.id]);
-      for (const member of members || []) {
-        if (type === 'team' || member.role === 'admin' || member.role === 'coach') {
-          participantIds.add(member.user_id);
-        }
-      }
-
-      const { error: participantError } = await supabase
-        .from('conversation_participants')
-        .upsert(
-          Array.from(participantIds).map((userId) => ({
-            conversation_id: conversationId,
-            user_id: userId,
-          })),
-          { onConflict: 'conversation_id,user_id', ignoreDuplicates: true }
-        );
-
-      if (participantError) {
-        console.error('Error adding team chat participants:', participantError);
-        return { success: false, error: TEAM_CHAT_SYNC_ERROR };
-      }
-
-      return { success: true };
-    },
-    [currentTeam, user, supabase]
-  );
-
   const getTeamChat = useCallback(
     async (type: 'team' | 'coaches' = 'team'): Promise<TeamChatResult> => {
       if (!currentTeam || !user) {
         return { success: false, error: 'Not authenticated' };
       }
 
-      // Check if team chat exists
-      const { data: existing, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('team_id', currentTeam.id)
-        .eq('type', type)
-        .single();
+      const { data: conversation, error } = await supabase.rpc('get_or_create_team_chat', {
+        team_uuid: currentTeam.id,
+        requested_type: type,
+      });
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading team chat:', error);
+      if (error || !conversation) {
+        console.error('Error opening team chat:', error);
         return { success: false, error: TEAM_CHAT_CREATE_ERROR };
       }
 
-      if (existing) {
-        const participantResult = await addTeamChatParticipants(existing.id, type);
-        if (!participantResult.success) {
-          return { success: false, error: participantResult.error };
-        }
-        return { success: true, conversation: existing as Conversation };
-      }
-
-      // Create team chat
-      const { data: conv, error: createError } = await supabase
-        .from('conversations')
-        .insert({
-          team_id: currentTeam.id,
-          type,
-          name: type === 'coaches' ? 'Coaches Chat' : currentTeam.name,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        if (createError.code === '23505') {
-          const { data: existingAfterConflict } = await supabase
-            .from('conversations')
-            .select('*')
-            .eq('team_id', currentTeam.id)
-            .eq('type', type)
-            .single();
-
-          if (existingAfterConflict) {
-            const participantResult = await addTeamChatParticipants(existingAfterConflict.id, type);
-            if (!participantResult.success) {
-              return { success: false, error: participantResult.error };
-            }
-            return { success: true, conversation: existingAfterConflict as Conversation };
-          }
-        }
-
-        console.error('Error creating team chat:', createError);
-        return { success: false, error: TEAM_CHAT_CREATE_ERROR };
-      }
-
-      const participantResult = await addTeamChatParticipants(conv.id, type);
-      if (!participantResult.success) {
-        await supabase.from('conversations').delete().eq('id', conv.id);
-        return { success: false, error: participantResult.error };
-      }
-
-      return { success: true, conversation: conv as Conversation };
+      return { success: true, conversation: conversation as Conversation };
     },
-    [user, currentTeam, supabase, addTeamChatParticipants]
+    [user, currentTeam, supabase]
   );
 
   /**
@@ -390,39 +294,18 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const { data: conv, error } = await supabase
-        .from('conversations')
-        .insert({
-          team_id: currentTeam.id,
-          type: 'group' as ChatType,
-          name,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+      const { data: conversation, error } = await supabase.rpc('create_group_chat', {
+        team_uuid: currentTeam.id,
+        group_name: name,
+        participant_user_ids: participantIds,
+      });
 
-      if (error || !conv) {
+      if (error || !conversation) {
         console.error('Error creating group chat:', error);
         return { success: false, error: 'Failed to create group chat' };
       }
 
-      // Add participants including creator
-      const participants = [...new Set([user.id, ...participantIds])].map((id) => ({
-        conversation_id: conv.id,
-        user_id: id,
-      }));
-
-      const { error: participantError } = await supabase
-        .from('conversation_participants')
-        .insert(participants);
-
-      if (participantError) {
-        console.error('Error adding group chat participants:', participantError);
-        await supabase.from('conversations').delete().eq('id', conv.id);
-        return { success: false, error: 'Failed to add group chat participants' };
-      }
-
-      return { success: true, conversation: conv as Conversation };
+      return { success: true, conversation: conversation as Conversation };
     },
     [user, currentTeam, supabase]
   );

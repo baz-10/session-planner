@@ -914,6 +914,14 @@ export interface Database {
         Args: { other_user_id: string; team_uuid: string };
         Returns: string;
       };
+      get_or_create_team_chat: {
+        Args: { team_uuid: string; requested_type?: Extract<ChatType, 'team' | 'coaches'> };
+        Returns: Conversation;
+      };
+      create_group_chat: {
+        Args: { team_uuid: string; group_name: string; participant_user_ids: string[] };
+        Returns: Conversation;
+      };
       create_player_with_parent_link: {
         Args: {
           team_uuid: string;
