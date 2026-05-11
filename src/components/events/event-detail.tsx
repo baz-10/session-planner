@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { format, isPast } from 'date-fns';
-import { PlayCircle } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ClipboardList, Clock, MapPin, PlayCircle, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
@@ -21,6 +21,7 @@ import type {
   AttendanceRecord,
   AttendanceRiskSnapshot,
 } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 interface RsvpWithDetails extends Rsvp {
   user?: Profile | null;
@@ -44,11 +45,11 @@ interface EventDetailProps {
   onBack: () => void;
 }
 
-const EVENT_TYPE_ICONS: Record<string, string> = {
-  practice: '🏀',
-  game: '🏆',
-  tournament: '🎯',
-  other: '📅',
+const EVENT_TYPE_ICONS: Record<string, LucideIcon> = {
+  practice: ClipboardList,
+  game: Trophy,
+  tournament: Target,
+  other: CalendarDays,
 };
 
 const RISK_CLASSES: Record<string, string> = {
@@ -190,6 +191,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   }
 
   const counts = getRsvpCounts(event.rsvps);
+  const EventTypeIcon = EVENT_TYPE_ICONS[event.type] || CalendarDays;
 
   return (
     <div className="space-y-6">
@@ -201,9 +203,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             onClick={onBack}
             className="flex items-center gap-1 text-gray-500 hover:text-gray-700"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
             Back
           </button>
 
@@ -237,7 +237,9 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
         )}
 
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-4xl">{EVENT_TYPE_ICONS[event.type]}</span>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <EventTypeIcon className="h-7 w-7" aria-hidden="true" />
+          </span>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{event.title}</h1>
             <p className="text-gray-500 capitalize">{event.type}</p>
@@ -271,16 +273,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <div className="flex items-center gap-3 text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
               <span>{format(new Date(event.start_time), 'EEEE, MMMM d, yyyy')}</span>
             </div>
 
             <div className="flex items-center gap-3 text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Clock className="h-5 w-5" aria-hidden="true" />
               <span>
                 {format(new Date(event.start_time), 'h:mm a')}
                 {event.end_time && ` - ${format(new Date(event.end_time), 'h:mm a')}`}
@@ -289,19 +287,14 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
 
             {event.meet_time && (
               <div className="flex items-center gap-3 text-orange-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <Clock className="h-5 w-5" aria-hidden="true" />
                 <span>Meet at {format(new Date(event.meet_time), 'h:mm a')}</span>
               </div>
             )}
 
             {event.location && (
               <div className="flex items-center gap-3 text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+                <MapPin className="h-5 w-5" aria-hidden="true" />
                 <span>{event.location}</span>
               </div>
             )}
