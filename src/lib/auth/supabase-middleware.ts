@@ -16,9 +16,45 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  // Define public routes that don't require authentication
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/signup',
+    '/join',
+    '/callback',
+    '/auth/callback',
+    '/forgot-password',
+    '/reset-password',
+  ];
+  const normalizedPathname = normalizePathname(request.nextUrl.pathname);
+
+  const isPublicRoute = publicRoutes.some(
+    (route) =>
+      normalizedPathname === route ||
+      normalizedPathname.startsWith('/api/auth/')
+  );
+  // API route handlers return JSON auth errors and handle signed cron requests.
+  const isApiRoute = normalizedPathname.startsWith('/api/');
+  const isNextAssetRoute = normalizedPathname.startsWith('/_next');
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (!isPublicRoute && !isApiRoute && !isNextAssetRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      const redirectTarget = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+      url.searchParams.set('redirect', redirectTarget);
+      return NextResponse.redirect(url);
+    }
+
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
@@ -47,29 +83,8 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Define public routes that don't require authentication
-  const publicRoutes = [
-    '/',
-    '/login',
-    '/signup',
-    '/join',
-    '/callback',
-    '/auth/callback',
-    '/forgot-password',
-    '/reset-password',
-  ];
-  const normalizedPathname = normalizePathname(request.nextUrl.pathname);
-
-  const isPublicRoute = publicRoutes.some(
-    (route) =>
-      normalizedPathname === route ||
-      normalizedPathname.startsWith('/api/auth/')
-  );
-  // API route handlers return JSON auth errors and handle signed cron requests.
-  const isApiRoute = normalizedPathname.startsWith('/api/');
-
   // Redirect unauthenticated users to login for protected routes
-  if (!user && !isPublicRoute && !isApiRoute && !normalizedPathname.startsWith('/_next')) {
+  if (!user && !isPublicRoute && !isApiRoute && !isNextAssetRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     const redirectTarget = `${request.nextUrl.pathname}${request.nextUrl.search}`;
