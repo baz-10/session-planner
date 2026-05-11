@@ -19,7 +19,7 @@ export function AIDrillDiscovery({ onSelectDrill, context, className = '' }: AID
   const [showSetup, setShowSetup] = useState(false);
 
   const handleSearch = useCallback(async () => {
-    if (!query.trim() || !settings.openaiApiKey) return;
+    if (isLoading || !query.trim() || !settings.openaiApiKey) return;
 
     setIsLoading(true);
     setError(null);
@@ -48,7 +48,7 @@ export function AIDrillDiscovery({ onSelectDrill, context, className = '' }: AID
     } finally {
       setIsLoading(false);
     }
-  }, [query, settings.openaiApiKey, context]);
+  }, [context, isLoading, query, settings.openaiApiKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -336,8 +336,11 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'validating' | 'saving' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const isWorking = status === 'validating' || status === 'saving' || isSaving;
 
   const handleSave = async () => {
+    if (isWorking) return;
+
     const nextApiKey = apiKeyInput.trim();
     if (!nextApiKey) return;
 
@@ -374,7 +377,8 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
           type="button"
           aria-label="Close AI setup"
           onClick={onClose}
-          className="p-1 text-gray-400 hover:text-gray-600"
+          disabled={isWorking}
+          className="p-1 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -407,22 +411,23 @@ function AISettingsModal({ onClose }: { onClose: () => void }) {
         onChange={(e) => setApiKeyInput(e.target.value)}
         placeholder="sk-..."
         className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 font-mono text-sm"
-        disabled={status === 'validating' || status === 'saving'}
+        disabled={isWorking}
       />
 
       <div className="flex gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          disabled={isWorking}
+          className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="button"
-          aria-busy={status === 'validating' || status === 'saving'}
+          aria-busy={isWorking}
           onClick={handleSave}
-          disabled={!apiKeyInput.trim() || status === 'validating' || status === 'saving'}
+          disabled={!apiKeyInput.trim() || isWorking}
           className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {status === 'validating' || status === 'saving' ? (
