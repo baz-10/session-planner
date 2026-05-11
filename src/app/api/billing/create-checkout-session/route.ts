@@ -128,6 +128,15 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     const checkoutBaseUrl = getCheckoutBaseUrl(request);
+    if (!checkoutBaseUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Billing is not configured. Set NEXT_PUBLIC_APP_URL to enable payments.',
+        },
+        { status: 500 }
+      );
+    }
 
     const params = new URLSearchParams();
     params.append('mode', 'payment');
@@ -208,13 +217,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getCheckoutBaseUrl(request: NextRequest): string {
+function getCheckoutBaseUrl(request: NextRequest): string | null {
   const configuredAppUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
   if (configuredAppUrl) {
     return configuredAppUrl;
   }
 
-  return request.nextUrl.origin || 'http://localhost:3000';
+  if (process.env.NODE_ENV !== 'production') {
+    return normalizeBaseUrl(request.nextUrl.origin) || 'http://localhost:3000';
+  }
+
+  return null;
 }
 
 function normalizeBaseUrl(value: string | undefined): string | null {
