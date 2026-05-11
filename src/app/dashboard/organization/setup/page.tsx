@@ -36,6 +36,8 @@ export default function OrganizationSetupPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+
     if (!orgName.trim()) {
       setError('Please enter an organization name');
       return;
@@ -44,18 +46,27 @@ export default function OrganizationSetupPage() {
     setIsLoading(true);
     setError(null);
 
-    const result = await createOrganization(orgName.trim(), logoUrl.trim() || undefined);
+    try {
+      const result = await createOrganization(orgName.trim(), logoUrl.trim() || undefined);
 
-    if (result.success) {
-      router.push('/dashboard/organization');
-    } else {
+      if (result.success) {
+        router.push('/dashboard/organization');
+        return;
+      }
+
       setError(result.error || 'Failed to create organization');
+    } catch (error) {
+      console.error('Unexpected error creating organization:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create organization');
+    } finally {
       setIsLoading(false);
     }
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+
     const normalizedCode = normalizeOrganizationCode(organizationCode);
     if (normalizedCode.length !== ORGANIZATION_CODE_LENGTH) {
       setError('Please enter a valid 8-character organization invite code');
@@ -65,12 +76,19 @@ export default function OrganizationSetupPage() {
     setIsLoading(true);
     setError(null);
 
-    const result = await joinOrganization(normalizedCode);
+    try {
+      const result = await joinOrganization(normalizedCode);
 
-    if (result.success) {
-      router.push('/dashboard/organization');
-    } else {
+      if (result.success) {
+        router.push('/dashboard/organization');
+        return;
+      }
+
       setError(result.error || 'Failed to join organization');
+    } catch (error) {
+      console.error('Unexpected error joining organization:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join organization');
+    } finally {
       setIsLoading(false);
     }
   };

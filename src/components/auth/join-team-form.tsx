@@ -28,6 +28,8 @@ export function JoinTeamForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setSuccess('');
 
@@ -39,25 +41,30 @@ export function JoinTeamForm({
 
     setIsSubmitting(true);
 
-    const result = await joinTeamByCode(normalizedCode, role);
+    try {
+      const result = await joinTeamByCode(normalizedCode, role);
 
-    if (!result.success) {
-      setError(result.error || 'Failed to join team');
+      if (!result.success) {
+        setError(result.error || 'Failed to join team');
+        return;
+      }
+
+      setSuccess(`Successfully joined ${result.team?.name}!`);
+      setTeamCode('');
+
+      if (result.team && onSuccess) {
+        onSuccess(result.team);
+      }
+    } catch (error) {
+      console.error('Unexpected error joining team:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join team');
+    } finally {
       setIsSubmitting(false);
-      return;
-    }
-
-    setSuccess(`Successfully joined ${result.team?.name}!`);
-    setTeamCode('');
-    setIsSubmitting(false);
-
-    if (result.team && onSuccess) {
-      onSuccess(result.team);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" aria-busy={isSubmitting}>
       {error && (
         <div
           role="alert"
@@ -86,6 +93,7 @@ export function JoinTeamForm({
           onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
           required
           autoCapitalize="characters"
+          disabled={isSubmitting}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest font-mono"
           placeholder="ABC123"
         />
@@ -102,6 +110,7 @@ export function JoinTeamForm({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as InviteJoinRole)}
+            disabled={isSubmitting}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="player">Player</option>
