@@ -45,8 +45,10 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionLoadError, setSessionLoadError] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isEditing = !!event;
+  const isSaving = isLoading || isSubmitting;
 
   const loadSessions = useCallback(async () => {
     try {
@@ -68,7 +70,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (isSaving) return;
 
     setError('');
 
@@ -99,6 +101,8 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
       session_id: type === 'practice' && sessionId ? sessionId : undefined,
     };
 
+    setIsSubmitting(true);
+
     try {
       let result;
       if (isEditing && event) {
@@ -115,6 +119,8 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
     } catch (submitError) {
       console.error('Unexpected error saving event:', submitError);
       setError('Failed to save event. Check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -129,7 +135,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
           <button
             type="button"
             onClick={onClose}
-            disabled={isLoading}
+            disabled={isSaving}
             className="p-1 text-gray-500 hover:text-gray-700 rounded disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Close event form"
           >
@@ -140,7 +146,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
         </div>
 
         {/* Form */}
-        <form id={EVENT_FORM_ID} onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4" aria-busy={isLoading}>
+        <form id={EVENT_FORM_ID} onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4" aria-busy={isSaving}>
           {error && (
             <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
               {error}
@@ -158,7 +164,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                   key={t.value}
                   type="button"
                   onClick={() => setType(t.value)}
-                  disabled={isLoading}
+                  disabled={isSaving}
                   className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-colors ${
                     type === t.value
                       ? 'border-primary bg-primary/5'
@@ -181,7 +187,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              disabled={isLoading}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder={type === 'practice' ? 'Practice' : type === 'game' ? 'Game vs...' : 'Event name'}
               required
@@ -198,7 +204,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
@@ -211,7 +217,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
@@ -227,7 +233,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
@@ -239,7 +245,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={meetTime}
                 onChange={(e) => setMeetTime(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Arrival time"
               />
@@ -255,7 +261,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              disabled={isLoading}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Where is this event?"
             />
@@ -271,7 +277,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="text"
                 value={opponent}
                 onChange={(e) => setOpponent(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="vs..."
               />
@@ -287,7 +293,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               <select
                 value={sessionId}
                 onChange={(e) => setSessionId(e.target.value)}
-                disabled={isLoading}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">No plan linked</option>
@@ -315,7 +321,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              disabled={isLoading}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Additional details..."
             />
@@ -327,7 +333,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
           <button
             type="button"
             onClick={onClose}
-            disabled={isLoading}
+            disabled={isSaving}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
@@ -335,11 +341,11 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
           <button
             type="submit"
             form={EVENT_FORM_ID}
-            disabled={isLoading}
-            aria-busy={isLoading}
+            disabled={isSaving}
+            aria-busy={isSaving}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
           >
-            {isLoading ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
+            {isSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
           </button>
         </div>
       </div>
