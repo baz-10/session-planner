@@ -40,17 +40,21 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   const isParent = teamMembership?.role === 'parent';
 
   const loadLinkedPlayers = useCallback(async () => {
-    if (!user) return;
+    if (!user || !currentTeam?.id) {
+      setLinkedPlayers([]);
+      return;
+    }
 
     setLinkedPlayersError('');
     const { data, error } = await supabase
       .from('parent_player_links')
       .select(`
         player_id,
-        player:players!player_id(*)
+        player:players!inner(*)
       `)
       .eq('parent_user_id', user.id)
-      .eq('can_rsvp', true);
+      .eq('can_rsvp', true)
+      .eq('player.team_id', currentTeam.id);
 
     if (error) {
       console.error('Error loading linked players for RSVP:', error);
@@ -62,7 +66,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
     if (data) {
       setLinkedPlayers(data as LinkedPlayer[]);
     }
-  }, [supabase, user]);
+  }, [currentTeam?.id, supabase, user]);
 
   useEffect(() => {
     if (isParent) {
@@ -186,6 +190,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {isParent && !linkedPlayersError && linkedPlayers.length === 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          No linked players are available for this team.
         </div>
       )}
 
