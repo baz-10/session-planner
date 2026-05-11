@@ -42,26 +42,43 @@ export function PostFeed() {
     (teamMembership?.role === 'parent' && currentTeam?.settings?.allow_parent_posts);
 
   const loadPosts = useCallback(async (nextOffset = 0, reset = false) => {
-    if (!currentTeam) return;
+    if (!currentTeam) {
+      setPosts([]);
+      setHasMore(false);
+      setOffset(0);
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     setLoadError('');
 
-    const result = await getPosts(LIMIT, nextOffset);
-    const data = result.posts;
+    try {
+      const result = await getPosts(LIMIT, nextOffset);
+      const data = result.posts;
 
-    if (reset) {
-      setPosts(data);
-    } else {
-      setPosts((prev) => [...prev, ...data]);
-    }
+      if (reset) {
+        setPosts(data);
+      } else {
+        setPosts((prev) => [...prev, ...data]);
+      }
 
-    setHasMore(data.length === LIMIT);
-    setOffset(nextOffset + data.length);
-    if (!result.success) {
-      setLoadError(result.error);
+      setHasMore(result.success && data.length === LIMIT);
+      setOffset(nextOffset + data.length);
+      if (!result.success) {
+        setLoadError(result.error || 'Team feed could not load. Check your connection and try again.');
+      }
+    } catch (error) {
+      console.error('Unexpected error loading team feed:', error);
+      if (reset) {
+        setPosts([]);
+        setOffset(0);
+      }
+      setHasMore(false);
+      setLoadError('Team feed could not load. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [currentTeam, getPosts]);
 
   useEffect(() => {
@@ -125,8 +142,10 @@ export function PostFeed() {
           {hasMore && (
             <div className="flex justify-center py-4">
               <button
+                type="button"
                 onClick={handleLoadMore}
                 disabled={isLoading}
+                aria-busy={isLoading}
                 className="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
               >
                 {isLoading ? 'Loading...' : 'Load More'}

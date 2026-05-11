@@ -32,12 +32,14 @@ interface PostCardProps {
   onUpdate: () => void;
 }
 
+type PostAction = 'delete' | 'pin' | 'reaction';
+
 export function PostCard({ post, onUpdate }: PostCardProps) {
   const { user, teamMemberships, currentTeam } = useAuth();
   const teamMembership = teamMemberships.find(m => m.team.id === currentTeam?.id);
   const { deletePost, togglePin, addReaction, getReactionSummary, markAsViewed } = usePosts();
   const [showComments, setShowComments] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [activeAction, setActiveAction] = useState<PostAction | null>(null);
   const [actionError, setActionError] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const { confirmAction, confirmDialog } = useConfirmDialog();
@@ -47,10 +49,13 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
   const canEdit = isAuthor;
   const canDelete = isAuthor || isAdminOrCoach;
   const canPin = isAdminOrCoach;
+  const actionInFlight = activeAction !== null;
 
   const reactionSummary = getReactionSummary(post.reactions);
 
   const handleDelete = async () => {
+    if (actionInFlight) return;
+
     const confirmed = await confirmAction({
       title: 'Delete post?',
       description: 'This post and its comments will be removed from the team feed.',
@@ -60,44 +65,73 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
 
     if (!confirmed) return;
 
-    setIsDeleting(true);
+    setActiveAction('delete');
     setActionError('');
-    const result = await deletePost(post.id);
-    setIsDeleting(false);
-    if (!result.success) {
-      setActionError(result.error || 'Failed to delete post.');
-      return;
+    try {
+      const result = await deletePost(post.id);
+      if (!result.success) {
+        setActionError(result.error || 'Failed to delete post.');
+        return;
+      }
+      setShowMenu(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Unexpected error deleting post:', error);
+      setActionError('Failed to delete post. Check your connection and try again.');
+    } finally {
+      setActiveAction(null);
     }
-    setShowMenu(false);
-    onUpdate();
   };
 
   const handleTogglePin = async () => {
+    if (actionInFlight) return;
+
+    setActiveAction('pin');
     setActionError('');
-    const result = await togglePin(post.id, !post.pinned);
-    if (!result.success) {
-      setActionError(result.error || 'Failed to update pinned state.');
+    try {
+      const result = await togglePin(post.id, !post.pinned);
+      if (!result.success) {
+        setActionError(result.error || 'Failed to update pinned state.');
+        setShowMenu(false);
+        return;
+      }
+      onUpdate();
       setShowMenu(false);
-      return;
+    } catch (error) {
+      console.error('Unexpected error updating post pin:', error);
+      setActionError('Failed to update pinned state. Check your connection and try again.');
+      setShowMenu(false);
+    } finally {
+      setActiveAction(null);
     }
-    onUpdate();
-    setShowMenu(false);
   };
 
   const handleReaction = async (emoji: string) => {
+    if (actionInFlight) return;
+
+    setActiveAction('reaction');
     setActionError('');
-    const result = await addReaction(post.id, emoji);
-    if (!result.success) {
-      setActionError(result.error || 'Failed to update reaction.');
-      return;
+    try {
+      const result = await addReaction(post.id, emoji);
+      if (!result.success) {
+        setActionError(result.error || 'Failed to update reaction.');
+        return;
+      }
+      onUpdate();
+    } catch (error) {
+      console.error('Unexpected error updating post reaction:', error);
+      setActionError('Failed to update reaction. Check your connection and try again.');
+    } finally {
+      setActiveAction(null);
     }
-    onUpdate();
   };
 
   // Mark as viewed when card becomes visible
   useEffect(() => {
     if (!post.has_viewed) {
-      void markAsViewed(post.id);
+      void markAsViewed(post.id).catch((error) => {
+        console.error('Unexpected error marking post as viewed:', error);
+      });
     }
   }, [markAsViewed, post.has_viewed, post.id]);
 
@@ -133,8 +167,11 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
         {(canEdit || canDelete || canPin) && (
           <div className="relative">
             <button
+              type="button"
               onClick={() => setShowMenu(!showMenu)}
-              className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              disabled={actionInFlight}
+              aria-busy={actionInFlight}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Open post actions"
               aria-expanded={showMenu}
             >
@@ -152,25 +189,30 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
                 <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1">
                   {canPin && (
                     <button
+                      type="button"
                       onClick={handleTogglePin}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                      disabled={actionInFlight}
+                      aria-busy={activeAction === 'pin'}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                       </svg>
-                      {post.pinned ? 'Unpin' : 'Pin to top'}
+                      {activeAction === 'pin' ? 'Saving...' : post.pinned ? 'Unpin' : 'Pin to top'}
                     </button>
                   )}
                   {canDelete && (
                     <button
+                      type="button"
                       onClick={handleDelete}
-                      disabled={isDeleting}
-                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      disabled={actionInFlight}
+                      aria-busy={activeAction === 'delete'}
+                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
-                      Delete
+                      {activeAction === 'delete' ? 'Deleting...' : 'Delete'}
                     </button>
                   )}
                 </div>
@@ -215,6 +257,7 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
         <div className="flex items-center gap-4">
           {post.comments.length > 0 && (
             <button
+              type="button"
               onClick={() => setShowComments(!showComments)}
               className="hover:text-primary"
               aria-expanded={showComments}
@@ -232,8 +275,10 @@ export function PostCard({ post, onUpdate }: PostCardProps) {
         <ReactionPicker
           reactions={reactionSummary}
           onReact={handleReaction}
+          disabled={actionInFlight}
         />
         <button
+          type="button"
           onClick={() => setShowComments(!showComments)}
           className="flex-1 flex items-center justify-center gap-2 py-2 text-gray-600 hover:bg-gray-50 rounded-md"
           aria-expanded={showComments}

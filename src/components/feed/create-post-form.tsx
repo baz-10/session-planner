@@ -30,6 +30,8 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLoading) return;
+
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -83,27 +85,33 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
   };
 
   const removeAttachment = (index: number) => {
+    if (isLoading) return;
     setAttachments((prev) => prev.filter((_, i) => i !== index));
     setPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || !currentTeam) return;
+    if (!content.trim() || !currentTeam || isLoading) return;
     setError('');
 
-    const result = await createPost(
-      { team_id: currentTeam.id, content: content.trim() },
-      attachments.length > 0 ? attachments : undefined
-    );
+    try {
+      const result = await createPost(
+        { team_id: currentTeam.id, content: content.trim() },
+        attachments.length > 0 ? attachments : undefined
+      );
 
-    if (result.success) {
-      setContent('');
-      setAttachments([]);
-      setPreviews([]);
-      onSuccess();
-    } else {
-      setError(result.error || 'Failed to create post.');
+      if (result.success) {
+        setContent('');
+        setAttachments([]);
+        setPreviews([]);
+        onSuccess();
+      } else {
+        setError(result.error || 'Failed to create post.');
+      }
+    } catch (error) {
+      console.error('Unexpected error creating post:', error);
+      setError('Failed to create post. Check your connection and try again.');
     }
   };
 
@@ -115,7 +123,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4">
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} aria-busy={isLoading}>
         {error && (
           <div role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
             {error}
@@ -132,6 +140,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
               placeholder="Share something with your team..."
               aria-label="Post content"
               rows={3}
+              disabled={isLoading}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
 
@@ -165,6 +174,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
                     <button
                       type="button"
                       onClick={() => removeAttachment(index)}
+                      disabled={isLoading}
                       aria-label={`Remove ${file.name}`}
                       className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
                     >
@@ -183,13 +193,15 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
                   onChange={handleFileSelect}
                   multiple
                   accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx"
+                  disabled={isLoading}
                   className="hidden"
                   aria-label="Attach files to post"
                 />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full"
+                  disabled={isLoading}
+                  className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Add image to post"
                   title="Add image"
                 >
@@ -200,7 +212,8 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full"
+                  disabled={isLoading}
+                  className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Add file to post"
                   title="Add file"
                 >
@@ -212,6 +225,7 @@ export function CreatePostForm({ onSuccess }: CreatePostFormProps) {
               <button
                 type="submit"
                 disabled={!content.trim() || isLoading}
+                aria-busy={isLoading}
                 className="px-4 py-2 bg-primary text-white rounded-md font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-light"
               >
                 {isLoading ? 'Posting...' : 'Post'}

@@ -23,6 +23,7 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
   const { addComment, deleteComment } = usePosts();
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState('');
   const [commentError, setCommentError] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
@@ -34,17 +35,25 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
 
     setIsSubmitting(true);
     setCommentError('');
-    const result = await addComment(postId, newComment.trim());
-    if (result.success) {
-      setNewComment('');
-      onUpdate();
-    } else {
-      setCommentError(result.error || 'Failed to add comment.');
+    try {
+      const result = await addComment(postId, newComment.trim());
+      if (result.success) {
+        setNewComment('');
+        onUpdate();
+      } else {
+        setCommentError(result.error || 'Failed to add comment.');
+      }
+    } catch (error) {
+      console.error('Unexpected error adding comment:', error);
+      setCommentError('Failed to add comment. Check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   const handleDelete = async (commentId: string) => {
+    if (deletingCommentId) return;
+
     const confirmed = await confirmAction({
       title: 'Delete comment?',
       description: 'This comment will be removed from the post.',
@@ -54,19 +63,27 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
 
     if (!confirmed) return;
 
+    setDeletingCommentId(commentId);
     setCommentError('');
-    const result = await deleteComment(commentId);
-    if (!result.success) {
-      setCommentError(result.error || 'Failed to delete comment.');
-      return;
+    try {
+      const result = await deleteComment(commentId);
+      if (!result.success) {
+        setCommentError(result.error || 'Failed to delete comment.');
+        return;
+      }
+      onUpdate();
+    } catch (error) {
+      console.error('Unexpected error deleting comment:', error);
+      setCommentError('Failed to delete comment. Check your connection and try again.');
+    } finally {
+      setDeletingCommentId('');
     }
-    onUpdate();
   };
 
   return (
     <div className="border-t border-gray-100">
       {commentError && (
-        <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+        <div role="alert" className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
           {commentError}
         </div>
       )}
@@ -91,8 +108,11 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
             </div>
             {(user?.id === comment.author_id || isAdminOrCoach) && (
               <button
+                type="button"
                 onClick={() => handleDelete(comment.id)}
-                className="p-1 text-gray-400 opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                disabled={Boolean(deletingCommentId)}
+                aria-busy={deletingCommentId === comment.id}
+                className="p-1 text-gray-400 opacity-100 transition-opacity hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
                 aria-label="Delete comment"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +125,7 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
       </div>
 
       {/* Add comment form */}
-      <form onSubmit={handleSubmit} className="p-4 flex gap-2 border-t border-gray-100">
+      <form onSubmit={handleSubmit} className="p-4 flex gap-2 border-t border-gray-100" aria-busy={isSubmitting}>
         <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium flex-shrink-0">
           {user?.user_metadata?.full_name?.charAt(0)?.toUpperCase() || 'U'}
         </div>
@@ -115,14 +135,16 @@ export function CommentSection({ postId, comments, onUpdate }: CommentSectionPro
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Write a comment..."
+            disabled={isSubmitting}
             className="flex-1 px-3 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <button
             type="submit"
             disabled={!newComment.trim() || isSubmitting}
+            aria-busy={isSubmitting}
             className="px-4 py-2 bg-primary text-white rounded-full text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? '...' : 'Post'}
+            {isSubmitting ? 'Posting...' : 'Post'}
           </button>
         </div>
       </form>
