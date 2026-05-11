@@ -55,6 +55,8 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
   };
 
   const handleRsvp = async (status: RsvpStatus) => {
+    if (submittingStatus) return;
+
     setSubmittingStatus(status);
     setRsvpError('');
 

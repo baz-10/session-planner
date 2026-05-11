@@ -108,6 +108,8 @@ export function AttendanceTracker({
   }, [players, existingRecords]);
 
   const updatePlayerStatus = (playerId: string, status: AttendanceStatus) => {
+    if (isSaving) return;
+
     setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
@@ -120,6 +122,8 @@ export function AttendanceTracker({
   };
 
   const updatePlayerNotes = (playerId: string, notes: string) => {
+    if (isSaving) return;
+
     setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
