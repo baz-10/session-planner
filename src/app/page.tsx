@@ -96,7 +96,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <span className={`text-xl font-display font-bold transition-colors ${
+              <span className={`whitespace-nowrap text-lg font-display font-bold transition-colors sm:text-xl ${
                 scrolled ? 'text-navy' : 'text-white'
               }`}>
                 Session Planner
@@ -112,10 +112,10 @@ export default function HomePage() {
               }`}>Pricing</a>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Link
                 href="/login"
-                className={`text-sm font-semibold transition-colors ${
+                className={`whitespace-nowrap text-xs font-semibold transition-colors sm:text-sm ${
                   scrolled ? 'text-navy hover:text-teal' : 'text-white hover:text-teal-light'
                 }`}
               >
@@ -123,7 +123,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/signup"
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`whitespace-nowrap px-3 py-2 rounded-lg text-xs font-semibold transition-all sm:px-5 sm:py-2.5 sm:text-sm ${
                   scrolled
                     ? 'bg-teal text-white hover:bg-teal-dark'
                     : 'bg-white text-navy hover:bg-teal hover:text-white'
@@ -137,40 +137,40 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative min-h-screen bg-navy overflow-hidden">
+      <section className="relative min-h-[calc(100svh-5rem)] bg-navy overflow-hidden">
         {/* Background elements */}
         <div className="absolute inset-0 bg-grid-pattern opacity-30" />
         <div className="absolute top-1/4 -right-64 w-[800px] h-[800px] bg-teal/20 rounded-full blur-[150px]" />
         <div className="absolute bottom-0 -left-32 w-[600px] h-[600px] bg-navy-light/50 rounded-full blur-[120px]" />
 
         {/* Diagonal accent */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-white clip-diagonal-reverse" />
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-white clip-diagonal-reverse" />
 
-        <div className="relative max-w-7xl mx-auto px-6 pt-32 pb-48">
+        <div className="relative max-w-7xl mx-auto px-6 pt-24 pb-16 sm:pt-28 sm:pb-24 lg:pt-32">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             {/* Left content */}
             <div className="animate-slide-in-left" style={{ animationDelay: '0.2s', animationFillMode: 'backwards' }}>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur rounded-full mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur rounded-full mb-6 sm:mb-8">
                 <span className="w-2 h-2 bg-teal rounded-full animate-pulse" />
                 <span className="text-sm text-white/80">Mobile web beta</span>
               </div>
 
-              <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] mb-6">
+              <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] mb-5 sm:mb-6">
                 Run Better
                 <span className="block text-teal">Practices.</span>
                 <span className="block text-white/60">Build Better</span>
                 <span className="block">Teams.</span>
               </h1>
 
-              <p className="text-xl text-white/70 max-w-lg mb-10 leading-relaxed">
+              <p className="text-lg md:text-xl text-white/70 max-w-lg mb-8 sm:mb-10 leading-relaxed">
                 The all-in-one platform for youth sports coaches. Plan practices, manage rosters,
                 and keep everyone connected—from the field to their phones.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 mb-12">
+              <div className="flex flex-col sm:flex-row gap-4 mb-8 sm:mb-12">
                 <Link
                   href="/signup"
-                  className="group inline-flex items-center justify-center gap-3 px-8 py-4 bg-teal text-white rounded-xl text-lg font-semibold hover:bg-teal-dark transition-all animate-pulse-glow"
+                  className="group inline-flex items-center justify-center gap-3 px-6 py-3 bg-teal text-white rounded-xl text-base font-semibold hover:bg-teal-dark transition-all animate-pulse-glow sm:px-8 sm:py-4 sm:text-lg"
                 >
                   Start Free
                   <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -179,7 +179,7 @@ export default function HomePage() {
                 </Link>
                 <a
                   href="#features"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 border-2 border-white/30 text-white rounded-xl text-lg font-semibold hover:bg-white/10 transition-all"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-white/30 text-white rounded-xl text-base font-semibold hover:bg-white/10 transition-all sm:px-8 sm:py-4 sm:text-lg"
                 >
                   See How It Works
                 </a>
@@ -260,7 +260,7 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 bg-white relative">
+      <section id="features" className="pb-24 pt-16 bg-white relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-sm font-semibold text-teal uppercase tracking-wider mb-4">Features</p>
