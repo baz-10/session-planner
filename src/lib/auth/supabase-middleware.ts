@@ -59,9 +59,11 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname === route ||
       request.nextUrl.pathname.startsWith('/api/auth/')
   );
+  // API route handlers return JSON auth errors and handle signed cron requests.
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
 
   // Redirect unauthenticated users to login for protected routes
-  if (!user && !isPublicRoute && !request.nextUrl.pathname.startsWith('/_next')) {
+  if (!user && !isPublicRoute && !isApiRoute && !request.nextUrl.pathname.startsWith('/_next')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     const redirectTarget = `${request.nextUrl.pathname}${request.nextUrl.search}`;
