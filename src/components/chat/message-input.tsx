@@ -10,6 +10,7 @@ import {
 
 type SendResult = void | { success: boolean; error?: string };
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_MESSAGE_CHARACTERS = 2000;
 
 function validateAttachment(file: File) {
   if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
@@ -38,13 +39,18 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!message.trim() || isSending || disabled) return;
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage || isSending || disabled) return;
+    if (trimmedMessage.length > MAX_CHAT_MESSAGE_CHARACTERS) {
+      setError(`Messages must be ${MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()} characters or fewer.`);
+      return;
+    }
 
     setIsSending(true);
     setError('');
 
     try {
-      const result = await onSendMessage(message.trim());
+      const result = await onSendMessage(trimmedMessage);
       if (result && !result.success) {
         setError(result.error || 'Message failed to send. Please try again.');
         return;
@@ -153,10 +159,16 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
             placeholder="Type a message..."
             aria-label="Message"
             rows={1}
+            maxLength={MAX_CHAT_MESSAGE_CHARACTERS}
             disabled={disabled || isSending}
             className="w-full px-4 py-2 bg-gray-100 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
             style={{ maxHeight: '120px' }}
           />
+          {message.length > MAX_CHAT_MESSAGE_CHARACTERS * 0.9 && (
+            <p className="mt-1 text-right text-xs font-medium text-gray-500">
+              {message.length.toLocaleString()} / {MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()}
+            </p>
+          )}
         </div>
 
         {/* Send button */}

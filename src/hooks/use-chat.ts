@@ -52,6 +52,7 @@ interface ChatLoadOptions {
 }
 
 const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_MESSAGE_CHARACTERS = 2000;
 const CHAT_ATTACHMENT_BUCKET = 'chat-attachments';
 const SIGNED_CHAT_ATTACHMENT_URL_SECONDS = 60 * 60;
 const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
@@ -396,13 +397,25 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
+      const messageType = input.type || 'text';
+      const normalizedContent = input.content?.trim() || '';
+      if (messageType === 'text' && !normalizedContent) {
+        return { success: false, error: 'Message cannot be empty.' };
+      }
+      if (messageType === 'text' && normalizedContent.length > MAX_CHAT_MESSAGE_CHARACTERS) {
+        return {
+          success: false,
+          error: `Messages must be ${MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()} characters or fewer.`,
+        };
+      }
+
       const { data: message, error } = await supabase
         .from('messages')
         .insert({
           conversation_id: input.conversation_id,
           sender_id: user.id,
-          content: input.content || null,
-          type: input.type || 'text',
+          content: normalizedContent || null,
+          type: messageType,
           metadata: input.metadata || {},
         })
         .select()
