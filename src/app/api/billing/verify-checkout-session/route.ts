@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 
 const STRIPE_BASE_URL = 'https://api.stripe.com/v1';
 
@@ -16,7 +17,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as { sessionId?: string };
+    const parsedBody = await parseJsonObjectBody<{ sessionId?: string }>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.body;
     const sessionId = body.sessionId;
 
     if (!sessionId) {

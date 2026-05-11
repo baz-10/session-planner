@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
 import { createDrillAIService } from '@/lib/ai/drill-ai-service';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 import type { DrillQueryContext } from '@/lib/ai/openai-config';
 
 export async function POST(request: NextRequest) {
@@ -24,12 +25,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { apiKey, query, context } = body as {
-      apiKey: string;
-      query: string;
+    const parsedBody = await parseJsonObjectBody<{
+      apiKey?: string;
+      query?: string;
       context?: DrillQueryContext;
-    };
+    }>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { apiKey, query, context } = parsedBody.body;
     const normalizedApiKey = apiKey?.trim();
     const normalizedQuery = query?.trim();
 

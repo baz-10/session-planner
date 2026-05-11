@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
 import { DrillAIService } from '@/lib/ai/drill-ai-service';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,8 +24,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { apiKey } = body as { apiKey: string };
+    const parsedBody = await parseJsonObjectBody<{ apiKey?: string }>(
+      request,
+      { valid: false, error: 'Invalid JSON request body.' }
+    );
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { apiKey } = parsedBody.body;
     const normalizedApiKey = apiKey?.trim();
 
     if (!normalizedApiKey) {

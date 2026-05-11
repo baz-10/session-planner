@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
+import { parseOptionalJsonObjectBody } from '@/lib/api/json-body';
 
 const DEFAULT_DAYS_AHEAD = 2;
 
@@ -17,12 +18,12 @@ async function runReminders(
   options: { allowBody: boolean }
 ) {
   try {
-    const payload = options.allowBody
-      ? ((await request.json().catch(() => ({}))) as {
-          teamId?: string;
-          daysAhead?: number;
-        })
-      : ({} as { teamId?: string; daysAhead?: number });
+    const parsedPayload = options.allowBody
+      ? await parseOptionalJsonObjectBody<{ teamId?: string; daysAhead?: number }>(request, {})
+      : { ok: true as const, body: {} as { teamId?: string; daysAhead?: number } };
+    if (!parsedPayload.ok) return parsedPayload.response;
+
+    const payload = parsedPayload.body;
 
     const teamId = payload.teamId;
     const daysAhead = clampInt(payload.daysAhead ?? DEFAULT_DAYS_AHEAD, 0, 14);
