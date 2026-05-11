@@ -48,6 +48,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
             <button
               key={image.id}
               onClick={() => setSelectedImage(image.url)}
+              aria-label={`Open ${image.filename || 'image attachment'}`}
               className={`relative overflow-hidden bg-gray-100 ${
                 images.length === 1 ? 'aspect-video' : 'aspect-square'
               }`}
@@ -96,6 +97,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
+              aria-label={`Open ${doc.filename || 'attached document'}`}
             >
               <span className="text-2xl">{getFileIcon(doc.filename)}</span>
               <div className="flex-1 min-w-0">
@@ -123,6 +125,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
           <button
             onClick={() => setSelectedImage(null)}
             className="absolute top-4 right-4 p-2 text-white/80 hover:text-white"
+            aria-label="Close image preview"
           >
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
