@@ -108,8 +108,10 @@ result, console excerpt, and network/API response where available.
 ## Known External Blockers
 
 - `session-planner-hotfix` still reports a failing Vercel status for PR builds.
-  Either disconnect that duplicate project from the repository or align its
-  environment variables with the canonical project.
+  Its build logs fail with `Supabase environment variables are not configured`
+  while prerendering `/dashboard/plays/placeholder`. Either disconnect that
+  duplicate project from the repository or align its Supabase environment
+  variables with the canonical `session-planner` project.
 - Live Supabase migration state must be verified from the Supabase project.
 - Previously committed environment tokens should be rotated or revoked from the
   provider side if still valid.
