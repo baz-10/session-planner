@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
@@ -138,6 +138,22 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, profile, signOut, teamMemberships, currentTeam, organizationMemberships, isLoading } = useAuth();
   const { displayName, logoUrl } = useBranding();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+
+    setIsSigningOut(true);
+    setSignOutError('');
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign out failed:', error);
+      setSignOutError('Could not sign out. Check your connection and try again.');
+      setIsSigningOut(false);
+    }
+  };
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -283,14 +299,22 @@ export default function DashboardLayout({
             </div>
           </div>
           <button
-            onClick={() => signOut()}
-            className="w-full btn-ghost text-sm justify-start px-3 py-2"
+            type="button"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            aria-busy={isSigningOut}
+            className="w-full btn-ghost text-sm justify-start px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            Sign Out
+            {isSigningOut ? 'Signing out...' : 'Sign Out'}
           </button>
+          {signOutError && (
+            <p role="alert" className="mt-2 text-xs font-medium text-red-600">
+              {signOutError}
+            </p>
+          )}
         </div>
       </aside>
 

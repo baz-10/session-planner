@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -65,6 +66,8 @@ const moreItems = [
 export default function MorePage() {
   const { signOut, currentTeam, profile, teamMemberships } = useAuth();
   const { displayName } = useBranding();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const roleLabel =
     currentMembership?.role === 'coach'
@@ -74,6 +77,20 @@ export default function MorePage() {
         : currentMembership?.role === 'player'
           ? 'Player'
           : 'Parent';
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+
+    setIsSigningOut(true);
+    setSignOutError('');
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign out failed:', error);
+      setSignOutError('Could not sign out. Check your connection and try again.');
+      setIsSigningOut(false);
+    }
+  };
 
   return (
     <MobilePageShell>
@@ -120,12 +137,19 @@ export default function MorePage() {
 
       <button
         type="button"
-        onClick={() => signOut()}
-        className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-600 shadow-sm transition active:scale-[0.99]"
+        onClick={handleSignOut}
+        disabled={isSigningOut}
+        aria-busy={isSigningOut}
+        className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-600 shadow-sm transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <LogOut className="h-4 w-4" />
-        Sign Out
+        {isSigningOut ? 'Signing out...' : 'Sign Out'}
       </button>
+      {signOutError && (
+        <p role="alert" className="mt-3 text-center text-sm font-semibold text-red-600">
+          {signOutError}
+        </p>
+      )}
     </MobilePageShell>
   );
 }
