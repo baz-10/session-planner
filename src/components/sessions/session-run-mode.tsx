@@ -682,6 +682,12 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         : runState.status === 'paused'
           ? 'Paused'
           : 'Ready';
+  const playPauseLabel =
+    runState.status === 'running'
+      ? 'Pause'
+      : runState.status === 'paused'
+        ? 'Resume'
+        : 'Start';
   const upcomingActivities = activities.slice(runState.activeIndex + 1, runState.activeIndex + 3);
   const activeCategoryLabel = activeActivity?.category?.name || 'Activity';
   const coachCueLines = activeActivity?.notes
@@ -769,7 +775,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
               className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
             >
               {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-              {runState.status === 'running' ? 'Pause' : runState.status === 'paused' ? 'Resume' : 'Start'}
+              {playPauseLabel}
             </button>
             <button
               type="button"
@@ -904,6 +910,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           />
           {copyStatus !== 'idle' && (
             <p
+              role={copyStatus === 'failed' ? 'alert' : 'status'}
               className={`mt-2 text-sm font-extrabold ${
                 copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
               }`}
@@ -1079,15 +1086,30 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                     ) : (
                       <Play className="h-5 w-5" />
                     )}
-                    {runState.status === 'running' ? 'Pause' : 'Start'}
+                    {playPauseLabel}
                   </Button>
-                  <Button variant="outline" onClick={() => addTime(60)} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={() => addTime(60)}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     +1 min
                   </Button>
-                  <Button variant="outline" onClick={() => addTime(-60)} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={() => addTime(-60)}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     -1 min
                   </Button>
-                  <Button variant="outline" onClick={markActiveComplete} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={markActiveComplete}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     <SkipForward className="h-4 w-4" />
                     Finish block
                   </Button>
@@ -1118,6 +1140,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                       QUICK_NOTE_PROMPTS.map((prompt) => (
                         <button
                           key={prompt}
+                          type="button"
                           onClick={() => appendQuickNote(activeActivity.id, prompt)}
                           className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
                         >
@@ -1211,7 +1234,9 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   return (
                     <button
                       key={activity.id}
+                      type="button"
                       onClick={() => jumpToActivity(index)}
+                      aria-current={isActive ? 'step' : undefined}
                       className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
                         isActive
                           ? 'border-teal bg-accent/5'
@@ -1310,7 +1335,12 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                     Copies elapsed time, block status, and notes.
                   </p>
                 </div>
-                <Button variant="outline" size="icon-sm" onClick={handleCopySummary}>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={handleCopySummary}
+                  aria-label="Copy post-session summary"
+                >
                   <ClipboardCopy className="h-4 w-4" />
                 </Button>
               </div>
@@ -1319,6 +1349,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
               </pre>
               {copyStatus !== 'idle' && (
                 <p
+                  role={copyStatus === 'failed' ? 'alert' : 'status'}
                   className={`mt-2 text-sm font-semibold ${
                     copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
                   }`}
