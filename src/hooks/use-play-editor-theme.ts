@@ -13,9 +13,13 @@ function readThemeFromStorage(): PlayEditorTheme {
     return DEFAULT_PLAY_EDITOR_THEME;
   }
 
-  return normalizePlayEditorTheme(
-    window.localStorage.getItem(PLAY_EDITOR_THEME_STORAGE_KEY)
-  );
+  try {
+    return normalizePlayEditorTheme(
+      window.localStorage.getItem(PLAY_EDITOR_THEME_STORAGE_KEY)
+    );
+  } catch {
+    return DEFAULT_PLAY_EDITOR_THEME;
+  }
 }
 
 export function usePlayEditorTheme() {
@@ -43,7 +47,11 @@ export function usePlayEditorTheme() {
       return;
     }
 
-    window.localStorage.setItem(PLAY_EDITOR_THEME_STORAGE_KEY, nextTheme);
+    try {
+      window.localStorage.setItem(PLAY_EDITOR_THEME_STORAGE_KEY, nextTheme);
+    } catch {
+      // Theme changes still apply in memory when browser storage is unavailable.
+    }
   };
 
   return {
