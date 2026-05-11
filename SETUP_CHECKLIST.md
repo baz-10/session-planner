@@ -115,9 +115,9 @@ result, console excerpt, and network/API response where available.
 
 ## Remaining External Gates
 
-- Both connected Vercel projects should be green before merge. As of commit
-  `ee85a8b`, `session-planner` and `session-planner-hotfix` both deploy
-  successfully, but `session-planner` remains the canonical beta target.
+- Both connected Vercel projects should be green before merge. `session-planner`
+  remains the canonical beta target; `session-planner-hotfix` is a duplicate
+  project that should be monitored or disconnected.
 - Live Supabase migration state must be verified from the Supabase project.
 - Authenticated smoke tests require real beta/test accounts on the canonical
   deployment.
