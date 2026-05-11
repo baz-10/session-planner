@@ -22,6 +22,11 @@ interface LinkPlayerResult {
   error?: string;
 }
 
+interface CreatePlayerWithParentLinkResponse {
+  player?: Player;
+  link?: ParentPlayerLink;
+}
+
 const STALE_PLAYER_ERROR = 'Player access changed. Refresh and try again.';
 const STALE_PLAYER_LINK_ERROR = 'Player link access changed. Refresh and try again.';
 const PLAYER_LINK_CREATE_ERROR = 'Player could not be linked to your parent account. Please try again.';
@@ -77,31 +82,23 @@ export function usePlayers() {
         return { success: false, error: 'You must be logged in to add a player' };
       }
 
-      // Create the player
-      const createResult = await createPlayer(input);
-      if (!createResult.success || !createResult.player) {
-        return createResult;
-      }
+      const { data, error } = await supabase.rpc('create_player_with_parent_link', {
+        team_uuid: input.team_id,
+        player_first_name: input.first_name,
+        player_last_name: input.last_name,
+        player_relationship: relationship,
+        player_jersey_number: input.jersey_number || null,
+        player_position: input.position || null,
+        player_grade: input.grade || null,
+        player_birth_date: input.birth_date || null,
+      });
 
-      // Create the parent-player link
-      const { data: link, error: linkError } = await supabase
-        .from('parent_player_links')
-        .insert({
-          parent_user_id: user.id,
-          player_id: createResult.player.id,
-          relationship,
-          can_rsvp: true,
-          receives_notifications: true,
-        })
-        .select()
-        .single();
+      const result = data as CreatePlayerWithParentLinkResponse | null;
 
-      if (linkError || !link) {
-        console.error('Error linking player:', linkError);
-        await supabase.from('players').delete().eq('id', createResult.player.id);
+      if (error || !result?.player || !result?.link) {
+        console.error('Error creating linked player:', error);
         return {
           success: false,
-          player: createResult.player,
           error: PLAYER_LINK_CREATE_ERROR,
         };
       }
@@ -111,11 +108,11 @@ export function usePlayers() {
 
       return {
         success: true,
-        player: createResult.player,
-        link: link as ParentPlayerLink,
+        player: result.player,
+        link: result.link,
       };
     },
-    [user, supabase, createPlayer, refreshLinkedPlayers]
+    [user, supabase, refreshLinkedPlayers]
   );
 
   /**

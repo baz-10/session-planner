@@ -914,6 +914,19 @@ export interface Database {
         Args: { other_user_id: string; team_uuid: string };
         Returns: string;
       };
+      create_player_with_parent_link: {
+        Args: {
+          team_uuid: string;
+          player_first_name: string;
+          player_last_name: string;
+          player_relationship?: RelationshipType;
+          player_jersey_number?: string | null;
+          player_position?: string | null;
+          player_grade?: string | null;
+          player_birth_date?: string | null;
+        };
+        Returns: { player: Player; link: ParentPlayerLink };
+      };
       join_team_by_code: {
         Args: { invite_code: string; requested_role?: TeamRole };
         Returns: Omit<Team, 'team_code'>;
