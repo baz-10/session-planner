@@ -125,8 +125,10 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
             {(['going', 'maybe', 'not_going'] as RsvpStatus[]).map((status) => (
               <button
                 key={status}
+                type="button"
                 onClick={() => handleRsvp(status)}
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 aria-pressed={userRsvp?.status === status}
                 className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
                   userRsvp?.status === status
@@ -175,8 +177,10 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                   {(['going', 'maybe', 'not_going'] as RsvpStatus[]).map((status) => (
                     <button
                       key={status}
+                      type="button"
                       onClick={() => handleRsvp(status, player_id)}
                       disabled={isSubmitting}
+                      aria-busy={isSubmitting}
                       aria-pressed={playerRsvp?.status === status}
                       className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
                         playerRsvp?.status === status

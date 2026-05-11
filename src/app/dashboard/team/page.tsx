@@ -355,7 +355,10 @@ export default function TeamSettingsPage() {
         />
 
         {formError && (
-          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <div
+            role="alert"
+            className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700"
+          >
             {formError}
           </div>
         )}
@@ -364,6 +367,7 @@ export default function TeamSettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {/* Create Team Option */}
             <button
+              type="button"
               onClick={() => { setShowCreateForm(true); setFormError(''); }}
               className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
@@ -378,6 +382,7 @@ export default function TeamSettingsPage() {
 
             {/* Join Team Option */}
             <button
+              type="button"
               onClick={() => { setShowJoinForm(true); setFormError(''); }}
               className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
@@ -439,6 +444,7 @@ export default function TeamSettingsPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
+                  aria-busy={isSubmitting}
                   className="btn-accent min-h-12 flex-1"
                 >
                   {isSubmitting ? 'Creating...' : 'Create Team'}
@@ -454,17 +460,17 @@ export default function TeamSettingsPage() {
             <h3 className="text-lg font-semibold text-navy mb-4">Join a Team</h3>
             <form onSubmit={handleJoinTeam} className="space-y-4">
               <div className="form-group">
-	                <label htmlFor="teamCode" className="label">Team Code</label>
-	                <input
-	                  id="teamCode"
-	                  type="text"
-	                  value={joinCode}
-	                  onChange={(e) => setJoinCode(normalizeTeamCode(e.target.value))}
-	                  className="input text-center text-2xl tracking-widest font-mono"
-	                  placeholder="ABC123"
-	                  autoCapitalize="characters"
-	                  required
-	                />
+                <label htmlFor="teamCode" className="label">Team Code</label>
+                <input
+                  id="teamCode"
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(normalizeTeamCode(e.target.value))}
+                  className="input text-center text-2xl tracking-widest font-mono"
+                  placeholder="ABC123"
+                  autoCapitalize="characters"
+                  required
+                />
                 <p className="text-xs text-text-muted mt-1">Ask your coach for the 6-character team code</p>
               </div>
               <div className="form-group">
@@ -490,11 +496,12 @@ export default function TeamSettingsPage() {
                 >
                   Back
                 </button>
-	                <button
-	                  type="submit"
-	                  disabled={isSubmitting || joinCode.length !== TEAM_CODE_LENGTH}
-	                  className="btn-accent min-h-12 flex-1"
-	                >
+                <button
+                  type="submit"
+                  disabled={isSubmitting || joinCode.length !== TEAM_CODE_LENGTH}
+                  aria-busy={isSubmitting}
+                  className="btn-accent min-h-12 flex-1"
+                >
                   {isSubmitting ? 'Joining...' : 'Join Team'}
                 </button>
               </div>

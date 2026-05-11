@@ -64,7 +64,10 @@ export function AddPlayerForm({ teamId, onSuccess, onCancel }: AddPlayerFormProp
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+        <div
+          role="alert"
+          className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm"
+        >
           {error}
         </div>
       )}
@@ -179,6 +182,7 @@ export function AddPlayerForm({ teamId, onSuccess, onCancel }: AddPlayerFormProp
         <button
           type="submit"
           disabled={isSubmitting}
+          aria-busy={isSubmitting}
           className="flex-1 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
         >
           {isSubmitting ? 'Adding...' : 'Add Player'}

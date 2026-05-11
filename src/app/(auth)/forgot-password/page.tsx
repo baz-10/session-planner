@@ -57,13 +57,19 @@ export default function ForgotPasswordPage() {
         </p>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+          <div
+            role="alert"
+            className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+          >
             {error}
           </div>
         )}
 
         {sent && (
-          <div className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in">
+          <div
+            role="status"
+            className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in"
+          >
             If an account exists for that email, a password reset link has been sent.
           </div>
         )}
@@ -86,6 +92,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={isSubmitting}
+            aria-busy={isSubmitting}
             className="btn-primary w-full py-3"
           >
             {isSubmitting ? 'Sending reset link...' : 'Send reset link'}
@@ -102,4 +109,3 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
-

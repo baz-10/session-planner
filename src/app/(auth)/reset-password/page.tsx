@@ -80,7 +80,10 @@ export default function ResetPasswordPage() {
             </p>
 
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+              <div
+                role="alert"
+                className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+              >
                 {error}
               </div>
             )}
@@ -119,6 +122,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="btn-primary w-full py-3"
               >
                 {isSubmitting ? 'Updating password...' : 'Update password'}
@@ -136,4 +140,3 @@ export default function ResetPasswordPage() {
     </div>
   );
 }
-
