@@ -42,6 +42,7 @@ interface RsvpCounts {
 
 const STALE_EVENT_ERROR = 'This event could not be updated. It may have been removed or your access may have changed.';
 const STALE_RSVP_ERROR = 'This RSVP could not be updated. Refresh and try again.';
+const NO_TEAM_ERROR = 'Select a team before managing events.';
 
 export function useEvents() {
   const { user, currentTeam } = useAuth();
@@ -103,6 +104,8 @@ export function useEvents() {
    */
   const getEvent = useCallback(
     async (eventId: string): Promise<EventWithDetails | null> => {
+      if (!currentTeam) return null;
+
       const { data, error } = await supabase
         .from('events')
         .select(`
@@ -112,6 +115,7 @@ export function useEvents() {
           attendance_records(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*))
         `)
         .eq('id', eventId)
+        .eq('team_id', currentTeam.id)
         .single();
 
       if (error) {
@@ -121,7 +125,7 @@ export function useEvents() {
 
       return data as EventWithDetails;
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -176,12 +180,17 @@ export function useEvents() {
       eventId: string,
       updates: Partial<Event>
     ): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
       setIsLoading(true);
 
       const { error, count } = await supabase
         .from('events')
         .update(updates, { count: 'exact' })
-        .eq('id', eventId);
+        .eq('id', eventId)
+        .eq('team_id', currentTeam.id);
 
       setIsLoading(false);
 
@@ -196,7 +205,7 @@ export function useEvents() {
 
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -207,6 +216,10 @@ export function useEvents() {
       eventId: string,
       options?: { deleteSeries?: boolean }
     ): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
       let deleteError: { message?: string } | null = null;
       let deletedCount: number | null = null;
 
@@ -215,6 +228,7 @@ export function useEvents() {
           .from('events')
           .select('recurrence_series_id')
           .eq('id', eventId)
+          .eq('team_id', currentTeam.id)
           .single();
 
         if (lookupError) {
@@ -226,14 +240,16 @@ export function useEvents() {
           const { error, count } = await supabase
             .from('events')
             .delete({ count: 'exact' })
-            .eq('recurrence_series_id', sourceEvent.recurrence_series_id);
+            .eq('recurrence_series_id', sourceEvent.recurrence_series_id)
+            .eq('team_id', currentTeam.id);
           deleteError = error;
           deletedCount = count;
         } else {
           const { error, count } = await supabase
             .from('events')
             .delete({ count: 'exact' })
-            .eq('id', eventId);
+            .eq('id', eventId)
+            .eq('team_id', currentTeam.id);
           deleteError = error;
           deletedCount = count;
         }
@@ -241,7 +257,8 @@ export function useEvents() {
         const { error, count } = await supabase
           .from('events')
           .delete({ count: 'exact' })
-          .eq('id', eventId);
+          .eq('id', eventId)
+          .eq('team_id', currentTeam.id);
         deleteError = error;
         deletedCount = count;
       }
@@ -257,7 +274,7 @@ export function useEvents() {
 
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -288,7 +305,12 @@ export function useEvents() {
         query = query.eq('user_id', user.id).is('player_id', null);
       }
 
-      const { data: existing } = await query.single();
+      const { data: existing, error: lookupError } = await query.maybeSingle();
+
+      if (lookupError) {
+        console.error('Error loading existing RSVP:', lookupError);
+        return { success: false, error: 'Failed to load your current RSVP. Refresh and try again.' };
+      }
 
       if (existing) {
         // Update existing RSVP
@@ -312,17 +334,21 @@ export function useEvents() {
         }
       } else {
         // Create new RSVP
-        const { error } = await supabase.from('rsvps').insert({
-          event_id: eventId,
-          user_id: options?.playerId ? null : user.id,
-          player_id: options?.playerId || null,
-          status,
-          response_note: options?.note || null,
-          responded_by: user.id,
-          responded_at: new Date().toISOString(),
-        });
+        const { data, error } = await supabase
+          .from('rsvps')
+          .insert({
+            event_id: eventId,
+            user_id: options?.playerId ? null : user.id,
+            player_id: options?.playerId || null,
+            status,
+            response_note: options?.note || null,
+            responded_by: user.id,
+            responded_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
 
-        if (error) {
+        if (error || !data) {
           console.error('Error creating RSVP:', error);
           return { success: false, error: 'Failed to submit RSVP' };
         }
@@ -601,19 +627,28 @@ export function useEvents() {
       eventId: string,
       sessionId: string | null
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
+      const { error, count } = await supabase
         .from('events')
-        .update({ session_id: sessionId })
-        .eq('id', eventId);
+        .update({ session_id: sessionId }, { count: 'exact' })
+        .eq('id', eventId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error linking session:', error);
         return { success: false, error: 'Failed to link session' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_EVENT_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   return {
