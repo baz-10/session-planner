@@ -22,7 +22,7 @@ interface OrganizationMemberWithProfile {
     email: string | null;
     full_name: string | null;
     avatar_url: string | null;
-  };
+  } | null;
 }
 
 type OrgInviteAction = 'code' | 'link' | 'email';
@@ -202,6 +202,10 @@ export default function OrganizationSettingsPage() {
     }
   };
 
+  const getMemberDisplayName = (member?: OrganizationMemberWithProfile | null) => {
+    return member?.profile?.full_name || member?.profile?.email || 'Organization member';
+  };
+
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
     if (!currentOrganization || updatingMemberId) return;
 
@@ -254,7 +258,7 @@ export default function OrganizationSettingsPage() {
       return;
     }
 
-    const memberName = member?.profile?.full_name || member?.profile?.email || 'This member';
+    const memberName = getMemberDisplayName(member);
     const confirmed = await confirmAction({
       title: 'Remove organization member?',
       description: `${memberName} will lose access to ${currentOrganization.name}.`,
@@ -548,33 +552,35 @@ export default function OrganizationSettingsPage() {
             {members.map((member) => {
               const isCurrentUser = member.user_id === user?.id;
               const isLastAdmin = member.role === 'admin' && adminCount <= 1;
-              const memberName = member.profile?.full_name || member.profile?.email || 'Unknown member';
+              const memberName = getMemberDisplayName(member);
               const isUpdating = updatingMemberId === member.id;
               const controlsDisabled = Boolean(updatingMemberId) || isCurrentUser || isLastAdmin;
 
               return (
-              <div key={member.id} className="flex items-center gap-4 p-4 bg-whisper rounded-lg">
+              <div key={member.id} className="flex flex-col gap-3 rounded-lg bg-whisper p-4 sm:flex-row sm:items-center sm:gap-4">
                 <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
                   <span className="text-sm font-semibold text-teal-dark">
-                    {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
+                    {memberName.charAt(0).toUpperCase() || '?'}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-navy truncate">
-                    {member.profile?.full_name || 'Unknown'}
+                    {memberName}
                     {isCurrentUser && <span className="text-text-muted"> (you)</span>}
                   </p>
-                  <p className="text-sm text-text-muted truncate">{member.profile?.email}</p>
+                  <p className="text-sm text-text-muted truncate">
+                    {member.profile?.email || 'Profile details unavailable'}
+                  </p>
                 </div>
                 {isAdmin ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
                     <select
                       value={member.role}
                       onChange={(e) => handleRoleChange(member.id, e.target.value as OrgRole)}
                       disabled={controlsDisabled}
                       aria-busy={isUpdating}
                       aria-label={`Change organization role for ${memberName}`}
-                      className="input py-1.5 px-2 text-sm"
+                      className="input min-h-10 flex-1 py-1.5 px-2 text-sm sm:w-32 sm:flex-none"
                     >
                       <option value="member">Member</option>
                       <option value="admin">Admin</option>
