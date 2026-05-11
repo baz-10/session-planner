@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const missingEnvErrorMessage = 'Supabase environment variables are not configured';
 
 // Log warning if env vars are missing (helps debug deployment issues)
 if (typeof window !== 'undefined') {
@@ -20,7 +21,15 @@ if (typeof window !== 'undefined') {
  */
 export function createBrowserSupabaseClient(): any {
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase environment variables are not configured');
+    if (typeof window === 'undefined') {
+      return new Proxy({}, {
+        get() {
+          throw new Error(missingEnvErrorMessage);
+        },
+      });
+    }
+
+    throw new Error(missingEnvErrorMessage);
   }
   if (process.env.NODE_ENV === 'development') {
     console.log('[Supabase] Creating client for:', supabaseUrl);
