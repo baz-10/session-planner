@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Check, Copy, Link as LinkIcon, Mail, Plus, Share2, UserPlus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
@@ -436,9 +437,7 @@ export default function TeamSettingsPage() {
               className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
               <div className="w-12 h-12 bg-teal-glow rounded-xl flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
+                <Plus className="h-6 w-6 text-teal" aria-hidden="true" />
               </div>
               <h3 className="text-lg font-semibold text-navy mb-2">Create a New Team</h3>
               <p className="text-text-secondary text-sm">Start fresh with your own team and invite players</p>
@@ -451,9 +450,7 @@ export default function TeamSettingsPage() {
               className="min-h-[150px] rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_30px_rgba(15,31,51,0.08)] transition-all active:scale-[0.98] md:hover:border-teal md:hover:shadow-md"
             >
               <div className="w-12 h-12 bg-navy/10 rounded-xl flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
+                <UserPlus className="h-6 w-6 text-navy" aria-hidden="true" />
               </div>
               <h3 className="text-lg font-semibold text-navy mb-2">Join Existing Team</h3>
               <p className="text-text-secondary text-sm">Enter a team code to join an existing team</p>
@@ -602,9 +599,7 @@ export default function TeamSettingsPage() {
       {isCoachOrAdmin && (
         <MobileListCard className="mb-5">
           <h3 className="text-lg font-semibold text-navy mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
+            <UserPlus className="h-5 w-5 text-teal" aria-hidden="true" />
             Invite Players & Parents
           </h3>
 
@@ -639,16 +634,12 @@ export default function TeamSettingsPage() {
               >
                 {copied ? (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <Check className="h-4 w-4" aria-hidden="true" />
                     Copied!
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
+                    <Copy className="h-4 w-4" aria-hidden="true" />
                     Copy
                   </>
                 )}
@@ -684,9 +675,7 @@ export default function TeamSettingsPage() {
               aria-busy={inviteAction === 'share'}
               className="btn-primary min-h-12 justify-center py-3"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-              </svg>
+              <Share2 className="h-5 w-5" aria-hidden="true" />
               Share Invite
             </button>
             <button
@@ -698,16 +687,12 @@ export default function TeamSettingsPage() {
             >
               {linkCopied ? (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <Check className="h-5 w-5" aria-hidden="true" />
                   Link Copied!
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
+                  <LinkIcon className="h-5 w-5" aria-hidden="true" />
                   Copy Invite Link
                 </>
               )}
@@ -734,9 +719,7 @@ export default function TeamSettingsPage() {
                 aria-busy={inviteAction === 'email'}
                 className="btn-accent whitespace-nowrap"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+                <Mail className="h-4 w-4" aria-hidden="true" />
                 Send
               </button>
             </form>
@@ -753,9 +736,7 @@ export default function TeamSettingsPage() {
       <MobileListCard>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-navy">
-            <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+            <Users className="h-5 w-5 text-teal" aria-hidden="true" />
             Team Members ({members.length})
           </h3>
           {canManageMembers ? (
