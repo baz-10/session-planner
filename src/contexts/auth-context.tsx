@@ -466,7 +466,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Auth actions
   const buildCallbackUrl = (redirectTo?: string) => {
-    const callbackUrl = new URL('/callback', window.location.origin);
+    const callbackUrl = new URL('/callback/', window.location.origin);
     const nextPath = sanitizeLocalRedirect(redirectTo, '');
     if (nextPath) {
       callbackUrl.searchParams.set('next', nextPath);
@@ -528,7 +528,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/reset-password/`,
     });
     return { error };
   };
