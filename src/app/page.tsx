@@ -439,7 +439,7 @@ export default function HomePage() {
               <ul className="space-y-3 text-white/60 text-sm">
                 <li><a href="/login" className="hover:text-white transition-colors">Sign in</a></li>
                 <li><a href="/join" className="hover:text-white transition-colors">Join with invite</a></li>
-                <li><span className="text-white/40">iOS app coming soon</span></li>
+                <li><span className="text-white/60">Mobile-friendly web app</span></li>
               </ul>
             </div>
 
