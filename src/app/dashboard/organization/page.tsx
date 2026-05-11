@@ -203,7 +203,7 @@ export default function OrganizationSettingsPage() {
   };
 
   const handleRoleChange = async (memberId: string, newRole: OrgRole) => {
-    if (!currentOrganization) return;
+    if (!currentOrganization || updatingMemberId) return;
 
     const member = members.find((item) => item.id === memberId);
     if (member?.user_id === user?.id) {
@@ -240,7 +240,7 @@ export default function OrganizationSettingsPage() {
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    if (!currentOrganization) return;
+    if (!currentOrganization || updatingMemberId) return;
     const member = members.find((item) => item.id === memberId);
     if (member?.user_id === user?.id) {
       setError('You cannot remove your own organization membership from this screen.');
@@ -550,7 +550,7 @@ export default function OrganizationSettingsPage() {
               const isLastAdmin = member.role === 'admin' && adminCount <= 1;
               const memberName = member.profile?.full_name || member.profile?.email || 'Unknown member';
               const isUpdating = updatingMemberId === member.id;
-              const controlsDisabled = isCurrentUser || isLastAdmin || isUpdating;
+              const controlsDisabled = Boolean(updatingMemberId) || isCurrentUser || isLastAdmin;
 
               return (
               <div key={member.id} className="flex items-center gap-4 p-4 bg-whisper rounded-lg">
@@ -572,6 +572,7 @@ export default function OrganizationSettingsPage() {
                       value={member.role}
                       onChange={(e) => handleRoleChange(member.id, e.target.value as OrgRole)}
                       disabled={controlsDisabled}
+                      aria-busy={isUpdating}
                       aria-label={`Change organization role for ${memberName}`}
                       className="input py-1.5 px-2 text-sm"
                     >
@@ -582,6 +583,7 @@ export default function OrganizationSettingsPage() {
                       type="button"
                       onClick={() => handleRemoveMember(member.id)}
                       disabled={controlsDisabled}
+                      aria-busy={isUpdating}
                       className="btn-ghost text-error p-2 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         isUpdating
