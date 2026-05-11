@@ -387,7 +387,7 @@ export default function TeamSettingsPage() {
       return;
     }
 
-    const memberName = member.profile?.full_name || member.profile?.email || 'this member';
+    const memberName = getMemberDisplayName(member);
     const confirmed = await confirmAction({
       title: 'Remove team member?',
       description: `${memberName} will lose access to ${currentTeam.name}.`,
@@ -417,6 +417,10 @@ export default function TeamSettingsPage() {
     } finally {
       setUpdatingMemberId('');
     }
+  };
+
+  const getMemberDisplayName = (member: any) => {
+    return member?.profile?.full_name || member?.profile?.email || 'Team member';
   };
 
   if (!currentTeam) {
@@ -795,6 +799,7 @@ export default function TeamSettingsPage() {
               const isLastAdmin = member.role === 'admin' && adminCount <= 1;
               const isUpdating = updatingMemberId === member.id;
               const controlsDisabled = Boolean(updatingMemberId) || isCurrentUser || isLastAdmin;
+              const memberName = getMemberDisplayName(member);
 
               return (
                 <div
@@ -804,15 +809,15 @@ export default function TeamSettingsPage() {
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <div className="w-10 h-10 bg-teal-glow rounded-full flex items-center justify-center">
                       <span className="text-sm font-semibold text-teal-dark">
-                        {member.profile?.full_name?.charAt(0) || member.profile?.email?.charAt(0) || '?'}
+                        {memberName.charAt(0).toUpperCase() || '?'}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-navy truncate">
-                        {member.profile?.full_name || 'Unknown'}
+                        {memberName}
                       </p>
                       <p className="text-sm text-text-muted truncate">
-                        {member.profile?.email}
+                        {member.profile?.email || 'Profile details unavailable'}
                       </p>
                       {(isCurrentUser || isLastAdmin) && (
                         <p className="mt-1 text-xs font-semibold text-text-muted">
@@ -829,7 +834,7 @@ export default function TeamSettingsPage() {
                         onChange={(event) => handleMemberRoleChange(member, event.target.value as TeamRole)}
                         disabled={controlsDisabled}
                         aria-busy={isUpdating}
-                        aria-label={`Role for ${member.profile?.full_name || member.profile?.email || 'member'}`}
+                        aria-label={`Role for ${memberName}`}
                         className="input min-h-11 flex-1 capitalize sm:w-32 sm:flex-none"
                       >
                         {MANAGED_TEAM_ROLES.map((role) => (

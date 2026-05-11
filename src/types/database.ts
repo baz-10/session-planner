@@ -523,7 +523,7 @@ export interface MessageMetadata {
 // ============================================================================
 
 export interface TeamMemberWithProfile extends TeamMember {
-  profile: Profile;
+  profile: Profile | null;
 }
 
 export interface TeamWithMembers extends Team {
