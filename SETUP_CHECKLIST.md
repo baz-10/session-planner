@@ -106,6 +106,7 @@ current beta-readiness migrations:
 - `00037_active_chat_participant_sync.sql`
 - `00038_team_member_status_not_null.sql`
 - `00039_session_activity_reference_scope.sql`
+- `00040_team_invite_reactivates_public_members.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 
