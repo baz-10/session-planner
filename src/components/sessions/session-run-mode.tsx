@@ -399,6 +399,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   );
   const planBackHref = canManageSession && session?.id ? `/dashboard/sessions/${session.id}` : '/dashboard/sessions';
   const planBackLabel = canManageSession ? 'Back to plan' : 'Back to sessions';
+  const readOnlyPlan = !canManageSession;
 
   const activeActivity = runState ? activities[runState.activeIndex] || null : null;
   const nextActivity = runState ? activities[runState.activeIndex + 1] || null : null;
@@ -440,13 +441,18 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
 
   useEffect(() => {
     if (!runState) return;
+    if (!canManageSession) {
+      setStorageWarning('');
+      return;
+    }
+
     const didPersist = writeStoredRunState(runState);
     setStorageWarning(
       didPersist
         ? ''
         : 'Live progress is not being saved on this device. Keep this page open until you copy your summary.'
     );
-  }, [runState]);
+  }, [canManageSession, runState]);
 
   useEffect(() => {
     if (runStatus !== 'running') {
@@ -675,7 +681,9 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   }
 
   const statusLabel =
-    runState.status === 'complete'
+    readOnlyPlan
+      ? 'View only'
+      : runState.status === 'complete'
       ? 'Complete'
       : runState.status === 'running'
         ? 'Running'
@@ -709,18 +717,22 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           </Link>
           <div className="min-w-0 flex-1 text-center">
             <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
-              Run Live
+              {readOnlyPlan ? 'Practice Plan' : 'Run Live'}
             </h1>
             <p className="truncate text-[15px] font-medium text-slate-500">{session.name}</p>
           </div>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
-            aria-label="Reset run"
-          >
-            <RotateCcw className="h-5 w-5" />
-          </button>
+          {canManageSession ? (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+              aria-label="Reset run"
+            >
+              <RotateCcw className="h-5 w-5" />
+            </button>
+          ) : (
+            <div className="h-12 w-12 shrink-0" aria-hidden="true" />
+          )}
         </header>
 
         {storageWarning && (
@@ -760,51 +772,55 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
             </div>
           </div>
 
-          {activeActivity?.notes && (
+          {canManageSession && activeActivity?.notes && (
             <div className="flex gap-3 rounded-2xl border border-accent/20 bg-teal-glow px-4 py-4 text-[17px] font-medium leading-7 text-navy">
               <MessageSquareText className="mt-1 h-6 w-6 shrink-0 text-teal" />
               <p className="line-clamp-3">{activeActivity.notes}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={handlePlayPause}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
-            >
-              {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-              {playPauseLabel}
-            </button>
-            <button
-              type="button"
-              onClick={markActiveComplete}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-teal text-base font-extrabold text-white disabled:opacity-50"
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              Complete
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => addTime(60)}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
-            >
-              +1 min
-            </button>
-            <button
-              type="button"
-              onClick={() => addTime(-60)}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
-            >
-              -1 min
-            </button>
-          </div>
+          {canManageSession && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handlePlayPause}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  {playPauseLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={markActiveComplete}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-teal text-base font-extrabold text-white disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-5 w-5" />
+                  Complete
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => addTime(60)}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  +1 min
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addTime(-60)}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  -1 min
+                </button>
+              </div>
+            </>
+          )}
         </MobileListCard>
 
         <MobileListCard className="mb-4">
@@ -840,28 +856,30 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           )}
         </MobileListCard>
 
-        <MobileListCard className="mb-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold text-navy">Coaching Notes</h2>
-            <Edit3 className="h-5 w-5 text-teal" />
-          </div>
-          {coachCueLines && coachCueLines.length > 0 ? (
-            <ul className="space-y-3">
-              {coachCueLines.map((line) => (
-                <li key={line} className="flex gap-3 text-[16px] font-medium leading-6 text-navy">
-                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal" />
-                  {line}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm font-semibold text-slate-500">
-              No saved coaching notes for this activity.
-            </p>
-          )}
-        </MobileListCard>
+        {canManageSession && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-navy">Coaching Notes</h2>
+              <Edit3 className="h-5 w-5 text-teal" />
+            </div>
+            {coachCueLines && coachCueLines.length > 0 ? (
+              <ul className="space-y-3">
+                {coachCueLines.map((line) => (
+                  <li key={line} className="flex gap-3 text-[16px] font-medium leading-6 text-navy">
+                    <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm font-semibold text-slate-500">
+                No saved coaching notes for this activity.
+              </p>
+            )}
+          </MobileListCard>
+        )}
 
-        {activeActivity && (
+        {canManageSession && activeActivity && (
           <MobileListCard className="mb-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xl font-extrabold text-navy">Block Notes</h2>
@@ -889,38 +907,40 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           </MobileListCard>
         )}
 
-        <MobileListCard className="mb-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-xl font-extrabold text-navy">Session Notes</h2>
-            <button
-              type="button"
-              onClick={handleCopySummary}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-teal px-3 text-sm font-extrabold text-teal"
-            >
-              <ClipboardCopy className="h-4 w-4" />
-              Copy
-            </button>
-          </div>
-          <textarea
-            value={runState.sessionNotes}
-            onChange={(event) => updateSessionNotes(event.target.value)}
-            rows={5}
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
-            placeholder="Whole-practice observations, follow-ups, lineup notes..."
-          />
-          {copyStatus !== 'idle' && (
-            <p
-              role={copyStatus === 'failed' ? 'alert' : 'status'}
-              className={`mt-2 text-sm font-extrabold ${
-                copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
-              }`}
-            >
-              {copyStatus === 'copied'
-                ? 'Summary copied.'
-                : 'Clipboard unavailable in this browser.'}
-            </p>
-          )}
-        </MobileListCard>
+        {canManageSession && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-extrabold text-navy">Session Notes</h2>
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-teal px-3 text-sm font-extrabold text-teal"
+              >
+                <ClipboardCopy className="h-4 w-4" />
+                Copy
+              </button>
+            </div>
+            <textarea
+              value={runState.sessionNotes}
+              onChange={(event) => updateSessionNotes(event.target.value)}
+              rows={5}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
+              placeholder="Whole-practice observations, follow-ups, lineup notes..."
+            />
+            {copyStatus !== 'idle' && (
+              <p
+                role={copyStatus === 'failed' ? 'alert' : 'status'}
+                className={`mt-2 text-sm font-extrabold ${
+                  copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
+                }`}
+              >
+                {copyStatus === 'copied'
+                  ? 'Summary copied.'
+                  : 'Clipboard unavailable in this browser.'}
+              </p>
+            )}
+          </MobileListCard>
+        )}
 
         <MobileListCard className="mb-4 flex items-center gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-teal-glow text-teal">
@@ -947,15 +967,27 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           <ChevronLeft className="h-5 w-5" />
           Previous
         </button>
-        <button
-          type="button"
-          onClick={markActiveComplete}
-          disabled={runState.status === 'complete'}
-          className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
-        >
-          Next Activity
-          <ChevronRight className="h-5 w-5" />
-        </button>
+        {canManageSession ? (
+          <button
+            type="button"
+            onClick={markActiveComplete}
+            disabled={runState.status === 'complete'}
+            className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
+          >
+            Next Activity
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => jumpToActivity(runState.activeIndex + 1)}
+            disabled={runState.activeIndex >= activities.length - 1}
+            className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
+          >
+            Next
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
         <Link
           href={planBackHref}
           className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-base font-extrabold text-navy"
@@ -1030,7 +1062,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           </div>
         </header>
 
-        <main className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]">
+        <main
+          className={`grid gap-5 ${
+            canManageSession ? 'xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]' : ''
+          }`}
+        >
           <section className="space-y-5">
             <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 bg-white p-5 md:p-6">
@@ -1075,6 +1111,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   </div>
                 </div>
 
+                {canManageSession && (
                 <div className="mt-6 flex flex-wrap items-center gap-2">
                   <Button
                     onClick={handlePlayPause}
@@ -1118,37 +1155,50 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                     Reset
                   </Button>
                 </div>
+                )}
               </div>
 
               <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="p-5 md:p-6">
-                  <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                    <StickyNote className="h-4 w-4" />
-                    Block notes
+                {canManageSession ? (
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      <StickyNote className="h-4 w-4" />
+                      Block notes
+                    </div>
+                    <textarea
+                      value={activeActivity ? runState.activityNotes[activeActivity.id] || '' : ''}
+                      onChange={(event) => {
+                        if (activeActivity) updateActivityNote(activeActivity.id, event.target.value);
+                      }}
+                      rows={7}
+                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+                      placeholder="What worked, what dragged, who needs follow-up..."
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {activeActivity &&
+                        QUICK_NOTE_PROMPTS.map((prompt) => (
+                          <button
+                            key={prompt}
+                            type="button"
+                            onClick={() => appendQuickNote(activeActivity.id, prompt)}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                    </div>
                   </div>
-                  <textarea
-                    value={activeActivity ? runState.activityNotes[activeActivity.id] || '' : ''}
-                    onChange={(event) => {
-                      if (activeActivity) updateActivityNote(activeActivity.id, event.target.value);
-                    }}
-                    rows={7}
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
-                    placeholder="What worked, what dragged, who needs follow-up..."
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {activeActivity &&
-                      QUICK_NOTE_PROMPTS.map((prompt) => (
-                        <button
-                          key={prompt}
-                          type="button"
-                          onClick={() => appendQuickNote(activeActivity.id, prompt)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
+                ) : (
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      <ListChecks className="h-4 w-4" />
+                      Plan details
+                    </div>
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                      This is a read-only practice plan. Coaches control the live timer and post-session notes.
+                    </p>
                   </div>
-                </div>
+                )}
 
                 <aside className="border-t border-slate-200 bg-slate-50 p-5 lg:border-l lg:border-t-0 md:p-6">
                   <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1163,7 +1213,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                           ? ` · ${formatTime12Hour(nextActivity.plannedStartTime)}`
                           : ''}
                       </div>
-                      {nextActivity.notes && (
+                      {canManageSession && nextActivity.notes && (
                         <p className="mt-3 line-clamp-4 text-sm text-slate-600">
                           {nextActivity.notes}
                         </p>
@@ -1279,88 +1329,96 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
             </div>
           </section>
 
+          {canManageSession && (
           <aside className="space-y-5">
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                Coach cues
-              </div>
-              {activeActivity?.notes ? (
-                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                  {activeActivity.notes}
-                </p>
-              ) : (
-                <p className="text-sm text-slate-500">No saved coaching notes for this block.</p>
-              )}
-
-              {activeActivity?.groups && activeActivity.groups.length > 0 && (
-                <div className="mt-5 space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                    Groups
-                  </div>
-                  {(activeActivity.groups as ActivityGroup[]).map((group, index) => (
-                    <div key={`${group.name}-${index}`} className="rounded-2xl bg-slate-50 p-3">
-                      <div className="font-semibold text-slate-900">
-                        {group.name || `Group ${index + 1}`}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {group.player_ids.length} assigned players
-                      </div>
-                    </div>
-                  ))}
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Coach cues
                 </div>
-              )}
-            </section>
-
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Session notes
-                </div>
-                <TimerReset className="h-4 w-4 text-slate-400" />
-              </div>
-              <textarea
-                value={runState.sessionNotes}
-                onChange={(event) => updateSessionNotes(event.target.value)}
-                rows={8}
-                className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
-                placeholder="Whole-practice observations, follow-ups, lineup notes..."
-              />
-            </section>
-
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-bold text-slate-950">Post-session summary</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Copies elapsed time, block status, and notes.
+                {activeActivity?.notes ? (
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                    {activeActivity.notes}
                   </p>
+                ) : (
+                  <p className="text-sm text-slate-500">No saved coaching notes for this block.</p>
+                )}
+
+                {activeActivity?.groups && activeActivity.groups.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      Groups
+                    </div>
+                    {(activeActivity.groups as ActivityGroup[]).map((group, index) => (
+                      <div key={`${group.name}-${index}`} className="rounded-2xl bg-slate-50 p-3">
+                        <div className="font-semibold text-slate-900">
+                          {group.name || `Group ${index + 1}`}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {group.player_ids.length} assigned players
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Session notes
+                  </div>
+                  <TimerReset className="h-4 w-4 text-slate-400" />
                 </div>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={handleCopySummary}
-                  aria-label="Copy post-session summary"
-                >
-                  <ClipboardCopy className="h-4 w-4" />
-                </Button>
-              </div>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-                {runSummary}
-              </pre>
-              {copyStatus !== 'idle' && (
-                <p
-                  role={copyStatus === 'failed' ? 'alert' : 'status'}
-                  className={`mt-2 text-sm font-semibold ${
-                    copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
-                  }`}
-                >
-                  {copyStatus === 'copied'
-                    ? 'Summary copied.'
-                    : 'Clipboard unavailable in this browser.'}
-                </p>
-              )}
-            </section>
+                <textarea
+                  value={runState.sessionNotes}
+                  onChange={(event) => updateSessionNotes(event.target.value)}
+                  rows={8}
+                  className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+                  placeholder="Whole-practice observations, follow-ups, lineup notes..."
+                />
+              </section>
+            )}
+
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold text-slate-950">Post-session summary</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Copies elapsed time, block status, and notes.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySummary}
+                    aria-label="Copy post-session summary"
+                  >
+                    <ClipboardCopy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+                  {runSummary}
+                </pre>
+                {copyStatus !== 'idle' && (
+                  <p
+                    role={copyStatus === 'failed' ? 'alert' : 'status'}
+                    className={`mt-2 text-sm font-semibold ${
+                      copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
+                    }`}
+                  >
+                    {copyStatus === 'copied'
+                      ? 'Summary copied.'
+                      : 'Clipboard unavailable in this browser.'}
+                  </p>
+                )}
+              </section>
+            )}
           </aside>
+          )}
         </main>
       </div>
       </div>

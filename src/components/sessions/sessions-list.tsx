@@ -45,6 +45,7 @@ export function SessionsList() {
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
   const hasPendingAction = pendingAction !== null;
+  const sessionPrimaryActionLabel = canManageSessions ? 'Run live' : 'View plan';
 
   const loadSessions = useCallback(async () => {
     setIsLoading(true);
@@ -287,7 +288,7 @@ export function SessionsList() {
                     : `/dashboard/sessions/${session.id}/run`
                 }
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light"
-                aria-label={`Edit ${session.name}`}
+                aria-label={`${canManageSessions ? 'Edit' : 'View'} ${session.name}`}
               >
                 <ClipboardIcon />
               </Link>
@@ -337,7 +338,7 @@ export function SessionsList() {
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
               >
                 <PlayCircle className="h-4 w-4" />
-                Run live
+                {sessionPrimaryActionLabel}
               </Link>
               {canManageSessions && (
                 <>
@@ -438,7 +439,8 @@ export function SessionsList() {
                   <Link
                     href={`/dashboard/sessions/${session.id}/run`}
                     className="p-2 text-text-secondary hover:text-teal hover:bg-whisper rounded-md transition-colors"
-                    title="Run live"
+                    title={sessionPrimaryActionLabel}
+                    aria-label={`${sessionPrimaryActionLabel} ${session.name}`}
                   >
                     <PlayCircle className="h-5 w-5" />
                   </Link>
