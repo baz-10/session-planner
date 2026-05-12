@@ -14,6 +14,7 @@ import {
   TrendingUp,
   XCircle,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { EventCard } from './event-card';
 import { EventForm } from './event-form';
@@ -40,6 +41,7 @@ interface EventListProps {
 }
 
 export function EventList({ onSelectEvent }: EventListProps) {
+  const { currentTeam, teamMemberships } = useAuth();
   const { getEvents, getRsvpCounts, getUserRsvp } = useEvents();
   const [events, setEvents] = useState<EventWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +50,10 @@ export function EventList({ onSelectEvent }: EventListProps) {
   const [filterType, setFilterType] = useState<EventType | ''>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [view, setView] = useState<'upcoming' | 'month'>('upcoming');
+  const currentMembership = currentTeam
+    ? teamMemberships.find((membership) => membership.team.id === currentTeam.id)
+    : undefined;
+  const canManageEvents = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   const loadEvents = useCallback(async () => {
     setIsLoading(true);
@@ -157,15 +163,16 @@ export function EventList({ onSelectEvent }: EventListProps) {
               <option value="other">Other</option>
             </select>
 
-            {/* Create button */}
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
-            >
-              <Plus className="h-4 w-4" />
-              Create Event
-            </button>
+            {canManageEvents && (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
+              >
+                <Plus className="h-4 w-4" />
+                Create Event
+              </button>
+            )}
           </div>
         </div>
       </MobileListCard>
@@ -198,13 +205,19 @@ export function EventList({ onSelectEvent }: EventListProps) {
               : 'No events for this month.'
           }
           action={
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="btn-accent"
-            >
-              Create Your First Event
-            </button>
+            canManageEvents ? (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="btn-accent"
+              >
+                Create Your First Event
+              </button>
+            ) : (
+              <p className="text-sm font-semibold text-text-muted">
+                Coach/Admin role required to create events.
+              </p>
+            )
           }
         />
       ) : (

@@ -12,6 +12,7 @@ import {
   Users,
   XCircle,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import type { Event, Rsvp, Session, Player, Profile, RsvpStatus } from '@/types/database';
 
@@ -39,6 +40,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 };
 
 export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
+  const { currentTeam, teamMemberships } = useAuth();
   const { getRsvpCounts, getUserRsvp, submitRsvp } = useEvents();
   const [submittingStatus, setSubmittingStatus] = useState<RsvpStatus | null>(null);
   const [rsvpError, setRsvpError] = useState('');
@@ -47,6 +49,10 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
   const isEventPast = isPast(eventDate);
   const counts = getRsvpCounts(event.rsvps);
   const userRsvp = getUserRsvp(event.rsvps);
+  const currentMembership = currentTeam
+    ? teamMemberships.find((membership) => membership.team.id === currentTeam.id)
+    : undefined;
+  const isParent = currentMembership?.role === 'parent';
 
   const formatEventDate = () => {
     if (isToday(eventDate)) return 'Today';
@@ -180,7 +186,7 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
             </span>
           </div>
 
-          {!isEventPast && (
+          {!isEventPast && !isParent && (
             <div className="grid grid-cols-3 gap-2" aria-busy={submittingStatus !== null}>
               <button
                 onClick={(e) => {
@@ -228,6 +234,12 @@ export function EventCard({ event, onRsvp, onClick }: EventCardProps) {
                 {submittingStatus === 'not_going' ? 'Saving...' : 'Not Going'}
               </button>
             </div>
+          )}
+
+          {!isEventPast && isParent && onClick && (
+            <p className="rounded-xl bg-teal-glow px-3 py-2 text-sm font-semibold text-teal-dark">
+              Open event to RSVP for your players.
+            </p>
           )}
 
           {rsvpError && (
