@@ -440,6 +440,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const runSummary = session && runState ? buildRunSummary(session, activities, runState) : '';
 
   useEffect(() => {
+    if (!readOnlyPlan || !session) return;
+    setRunState(createInitialRunState(sessionId, session.activities));
+  }, [readOnlyPlan, session, sessionId]);
+
+  useEffect(() => {
     if (!runState) return;
     if (!canManageSession) {
       setStorageWarning('');
