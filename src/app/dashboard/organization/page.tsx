@@ -27,6 +27,7 @@ interface OrganizationMemberWithProfile {
 }
 
 type OrgInviteAction = 'code' | 'link' | 'email';
+type TeamInviteRole = 'player' | 'parent';
 
 export default function OrganizationSettingsPage() {
   const {
@@ -57,6 +58,7 @@ export default function OrganizationSettingsPage() {
   const [newTeamSport, setNewTeamSport] = useState('basketball');
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [copiedTeamCodeId, setCopiedTeamCodeId] = useState('');
+  const [copiedTeamLinkKey, setCopiedTeamLinkKey] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -136,6 +138,15 @@ export default function OrganizationSettingsPage() {
     setInviteFeedback(message);
     if (inviteTimerRef.current) clearTimeout(inviteTimerRef.current);
     inviteTimerRef.current = setTimeout(() => setInviteFeedback(''), 3000);
+  };
+
+  const buildTeamInviteLink = (inviteCode: string, role: TeamInviteRole) => {
+    if (!pageOrigin || !inviteCode) return '';
+
+    const url = new URL('/join', pageOrigin);
+    url.searchParams.set('code', inviteCode);
+    url.searchParams.set('role', role);
+    return url.toString();
   };
 
   const copyOrganizationInviteCode = async () => {
@@ -277,10 +288,40 @@ export default function OrganizationSettingsPage() {
 
     setError(null);
     setCopiedTeamCodeId(teamId);
+    setCopiedTeamLinkKey('');
     showInviteFeedback(`${teamName} invite code copied.`);
 
     if (teamInviteTimerRef.current) clearTimeout(teamInviteTimerRef.current);
     teamInviteTimerRef.current = setTimeout(() => setCopiedTeamCodeId(''), 2000);
+  };
+
+  const copyTeamInviteLink = async (
+    teamId: string,
+    teamName: string,
+    role: TeamInviteRole,
+    inviteCode?: string | null
+  ) => {
+    const inviteLink = inviteCode ? buildTeamInviteLink(inviteCode, role) : '';
+    if (!inviteLink) {
+      setError('Team invite link is unavailable. Apply the latest database migrations and refresh.');
+      return;
+    }
+
+    const didCopy = await copyTextToClipboard(inviteLink);
+    if (!didCopy) {
+      setError('Team invite link could not be copied. Copy the team code instead.');
+      return;
+    }
+
+    const roleLabel = role === 'player' ? 'player' : 'parent';
+    const copiedKey = `${teamId}:${role}`;
+    setError(null);
+    setCopiedTeamCodeId('');
+    setCopiedTeamLinkKey(copiedKey);
+    showInviteFeedback(`${teamName} ${roleLabel} invite link copied.`);
+
+    if (teamInviteTimerRef.current) clearTimeout(teamInviteTimerRef.current);
+    teamInviteTimerRef.current = setTimeout(() => setCopiedTeamLinkKey(''), 2000);
   };
 
   const getMemberDisplayName = (member?: OrganizationMemberWithProfile | null) => {
@@ -637,14 +678,32 @@ export default function OrganizationSettingsPage() {
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     {teamInviteCode && <span className="badge badge-navy justify-center">{teamInviteCode}</span>}
                     {isAdmin && teamInviteCode && (
-                      <button
-                        type="button"
-                        onClick={() => void copyTeamInviteCode(team.id, team.name, teamInviteCode)}
-                        className="btn-secondary min-h-10 justify-center"
-                      >
-                        <Copy className="h-4 w-4" />
-                        {copiedTeamCodeId === team.id ? 'Copied' : 'Copy Code'}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void copyTeamInviteCode(team.id, team.name, teamInviteCode)}
+                          className="btn-secondary min-h-10 justify-center"
+                        >
+                          <Copy className="h-4 w-4" />
+                          {copiedTeamCodeId === team.id ? 'Copied' : 'Copy Code'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void copyTeamInviteLink(team.id, team.name, 'player', teamInviteCode)}
+                          className="btn-secondary min-h-10 justify-center"
+                        >
+                          <LinkIcon className="h-4 w-4" />
+                          {copiedTeamLinkKey === `${team.id}:player` ? 'Copied' : 'Player Link'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void copyTeamInviteLink(team.id, team.name, 'parent', teamInviteCode)}
+                          className="btn-secondary min-h-10 justify-center"
+                        >
+                          <LinkIcon className="h-4 w-4" />
+                          {copiedTeamLinkKey === `${team.id}:parent` ? 'Copied' : 'Parent Link'}
+                        </button>
+                      </>
                     )}
                     {isAdmin && !teamInviteCode && (
                       <span className="text-xs font-semibold text-text-muted">
