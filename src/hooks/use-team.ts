@@ -217,6 +217,7 @@ export function useTeam() {
           profile:profiles(id, email, full_name, avatar_url)
         `)
         .eq('team_id', teamId)
+        .neq('status', 'inactive')
         .order('role', { ascending: true });
 
       if (error) {
