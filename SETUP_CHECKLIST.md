@@ -103,6 +103,7 @@ current beta-readiness migrations:
 - `00034_private_drill_media.sql`
 - `00035_tighten_org_member_update_scope.sql`
 - `00036_unlinked_chat_attachment_cleanup.sql`
+- `00037_active_chat_participant_sync.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 
