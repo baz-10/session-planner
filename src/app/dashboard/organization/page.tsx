@@ -56,9 +56,11 @@ export default function OrganizationSettingsPage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('basketball');
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
+  const [copiedTeamCodeId, setCopiedTeamCodeId] = useState('');
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const teamInviteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isAdmin = currentOrganizationRole === 'admin';
   const adminCount = members.filter((member) => member.role === 'admin').length;
@@ -77,6 +79,7 @@ export default function OrganizationSettingsPage() {
   useEffect(() => {
     return () => {
       if (inviteTimerRef.current) clearTimeout(inviteTimerRef.current);
+      if (teamInviteTimerRef.current) clearTimeout(teamInviteTimerRef.current);
     };
   }, []);
 
@@ -92,7 +95,7 @@ export default function OrganizationSettingsPage() {
       try {
         const [membersResult, teamsResult] = await Promise.all([
           getOrganizationMembers(currentOrganization.id),
-          getOrganizationTeams(currentOrganization.id),
+          getOrganizationTeams(currentOrganization.id, { includeInviteCodes: isAdmin }),
         ]);
 
         if (!cancelled) {
@@ -127,7 +130,7 @@ export default function OrganizationSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentOrganization?.id, getOrganizationMembers, getOrganizationTeams]);
+  }, [currentOrganization?.id, getOrganizationMembers, getOrganizationTeams, isAdmin]);
 
   const showInviteFeedback = (message: string) => {
     setInviteFeedback(message);
@@ -258,6 +261,26 @@ export default function OrganizationSettingsPage() {
     } finally {
       setIsCreatingTeam(false);
     }
+  };
+
+  const copyTeamInviteCode = async (teamId: string, teamName: string, inviteCode?: string | null) => {
+    if (!inviteCode) {
+      setError('Team invite code is unavailable. Apply the latest database migrations and refresh.');
+      return;
+    }
+
+    const didCopy = await copyTextToClipboard(inviteCode);
+    if (!didCopy) {
+      setError('Team invite code could not be copied. Select the code and copy it manually.');
+      return;
+    }
+
+    setError(null);
+    setCopiedTeamCodeId(teamId);
+    showInviteFeedback(`${teamName} invite code copied.`);
+
+    if (teamInviteTimerRef.current) clearTimeout(teamInviteTimerRef.current);
+    teamInviteTimerRef.current = setTimeout(() => setCopiedTeamCodeId(''), 2000);
   };
 
   const getMemberDisplayName = (member?: OrganizationMemberWithProfile | null) => {
@@ -613,6 +636,21 @@ export default function OrganizationSettingsPage() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     {teamInviteCode && <span className="badge badge-navy justify-center">{teamInviteCode}</span>}
+                    {isAdmin && teamInviteCode && (
+                      <button
+                        type="button"
+                        onClick={() => void copyTeamInviteCode(team.id, team.name, teamInviteCode)}
+                        className="btn-secondary min-h-10 justify-center"
+                      >
+                        <Copy className="h-4 w-4" />
+                        {copiedTeamCodeId === team.id ? 'Copied' : 'Copy Code'}
+                      </button>
+                    )}
+                    {isAdmin && !teamInviteCode && (
+                      <span className="text-xs font-semibold text-text-muted">
+                        Invite code unavailable
+                      </span>
+                    )}
                     {teamMembership && (
                       <Link
                         href="/dashboard/team"

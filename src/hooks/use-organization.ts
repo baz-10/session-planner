@@ -35,6 +35,10 @@ interface JoinOrganizationResult {
   error?: string;
 }
 
+interface GetOrganizationTeamsOptions {
+  includeInviteCodes?: boolean;
+}
+
 const STALE_ORG_MEMBER_ERROR =
   'This organization member could not be updated. They may have been removed or your access may have changed.';
 const ORGANIZATION_PUBLIC_SELECT =
@@ -231,7 +235,10 @@ export function useOrganization() {
    * Get teams in an organization
    */
   const getOrganizationTeams = useCallback(
-    async (organizationId: string): Promise<{ success: boolean; teams?: Team[]; error?: string }> => {
+    async (
+      organizationId: string,
+      options: GetOrganizationTeamsOptions = {}
+    ): Promise<{ success: boolean; teams?: Team[]; error?: string }> => {
       const { data, error } = await supabase
         .from('teams')
         .select(TEAM_PUBLIC_SELECT)
@@ -247,6 +254,28 @@ export function useOrganization() {
         ...(team as Team),
         team_code: null,
       }));
+
+      if (options.includeInviteCodes) {
+        const teamsWithInviteCodes = await Promise.all(
+          teams.map(async (team) => {
+            const { data: inviteCode, error: inviteError } = await supabase.rpc('get_team_invite_code', {
+              team_uuid: team.id,
+            });
+
+            if (inviteError) {
+              console.error('Error fetching organization team invite code:', inviteError);
+              return team;
+            }
+
+            return {
+              ...team,
+              team_code: inviteCode,
+            };
+          })
+        );
+
+        return { success: true, teams: teamsWithInviteCodes };
+      }
 
       return { success: true, teams };
     },
