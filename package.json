@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "audit:mobile": "node scripts/audit-mobile-experience.mjs",
+    "audit:beta": "node scripts/audit-beta-readiness.mjs",
     "smoke:public-routes": "node scripts/smoke-public-routes.mjs",
     "verify:supabase-migrations": "node scripts/verify-supabase-migrations.mjs",
     "prepare:mobile-webdir": "node scripts/prepare-capacitor-webdir.mjs",

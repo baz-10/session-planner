@@ -50,6 +50,9 @@ jobs:
       - name: Mobile experience audit
         run: npm run audit:mobile
 
+      - name: Beta readiness artifact audit
+        run: npm run audit:beta
+
       - name: Dependency audit
         run: npm audit --audit-level=high
 
