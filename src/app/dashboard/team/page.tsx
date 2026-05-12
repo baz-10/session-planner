@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, Copy, Link as LinkIcon, Mail, Plus, Share2, UserPlus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
 import { useConfirmDialog } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { storePendingParentTeamSetupId } from '@/lib/utils/parent-team-setup';
 import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import { openMailtoInvite } from '@/lib/utils/mailto';
 import type { TeamRole } from '@/types/database';
@@ -22,6 +24,7 @@ type InviteFeedback = {
 type InviteAction = 'code' | 'link' | 'share' | 'email';
 
 export default function TeamSettingsPage() {
+  const router = useRouter();
   const { currentTeam, teamMemberships, user } = useAuth();
   const { getTeamMembers, createTeam, joinTeamByCode, updateMemberRole, removeMember } = useTeam();
 
@@ -319,6 +322,13 @@ export default function TeamSettingsPage() {
 
       if (!result.success) {
         setFormError(result.error || 'Failed to join team');
+        return;
+      }
+
+      const parentSetupTeamId = joinRole === 'parent' ? result.team?.id : null;
+      if (parentSetupTeamId && user?.id) {
+        storePendingParentTeamSetupId(user.id, parentSetupTeamId);
+        router.push(`/onboarding?parentTeamId=${encodeURIComponent(parentSetupTeamId)}`);
         return;
       }
 
