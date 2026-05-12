@@ -19,6 +19,21 @@ function withTeamInviteCode(team: Partial<Team>, inviteCode: string | null): Tea
   };
 }
 
+function getCreateTeamErrorMessage(error: { message?: string; code?: string } | null) {
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('only organization admins can create teams')) {
+    return 'Only organization admins can create teams in this organization.';
+  }
+
+  if (lowerMessage.includes('row-level security') || error?.code === '42501') {
+    return 'You do not have permission to create a team in this context. Refresh your access and try again.';
+  }
+
+  return message || 'Failed to create team. Please try again.';
+}
+
 interface JoinTeamResult {
   success: boolean;
   team?: Team;
@@ -107,7 +122,7 @@ export function useTeam() {
 
       if (error || !team) {
         console.error('Error creating team:', error);
-        return { success: false, error: 'Failed to create team. Please try again.' };
+        return { success: false, error: getCreateTeamErrorMessage(error) };
       }
 
       let inviteCode: string | null = null;
