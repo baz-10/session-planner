@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
 
     const parsedBody = await parseJsonObjectBody<{ apiKey?: string }>(
       request,
-      { valid: false, error: 'Invalid JSON request body.' }
+      { valid: false, error: 'Invalid JSON request body.' },
+      { bodyTooLarge: { valid: false, error: 'Request body is too large.' } }
     );
     if (!parsedBody.ok) return parsedBody.response;
 
