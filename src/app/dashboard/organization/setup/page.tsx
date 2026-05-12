@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 import { useOrganization } from '@/hooks/use-organization';
 import {
@@ -13,6 +14,7 @@ type SetupMode = 'choose' | 'create' | 'join';
 
 export default function OrganizationSetupPage() {
   const router = useRouter();
+  const { profile } = useAuth();
   const { createOrganization, joinOrganization } = useOrganization();
 
   const [mode, setMode] = useState<SetupMode>('choose');
@@ -50,7 +52,7 @@ export default function OrganizationSetupPage() {
       const result = await createOrganization(orgName.trim(), logoUrl.trim() || undefined);
 
       if (result.success) {
-        router.push('/dashboard/organization');
+        router.push(profile?.onboarding_completed ? '/dashboard/organization' : '/onboarding');
         return;
       }
 
@@ -80,7 +82,7 @@ export default function OrganizationSetupPage() {
       const result = await joinOrganization(normalizedCode);
 
       if (result.success) {
-        router.push('/dashboard/organization');
+        router.push(profile?.onboarding_completed ? '/dashboard/organization' : '/onboarding');
         return;
       }
 
