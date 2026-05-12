@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Copy, Link as LinkIcon } from 'lucide-react';
+import { Copy, Link as LinkIcon, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useOrganization } from '@/hooks/use-organization';
+import { useTeam } from '@/hooks/use-team';
 import { useConfirmDialog } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import { openMailtoInvite } from '@/lib/utils/mailto';
@@ -28,8 +29,16 @@ interface OrganizationMemberWithProfile {
 type OrgInviteAction = 'code' | 'link' | 'email';
 
 export default function OrganizationSettingsPage() {
-  const { currentOrganization, currentOrganizationRole, organizationMemberships, user } = useAuth();
+  const {
+    currentOrganization,
+    currentOrganizationRole,
+    organizationMemberships,
+    teamMemberships,
+    setCurrentTeam,
+    user,
+  } = useAuth();
   const { getOrganizationMembers, getOrganizationTeams, updateMemberRole, removeMember } = useOrganization();
+  const { createTeam } = useTeam();
 
   const [members, setMembers] = useState<OrganizationMemberWithProfile[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -43,6 +52,10 @@ export default function OrganizationSettingsPage() {
   const [updatingMemberId, setUpdatingMemberId] = useState('');
   const [inviteAction, setInviteAction] = useState<OrgInviteAction | null>(null);
   const [pageOrigin, setPageOrigin] = useState('');
+  const [showCreateTeamForm, setShowCreateTeamForm] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamSport, setNewTeamSport] = useState('basketball');
+  const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const inviteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -199,6 +212,51 @@ export default function OrganizationSettingsPage() {
       setInviteEmail('');
     } finally {
       setInviteAction(null);
+    }
+  };
+
+  const handleCreateOrganizationTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrganization || isCreatingTeam) return;
+
+    const teamName = newTeamName.trim();
+    if (!teamName) {
+      setError('Enter a team name before creating an organization team.');
+      setActionFeedback('');
+      return;
+    }
+
+    setIsCreatingTeam(true);
+    setError(null);
+    setActionFeedback('');
+
+    try {
+      const result = await createTeam({
+        name: teamName,
+        sport: newTeamSport,
+        organization_id: currentOrganization.id,
+      });
+
+      if (!result.success || !result.team) {
+        setError(result.error || 'Failed to create organization team.');
+        return;
+      }
+
+      const createdTeam = result.team;
+      setTeams((prev) =>
+        [...prev.filter((team) => team.id !== createdTeam.id), createdTeam].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+      setNewTeamName('');
+      setNewTeamSport('basketball');
+      setShowCreateTeamForm(false);
+      setActionFeedback('Team created. Open Team Settings to invite players and parents.');
+    } catch (createError) {
+      console.error('Unexpected error creating organization team:', createError);
+      setError('Failed to create organization team.');
+    } finally {
+      setIsCreatingTeam(false);
     }
   };
 
@@ -424,17 +482,103 @@ export default function OrganizationSettingsPage() {
 
       {/* Teams Section */}
       <div className="card p-6 mb-6">
-        <h3 className="text-lg font-semibold text-navy mb-4 flex items-center gap-2">
-          <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          Teams ({teams.length})
-        </h3>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-navy">
+            <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            Teams ({teams.length})
+          </h3>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateTeamForm((value) => !value);
+                setError(null);
+              }}
+              disabled={isCreatingTeam}
+              className="btn-primary min-h-10 justify-center"
+            >
+              <Plus className="h-4 w-4" />
+              Create Team
+            </button>
+          )}
+        </div>
+
+        {showCreateTeamForm && (
+          <form
+            onSubmit={handleCreateOrganizationTeam}
+            className="mb-5 rounded-lg border border-border bg-whisper p-4"
+            aria-busy={isCreatingTeam}
+          >
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+              <div>
+                <label htmlFor="organizationTeamName" className="label">
+                  Team Name
+                </label>
+                <input
+                  id="organizationTeamName"
+                  type="text"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="input"
+                  placeholder="e.g., Westside Warriors U14"
+                  required
+                  disabled={isCreatingTeam}
+                />
+              </div>
+              <div>
+                <label htmlFor="organizationTeamSport" className="label">
+                  Sport
+                </label>
+                <select
+                  id="organizationTeamSport"
+                  value={newTeamSport}
+                  onChange={(e) => setNewTeamSport(e.target.value)}
+                  className="input"
+                  disabled={isCreatingTeam}
+                >
+                  <option value="basketball">Basketball</option>
+                  <option value="soccer">Soccer</option>
+                  <option value="football">Football</option>
+                  <option value="baseball">Baseball</option>
+                  <option value="softball">Softball</option>
+                  <option value="volleyball">Volleyball</option>
+                  <option value="hockey">Hockey</option>
+                  <option value="lacrosse">Lacrosse</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateTeamForm(false);
+                  setNewTeamName('');
+                  setNewTeamSport('basketball');
+                }}
+                className="btn-secondary min-h-10 justify-center"
+                disabled={isCreatingTeam}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-accent min-h-10 justify-center"
+                disabled={isCreatingTeam}
+                aria-busy={isCreatingTeam}
+              >
+                {isCreatingTeam ? 'Creating...' : 'Create Organization Team'}
+              </button>
+            </div>
+          </form>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-8" role="status" aria-label="Loading organization teams">
@@ -450,20 +594,38 @@ export default function OrganizationSettingsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {teams.map((team) => (
-              <div key={team.id} className="flex items-center gap-4 p-4 bg-whisper rounded-lg">
-                <div className="w-10 h-10 bg-navy rounded-full flex items-center justify-center">
-                  <span className="text-sm font-semibold text-white">
-                    {team.name?.charAt(0) || 'T'}
-                  </span>
+            {teams.map((team) => {
+              const teamMembership = teamMemberships.find((membership) => membership.team.id === team.id);
+              const teamInviteCode = teamMembership?.team.team_code || team.team_code;
+
+              return (
+                <div key={team.id} className="flex flex-col gap-3 rounded-lg bg-whisper p-4 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className="w-10 h-10 bg-navy rounded-full flex items-center justify-center">
+                      <span className="text-sm font-semibold text-white">
+                        {team.name?.charAt(0) || 'T'}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-navy truncate">{team.name}</p>
+                      <p className="text-sm text-text-muted capitalize">{team.sport || 'Basketball'}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    {teamInviteCode && <span className="badge badge-navy justify-center">{teamInviteCode}</span>}
+                    {teamMembership && (
+                      <Link
+                        href="/dashboard/team"
+                        onClick={() => setCurrentTeam(teamMembership.team)}
+                        className="btn-secondary min-h-10 justify-center"
+                      >
+                        Manage
+                      </Link>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-navy truncate">{team.name}</p>
-                  <p className="text-sm text-text-muted capitalize">{team.sport || 'Basketball'}</p>
-                </div>
-                {team.team_code && <span className="badge badge-navy">{team.team_code}</span>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
