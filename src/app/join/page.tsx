@@ -20,11 +20,13 @@ function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const codeFromUrl = normalizeTeamCode(searchParams.get('code') || '');
-  const roleFromUrl = getRoleFromUrl(searchParams.get('role'));
+  const roleParam = searchParams.get('role');
+  const hasExplicitInviteRole = INVITE_JOIN_ROLES.has(roleParam || '');
+  const roleFromUrl = getRoleFromUrl(roleParam);
   const joinRedirectTarget = (() => {
     const params = new URLSearchParams();
     if (codeFromUrl) params.set('code', codeFromUrl);
-    if (roleFromUrl !== 'player') params.set('role', roleFromUrl);
+    if (hasExplicitInviteRole) params.set('role', roleFromUrl);
     const query = params.toString();
     return query ? `/join?${query}` : '/join';
   })();
@@ -214,13 +216,15 @@ function JoinPageContent() {
                 value={role}
                 onChange={(e) => setRole(e.target.value as InviteJoinRole)}
                 className="input"
-                disabled={isSubmitting}
+                disabled={isSubmitting || hasExplicitInviteRole}
               >
                 <option value="player">Player</option>
                 <option value="parent">Parent / Guardian</option>
               </select>
               <p className="text-xs text-text-muted mt-1">
-                Coaches should contact the team admin directly
+                {hasExplicitInviteRole
+                  ? 'Role selected from your team invite.'
+                  : 'Coaches should contact the team admin directly.'}
               </p>
             </div>
 
