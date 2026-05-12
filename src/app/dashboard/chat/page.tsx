@@ -78,6 +78,11 @@ export default function ChatPage() {
     setSelectedConversation(null);
   };
 
+  const handleConversationLeft = () => {
+    setQuickChatError('');
+    setSelectedConversation(null);
+  };
+
   const openTeamConversation = async (type: 'team' | 'coaches') => {
     if (openingQuickChat) return;
 
@@ -208,6 +213,7 @@ export default function ChatPage() {
           <ChatView
             conversation={selectedConversation}
             onBack={isMobileView ? handleBack : undefined}
+            onConversationLeft={handleConversationLeft}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center bg-background">

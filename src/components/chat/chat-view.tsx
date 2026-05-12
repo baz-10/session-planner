@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ShieldCheck, Users } from 'lucide-react';
+import { Bell, BellOff, ChevronLeft, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
+import { useConfirmDialog } from '@/components/ui/action-dialogs';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
@@ -25,16 +26,31 @@ interface MessageWithSender extends Message {
 interface ChatViewProps {
   conversation: ConversationWithDetails;
   onBack?: () => void;
+  onConversationLeft?: () => void;
 }
 
-export function ChatView({ conversation, onBack }: ChatViewProps) {
+export function ChatView({ conversation, onBack, onConversationLeft }: ChatViewProps) {
   const { user } = useAuth();
-  const { getMessages, sendMessage, sendFileMessage, markAsRead, subscribeToMessages } = useChat();
+  const {
+    getMessages,
+    sendMessage,
+    sendFileMessage,
+    markAsRead,
+    subscribeToMessages,
+    toggleMute,
+    leaveConversation,
+  } = useChat();
+  const { confirmAction, confirmDialog } = useConfirmDialog();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [readStatusError, setReadStatusError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isUpdatingMute, setIsUpdatingMute] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const participants = conversation.participants || [];
+  const currentParticipant = participants.find((participant) => participant.user_id === user?.id);
 
   const getDirectParticipant = () => {
     return participants.find((participant) => participant.user_id !== user?.id);
@@ -59,6 +75,11 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
     const result = await markAsRead(conversation.id);
     setReadStatusError(result.success ? '' : result.error || 'Read status could not update.');
   }, [conversation.id, markAsRead]);
+
+  useEffect(() => {
+    setIsMuted(currentParticipant?.is_muted ?? false);
+    setActionError('');
+  }, [conversation.id, currentParticipant?.is_muted]);
 
   const loadMessages = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -117,6 +138,54 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
     return result;
   };
 
+  const handleToggleMute = async () => {
+    if (!currentParticipant || isUpdatingMute || isLeaving) return;
+
+    const nextMuted = !isMuted;
+    setActionError('');
+    setIsUpdatingMute(true);
+
+    try {
+      const result = await toggleMute(conversation.id, nextMuted);
+      if (result.success) {
+        setIsMuted(nextMuted);
+        return;
+      }
+
+      setActionError(result.error || 'Conversation notification setting could not be updated.');
+    } finally {
+      setIsUpdatingMute(false);
+    }
+  };
+
+  const handleLeaveConversation = async () => {
+    if (conversation.type !== 'group' || isLeaving) return;
+
+    const confirmed = await confirmAction({
+      title: 'Leave Group Chat',
+      description: 'You will stop receiving messages from this group chat. Another team member will need to add you back.',
+      confirmLabel: 'Leave Chat',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    setActionError('');
+    setIsLeaving(true);
+
+    try {
+      const result = await leaveConversation(conversation.id);
+      if (result.success) {
+        onConversationLeft?.();
+        return;
+      }
+
+      setActionError(result.error || 'Conversation could not be left.');
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
@@ -153,7 +222,42 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           )}
         </div>
 
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => void handleToggleMute()}
+            disabled={!currentParticipant || isUpdatingMute || isLeaving}
+            aria-label={isMuted ? 'Unmute conversation' : 'Mute conversation'}
+            aria-pressed={isMuted}
+            title={isMuted ? 'Unmute conversation' : 'Mute conversation'}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-wait disabled:opacity-50"
+          >
+            {isMuted ? (
+              <BellOff className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Bell className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
+          {conversation.type === 'group' && (
+            <button
+              type="button"
+              onClick={() => void handleLeaveConversation()}
+              disabled={isLeaving}
+              aria-label="Leave group chat"
+              title="Leave group chat"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-50"
+            >
+              <LogOut className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700">
+          {actionError}
+        </div>
+      )}
 
       {/* Messages */}
       {loadError ? (
@@ -186,6 +290,7 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
         onSendFile={handleSendFile}
         disabled={Boolean(loadError)}
       />
+      {confirmDialog}
     </div>
   );
 }

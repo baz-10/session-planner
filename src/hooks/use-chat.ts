@@ -47,6 +47,11 @@ interface DirectChatResult {
   error?: string;
 }
 
+interface ChatActionResult {
+  success: boolean;
+  error?: string;
+}
+
 interface ChatLoadOptions {
   throwOnError?: boolean;
 }
@@ -63,6 +68,11 @@ const DIRECT_CHAT_CREATE_ERROR =
   'Direct message could not be opened. Make sure this person is still on the selected team.';
 const CHAT_ATTACHMENT_SCOPE_ERROR =
   'Chat attachment access could not be verified. Refresh conversations and try again.';
+const CHAT_MUTE_STATUS_ERROR =
+  'Conversation notification setting could not be updated. Refresh and try again.';
+const CHAT_LEAVE_ERROR = 'Conversation could not be left. Refresh conversations and try again.';
+const CHAT_PARTICIPATION_STALE_ERROR =
+  'This conversation membership is no longer available. Refresh conversations and try again.';
 
 function getSafeAttachmentExtension(file: File) {
   return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
@@ -708,14 +718,27 @@ export function useChat() {
    * Toggle mute for a conversation
    */
   const toggleMute = useCallback(
-    async (conversationId: string, muted: boolean): Promise<void> => {
-      if (!user) return;
+    async (conversationId: string, muted: boolean): Promise<ChatActionResult> => {
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
 
-      await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .update({ is_muted: muted })
+        .update({ is_muted: muted }, { count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error updating conversation mute status:', error);
+        return { success: false, error: CHAT_MUTE_STATUS_ERROR };
+      }
+
+      if (count !== 1) {
+        return { success: false, error: CHAT_PARTICIPATION_STALE_ERROR };
+      }
+
+      return { success: true };
     },
     [user, supabase]
   );
@@ -729,15 +752,19 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
 
       if (error) {
         console.error('Error leaving conversation:', error);
-        return { success: false, error: 'Failed to leave conversation' };
+        return { success: false, error: CHAT_LEAVE_ERROR };
+      }
+
+      if (count !== 1) {
+        return { success: false, error: CHAT_PARTICIPATION_STALE_ERROR };
       }
 
       return { success: true };
