@@ -34,6 +34,7 @@ const STALE_CATEGORY_ERROR = 'Category access changed. Refresh categories and tr
 const STALE_MEDIA_ERROR = 'Media access changed. Refresh the drill and try again.';
 const MAX_DRILL_MEDIA_BYTES = 50 * 1024 * 1024;
 const DRILL_MEDIA_BUCKET = 'drill-media';
+const SIGNED_DRILL_MEDIA_URL_SECONDS = 60 * 60;
 
 function validateDrillMedia(file: File) {
   if (file.size > MAX_DRILL_MEDIA_BYTES) {
@@ -56,11 +57,12 @@ function createDrillMediaObjectName(fileExtension: string) {
   return `${uniqueId}.${fileExtension}`;
 }
 
-function getDrillMediaStoragePath(publicUrl: string) {
+function getDrillMediaStoragePath(urlOrPath: string) {
+  const urlWithoutQuery = urlOrPath.split(/[?#]/)[0];
   const marker = `/${DRILL_MEDIA_BUCKET}/`;
 
   try {
-    const pathname = new URL(publicUrl).pathname;
+    const pathname = new URL(urlOrPath).pathname;
     const markerIndex = pathname.indexOf(marker);
 
     if (markerIndex >= 0) {
@@ -70,14 +72,53 @@ function getDrillMediaStoragePath(publicUrl: string) {
     // Fall through to the legacy path extraction below.
   }
 
-  const urlParts = publicUrl.split('/');
-  return urlParts.slice(-2).join('/');
+  const markerIndex = urlWithoutQuery.indexOf(marker);
+  if (markerIndex >= 0) {
+    const storagePath = decodeURIComponent(urlWithoutQuery.slice(markerIndex + marker.length));
+    return storagePath || null;
+  }
+
+  const fallbackPath = urlWithoutQuery.split('/').filter(Boolean).slice(-2).join('/');
+  return fallbackPath || null;
 }
 
 export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
+
+  const signDrillMediaUrl = useCallback(
+    async (media: DrillMedia): Promise<DrillMedia> => {
+      const storagePath = media.url ? getDrillMediaStoragePath(media.url) : null;
+      if (!storagePath) {
+        return media;
+      }
+
+      const { data, error } = await supabase.storage
+        .from(DRILL_MEDIA_BUCKET)
+        .createSignedUrl(storagePath, SIGNED_DRILL_MEDIA_URL_SECONDS);
+
+      if (error || !data?.signedUrl) {
+        console.error('Error creating signed drill media URL:', error);
+        return media;
+      }
+
+      return { ...media, url: data.signedUrl };
+    },
+    [supabase]
+  );
+
+  const attachSignedMediaUrls = useCallback(
+    async (drills: DrillWithDetails[]): Promise<DrillWithDetails[]> => {
+      return Promise.all(
+        drills.map(async (drill) => ({
+          ...drill,
+          media: await Promise.all((drill.media || []).map(signDrillMediaUrl)),
+        }))
+      );
+    },
+    [signDrillMediaUrl]
+  );
 
   const toDrillErrorMessage = (error: { code?: string; message?: string } | null, fallback: string) => {
     if (!error) return fallback;
@@ -144,9 +185,9 @@ export function useDrills() {
         })) as DrillWithDetails[];
       }
 
-      return data as DrillWithDetails[];
+      return attachSignedMediaUrls(data as DrillWithDetails[]);
     },
-    [supabase, currentTeam]
+    [supabase, currentTeam, attachSignedMediaUrls]
   );
 
   /**
@@ -169,9 +210,10 @@ export function useDrills() {
         return null;
       }
 
-      return data as DrillWithDetails;
+      const [signedDrill] = await attachSignedMediaUrls([data as DrillWithDetails]);
+      return signedDrill || (data as DrillWithDetails);
     },
-    [supabase]
+    [supabase, attachSignedMediaUrls]
   );
 
   /**
@@ -323,9 +365,6 @@ export function useDrills() {
         return { success: false, error: 'Failed to upload file' };
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage.from(DRILL_MEDIA_BUCKET).getPublicUrl(fileName);
-
       // Determine type
       const type: AttachmentType = isSafeImageFile(file)
         ? 'image'
@@ -339,7 +378,7 @@ export function useDrills() {
         .insert({
           drill_id: drillId,
           type,
-          url: urlData.publicUrl,
+          url: fileName,
           filename: file.name,
           size_bytes: file.size,
         })
@@ -359,9 +398,9 @@ export function useDrills() {
         return { success: false, error: 'Failed to save media record' };
       }
 
-      return { success: true, media: data as DrillMedia };
+      return { success: true, media: await signDrillMediaUrl(data as DrillMedia) };
     },
-    [supabase]
+    [supabase, signDrillMediaUrl]
   );
 
   /**
@@ -393,7 +432,9 @@ export function useDrills() {
 
       if (media?.url) {
         const filePath = getDrillMediaStoragePath(media.url);
-        const { error: storageError } = await supabase.storage.from(DRILL_MEDIA_BUCKET).remove([filePath]);
+        const { error: storageError } = filePath
+          ? await supabase.storage.from(DRILL_MEDIA_BUCKET).remove([filePath])
+          : { error: null };
 
         if (storageError) {
           console.error('Error cleaning up deleted drill media file:', storageError);
