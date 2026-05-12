@@ -87,6 +87,28 @@ function validateChatAttachment(file: File): string | null {
   return null;
 }
 
+function getChatAttachmentUploadError(error: { message?: string; statusCode?: string | number } | null) {
+  const message = error?.message?.toLowerCase() || '';
+  const statusCode = String(error?.statusCode || '');
+
+  if (statusCode === '404' || message.includes('bucket not found')) {
+    return 'Chat attachments are not configured yet. Apply the latest Supabase storage migrations and try again.';
+  }
+
+  if (
+    statusCode === '401' ||
+    statusCode === '403' ||
+    message.includes('row-level security') ||
+    message.includes('not authorized') ||
+    message.includes('unauthorized') ||
+    message.includes('permission')
+  ) {
+    return 'You do not have permission to upload chat attachments for this team. Refresh your team access and try again.';
+  }
+
+  return 'File failed to upload. Check your connection and try again.';
+}
+
 export function useChat() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -218,7 +240,7 @@ export function useChat() {
           .eq('conversation_id', conv.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         // Get user's last read timestamp
         const { data: participant } = await supabase
@@ -458,7 +480,7 @@ export function useChat() {
 
       if (uploadError) {
         console.error('Error uploading file:', uploadError);
-        return { success: false, error: 'Failed to upload file' };
+        return { success: false, error: getChatAttachmentUploadError(uploadError) };
       }
 
       // Determine message type
