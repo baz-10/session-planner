@@ -99,6 +99,7 @@ current beta-readiness migrations:
 - `00030_active_membership_guards.sql`
 - `00031_chat_attachment_participant_scope.sql`
 - `00032_chat_attachment_immutable_storage.sql`
+- `00033_private_feed_attachments.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 

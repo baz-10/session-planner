@@ -48,6 +48,7 @@ interface ReactionSummary {
 export const MAX_POST_ATTACHMENTS = 5;
 export const MAX_POST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const POST_ATTACHMENT_BUCKET = 'attachments';
+const SIGNED_POST_ATTACHMENT_URL_SECONDS = 60 * 60;
 const STALE_POST_ERROR = 'This post could not be updated. It may have been removed or your access may have changed.';
 const STALE_COMMENT_ERROR =
   'This comment could not be updated. It may have been removed or your access may have changed.';
@@ -116,6 +117,36 @@ export function usePosts() {
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
+  const attachSignedAttachmentUrls = useCallback(
+    async (posts: PostWithDetails[]): Promise<PostWithDetails[]> => {
+      return Promise.all(
+        posts.map(async (post) => ({
+          ...post,
+          attachments: await Promise.all(
+            (post.attachments || []).map(async (attachment) => {
+              const storagePath = attachment.url ? getPostAttachmentStoragePath(attachment.url) : null;
+              if (!storagePath) {
+                return attachment;
+              }
+
+              const { data, error } = await supabase.storage
+                .from(POST_ATTACHMENT_BUCKET)
+                .createSignedUrl(storagePath, SIGNED_POST_ATTACHMENT_URL_SECONDS);
+
+              if (error || !data?.signedUrl) {
+                console.error('Error creating signed post attachment URL:', error);
+                return attachment;
+              }
+
+              return { ...attachment, url: data.signedUrl };
+            })
+          ),
+        }))
+      );
+    },
+    [supabase]
+  );
+
   /**
    * Get all posts for the current team
    */
@@ -167,9 +198,9 @@ export function usePosts() {
         has_viewed: hasViewed.get(post.id) || false,
       })) as PostWithDetails[];
 
-      return { success: true, posts: postsWithDetails };
+      return { success: true, posts: await attachSignedAttachmentUrls(postsWithDetails) };
     },
-    [supabase, currentTeam, user]
+    [supabase, currentTeam, user, attachSignedAttachmentUrls]
   );
 
   /**
@@ -210,13 +241,16 @@ export function usePosts() {
         .eq('user_id', user.id)
         .single();
 
-      return {
+      const postWithDetails = {
         ...post,
         view_count: count || 0,
         has_viewed: !!userView,
       } as PostWithDetails;
+
+      const [signedPost] = await attachSignedAttachmentUrls([postWithDetails]);
+      return signedPost || postWithDetails;
     },
-    [supabase, user]
+    [supabase, user, attachSignedAttachmentUrls]
   );
 
   /**
@@ -243,10 +277,6 @@ export function usePosts() {
         return { success: false, error: 'Failed to upload file' };
       }
 
-      const { data: publicUrl } = supabase.storage
-        .from(POST_ATTACHMENT_BUCKET)
-        .getPublicUrl(filePath);
-
       // Determine attachment type
       let attachmentType: AttachmentType = 'document';
       if (isSafeImageFile(file)) attachmentType = 'image';
@@ -257,7 +287,7 @@ export function usePosts() {
         .insert({
           post_id: postId,
           type: attachmentType,
-          url: publicUrl.publicUrl,
+          url: filePath,
           filename: file.name,
           size_bytes: file.size,
         })
