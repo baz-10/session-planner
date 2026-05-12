@@ -151,7 +151,8 @@ export function useBilling() {
         profile:profiles(id, full_name, email)
       `)
       .eq('team_id', currentTeam.id)
-      .in('role', ['player', 'parent']);
+      .in('role', ['player', 'parent'])
+      .neq('status', 'inactive');
 
     if (error) {
       console.error('Error loading billable members:', error);

@@ -202,6 +202,7 @@ export function useSessions() {
           .select('role')
           .eq('team_id', targetTeamId)
           .eq('user_id', user.id)
+          .neq('status', 'inactive')
           .maybeSingle();
 
         if (membershipError) {

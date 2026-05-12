@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       .select('role')
       .eq('team_id', body.teamId)
       .eq('user_id', user.id)
+      .neq('status', 'inactive')
       .maybeSingle();
 
     if (membershipError || !membership || !COACH_ROLES.has(membership.role)) {

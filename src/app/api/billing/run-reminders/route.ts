@@ -83,6 +83,7 @@ async function runReminders(
         .select('role')
         .eq('team_id', teamId)
         .eq('user_id', user.id)
+        .neq('status', 'inactive')
         .maybeSingle();
 
       if (

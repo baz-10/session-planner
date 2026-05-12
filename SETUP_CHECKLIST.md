@@ -96,6 +96,7 @@ current beta-readiness migrations:
 - `00027_private_chat_attachments.sql`
 - `00028_group_chat_min_members.sql`
 - `00029_event_response_scope_guards.sql`
+- `00030_active_membership_guards.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 

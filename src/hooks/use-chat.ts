@@ -198,7 +198,8 @@ export function useChat() {
       const { data: teamMembers, error: teamMembersError } = await supabase
         .from('team_members')
         .select('user_id')
-        .eq('team_id', currentTeam.id);
+        .eq('team_id', currentTeam.id)
+        .neq('status', 'inactive');
 
       if (teamMembersError) {
         console.error('Error fetching current team members for chat scoping:', teamMembersError);

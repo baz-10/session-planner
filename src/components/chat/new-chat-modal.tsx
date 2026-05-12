@@ -49,6 +49,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
           profile:profiles!user_id(id, email, full_name, avatar_url)
         `)
         .eq('team_id', currentTeam.id)
+        .neq('status', 'inactive')
         .neq('user_id', user?.id);
 
       if (error) {
