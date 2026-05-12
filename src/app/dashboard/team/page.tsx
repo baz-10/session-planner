@@ -200,6 +200,13 @@ export default function TeamSettingsPage() {
     }
   };
 
+  const handleInviteRoleChange = (role: InviteJoinRole) => {
+    setInviteRole(role);
+    setLinkCopied(false);
+    setInviteSent(false);
+    setInviteFeedback(null);
+  };
+
   const shareInvite = async () => {
     if (inviteActionInFlight) return;
 
@@ -462,7 +469,7 @@ export default function TeamSettingsPage() {
                 <Plus className="h-6 w-6 text-teal" aria-hidden="true" />
               </div>
               <h3 className="text-lg font-semibold text-navy mb-2">Create a New Team</h3>
-              <p className="text-text-secondary text-sm">Start fresh with your own team and invite players</p>
+              <p className="text-text-secondary text-sm">Start fresh with your own team and invite players and parents</p>
             </button>
 
             {/* Join Team Option */}
@@ -599,7 +606,7 @@ export default function TeamSettingsPage() {
     <MobilePageShell contentClassName="md:max-w-4xl">
       <MobileHeader
         title="Team Settings"
-        subtitle="Manage your team and invite players"
+        subtitle="Manage your team and invite players and parents"
       />
 
       {/* Team Info Card */}
@@ -679,7 +686,7 @@ export default function TeamSettingsPage() {
             <select
               id="inviteRole"
               value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as 'player' | 'parent')}
+              onChange={(e) => handleInviteRoleChange(e.target.value as InviteJoinRole)}
               disabled={inviteActionInFlight}
               className="input"
             >
@@ -729,7 +736,7 @@ export default function TeamSettingsPage() {
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="player@email.com"
+                placeholder="member@example.com"
                 required
                 disabled={inviteActionInFlight}
                 aria-label="Email address to invite"
@@ -800,7 +807,7 @@ export default function TeamSettingsPage() {
           </div>
         ) : members.length === 0 ? (
           <div className="text-center py-8 text-text-secondary">
-            <p>No members yet. Share your team code to invite players!</p>
+            <p>No members yet. Share your team code to invite players and parents.</p>
           </div>
         ) : (
           <div className="space-y-3">

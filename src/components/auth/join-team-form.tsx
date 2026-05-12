@@ -114,7 +114,7 @@ export function JoinTeamForm({
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="player">Player</option>
-            <option value="parent">Parent</option>
+            <option value="parent">Parent / Guardian</option>
           </select>
           <p className="mt-1 text-sm text-gray-500">
             Coaches should join as a player or parent first and ask a team admin to promote them.
