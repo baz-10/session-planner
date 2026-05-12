@@ -102,7 +102,7 @@ function ForgotPasswordPageContent() {
               autoComplete="email"
               disabled={isSubmitting}
               className="input"
-              placeholder="coach@team.com"
+              placeholder="you@example.com"
             />
           </div>
 

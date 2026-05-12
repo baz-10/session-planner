@@ -195,7 +195,7 @@ export function SignupForm() {
               <span className="text-teal-light">practices.</span>
             </h1>
             <p className="text-lg text-white/70 max-w-md">
-              The complete platform for coaches to plan sessions, manage teams, and track progress.
+              A complete workspace for coaches, players, and parents to plan sessions, share updates, and track progress.
             </p>
           </div>
 
@@ -352,7 +352,7 @@ export function SignupForm() {
                     autoComplete="email"
                     disabled={isSubmitting}
                     className="input"
-                    placeholder="coach@team.com"
+                    placeholder="you@example.com"
                   />
                 </div>
 
