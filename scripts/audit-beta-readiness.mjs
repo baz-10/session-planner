@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 const root = process.cwd();
@@ -21,6 +22,16 @@ function assertUnique(values, label) {
   const duplicates = values.filter((value, index) => values.indexOf(value) !== index);
   if (duplicates.length > 0) {
     throw new Error(`${label}: duplicate values found: ${[...new Set(duplicates)].join(', ')}`);
+  }
+}
+
+function listTrackedFiles() {
+  try {
+    return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error(`Unable to inspect tracked files: ${error.message}`);
   }
 }
 
@@ -86,6 +97,23 @@ const requiredDeploymentSmokeMarkers = [
 
 for (const marker of requiredDeploymentSmokeMarkers) {
   assertIncludes(deploymentSmoke, marker, 'remote deployment smoke test');
+}
+
+const prohibitedTrackedPathPrefixes = [
+  '.env',
+  '.vercel/',
+  'supabase/.temp/',
+];
+
+const trackedFiles = listTrackedFiles();
+const prohibitedTrackedFiles = trackedFiles.filter((fileName) =>
+  prohibitedTrackedPathPrefixes.some((prefix) => fileName === prefix || fileName.startsWith(prefix))
+);
+
+if (prohibitedTrackedFiles.length > 0) {
+  throw new Error(
+    `Generated or environment files must not be tracked: ${prohibitedTrackedFiles.join(', ')}`
+  );
 }
 
 const migrationFiles = readdirSync(join(root, 'supabase/migrations'))
