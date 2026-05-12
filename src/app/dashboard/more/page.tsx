@@ -5,6 +5,8 @@ import Link from 'next/link';
 import {
   BarChart3,
   Building2,
+  ClipboardCheck,
+  ClipboardList,
   CreditCard,
   LogOut,
   MessageCircle,
@@ -17,6 +19,7 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useBranding } from '@/hooks/use-branding';
 import { MobileHeader, MobileListCard, MobilePageShell } from '@/components/mobile';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 
 const moreItems = [
   {
@@ -68,6 +71,7 @@ export default function MorePage() {
   const { displayName } = useBranding();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
+  const [diagnosticsFeedback, setDiagnosticsFeedback] = useState('');
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const roleLabel =
     currentMembership?.role === 'coach'
@@ -77,6 +81,38 @@ export default function MorePage() {
         : currentMembership?.role === 'player'
           ? 'Player'
           : 'Parent';
+
+  const handleCopyDiagnostics = async () => {
+    const viewport =
+      typeof window === 'undefined'
+        ? 'Unknown'
+        : `${window.innerWidth}x${window.innerHeight} @ ${window.devicePixelRatio || 1}x`;
+    const route =
+      typeof window === 'undefined'
+        ? '/dashboard/more'
+        : `${window.location.pathname}${window.location.search}`;
+    const browser =
+      typeof window === 'undefined'
+        ? 'Unknown'
+        : window.navigator.userAgent;
+
+    const diagnostics = [
+      'Session Planner beta diagnostics',
+      `Generated: ${new Date().toISOString()}`,
+      `Route: ${route}`,
+      `Team: ${currentTeam?.name || 'No selected team'}`,
+      `Role: ${roleLabel}`,
+      `Viewport: ${viewport}`,
+      `Browser: ${browser}`,
+    ].join('\n');
+
+    const copied = await copyTextToClipboard(diagnostics);
+    setDiagnosticsFeedback(
+      copied
+        ? 'Diagnostics copied. Paste them into your bug report.'
+        : 'Could not copy diagnostics. Take a screenshot of this page instead.'
+    );
+  };
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -115,6 +151,30 @@ export default function MorePage() {
           <p className="mt-1 text-sm font-medium text-slate-500">{roleLabel}</p>
         </div>
       </MobileListCard>
+
+      <button
+        type="button"
+        onClick={handleCopyDiagnostics}
+        className="mb-5 w-full text-left"
+      >
+        <MobileListCard className="flex items-center gap-4 transition active:scale-[0.99] md:hover:border-teal">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+            <ClipboardList className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-extrabold text-navy">Copy Beta Diagnostics</div>
+            <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
+              Route, team, role, browser, and screen details.
+            </p>
+            {diagnosticsFeedback && (
+              <p role="status" className="mt-2 text-sm font-semibold text-teal-dark">
+                {diagnosticsFeedback}
+              </p>
+            )}
+          </div>
+          <ClipboardCheck className="h-5 w-5 shrink-0 text-slate-300" />
+        </MobileListCard>
+      </button>
 
       <div className="space-y-3">
         {moreItems.map((item) => (
