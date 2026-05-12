@@ -89,6 +89,14 @@ const navItems: NavItem[] = [
   },
 ];
 
+function getTeamRoleLabel(role?: string | null) {
+  if (role === 'coach') return 'Coach';
+  if (role === 'admin') return 'Admin';
+  if (role === 'player') return 'Player';
+  if (role === 'parent') return 'Parent';
+  return 'No team role';
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -265,7 +273,7 @@ export default function DashboardLayout({
                 {profile?.full_name || 'User'}
               </p>
               <p className="text-xs text-text-muted truncate">
-                {userRole === 'coach' ? 'Coach' : userRole === 'admin' ? 'Admin' : userRole === 'player' ? 'Player' : 'Parent'}
+                {getTeamRoleLabel(userRole)}
               </p>
             </div>
           </div>

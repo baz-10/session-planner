@@ -25,7 +25,7 @@ const moreItems = [
   {
     href: '/dashboard/drills',
     label: 'Drill Library',
-    description: 'Browse and manage reusable practice activities.',
+    description: 'Browse reusable practice activities.',
     icon: <Target className="h-5 w-5" />,
   },
   {
@@ -49,7 +49,7 @@ const moreItems = [
   {
     href: '/dashboard/billing',
     label: 'Billing',
-    description: 'Manage dues, invoices, and payment reminders.',
+    description: 'Dues, invoices, and payment reminders.',
     icon: <CreditCard className="h-5 w-5" />,
   },
   {
@@ -61,10 +61,18 @@ const moreItems = [
   {
     href: '/dashboard/organization',
     label: 'Organization',
-    description: 'Club setup, teams, and admin controls.',
+    description: 'Club setup, teams, and organization access.',
     icon: <Building2 className="h-5 w-5" />,
   },
 ];
+
+function getTeamRoleLabel(role?: string | null) {
+  if (role === 'coach') return 'Coach';
+  if (role === 'admin') return 'Admin';
+  if (role === 'player') return 'Player';
+  if (role === 'parent') return 'Parent';
+  return 'No team role';
+}
 
 export default function MorePage() {
   const { signOut, currentTeam, profile, teamMemberships } = useAuth();
@@ -73,14 +81,7 @@ export default function MorePage() {
   const [signOutError, setSignOutError] = useState('');
   const [diagnosticsFeedback, setDiagnosticsFeedback] = useState('');
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
-  const roleLabel =
-    currentMembership?.role === 'coach'
-      ? 'Coach'
-      : currentMembership?.role === 'admin'
-        ? 'Admin'
-        : currentMembership?.role === 'player'
-          ? 'Player'
-          : 'Parent';
+  const roleLabel = getTeamRoleLabel(currentMembership?.role);
 
   const handleCopyDiagnostics = async () => {
     const viewport =

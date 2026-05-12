@@ -91,6 +91,7 @@ export default function DashboardPage() {
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
   const sessionPrimaryActionLabel = canManageSessions ? 'Run live' : 'View plan';
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -197,7 +198,7 @@ export default function DashboardPage() {
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[23px] font-extrabold leading-tight text-navy md:text-3xl">
-            Welcome back, {profile?.full_name?.split(' ')[0] || 'Coach'}
+            Welcome back, {firstName}
           </h1>
           <div className="mt-1 flex min-w-0 items-center gap-2 text-[17px] font-medium text-slate-500">
             <span className="truncate">{currentTeam?.name || 'Select a team'}</span>
