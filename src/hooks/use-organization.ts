@@ -41,6 +41,8 @@ interface GetOrganizationTeamsOptions {
 
 const STALE_ORG_MEMBER_ERROR =
   'This organization member could not be updated. They may have been removed or your access may have changed.';
+const STALE_ORG_ERROR =
+  'This organization could not be updated. It may have been deleted or your access may have changed.';
 const ORGANIZATION_PUBLIC_SELECT =
   'id, name, logo_url, settings, created_by, created_at, updated_at';
 const TEAM_PUBLIC_SELECT =
@@ -157,14 +159,18 @@ export function useOrganization() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('organizations')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', organizationId);
 
       if (error) {
         console.error('Error updating organization:', error);
         return { success: false, error: 'Failed to update organization.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_ORG_ERROR };
       }
 
       await refreshOrganizationMemberships();
