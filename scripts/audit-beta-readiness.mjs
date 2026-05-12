@@ -28,12 +28,14 @@ const packageJson = JSON.parse(read('package.json'));
 const checklist = read('SETUP_CHECKLIST.md');
 const workflow = read('.github/workflows/beta-readiness.yml');
 const publicSmoke = read('scripts/smoke-public-routes.mjs');
+const deploymentSmoke = read('scripts/smoke-deployment.mjs');
 
 const requiredScripts = [
   'lint',
   'audit:mobile',
   'audit:beta',
   'smoke:public-routes',
+  'smoke:deployment',
   'verify:supabase-migrations',
 ];
 
@@ -72,6 +74,18 @@ const requiredPublicRoutes = [
 
 for (const route of requiredPublicRoutes) {
   assertIncludes(publicSmoke, route, 'public route smoke test');
+}
+
+const requiredDeploymentSmokeMarkers = [
+  'PUBLIC_DEPLOYMENT_URL',
+  'Authentication Required',
+  'Create Next App',
+  '/dashboard/',
+  'redirect=%2Fdashboard%2F',
+];
+
+for (const marker of requiredDeploymentSmokeMarkers) {
+  assertIncludes(deploymentSmoke, marker, 'remote deployment smoke test');
 }
 
 const migrationFiles = readdirSync(join(root, 'supabase/migrations'))

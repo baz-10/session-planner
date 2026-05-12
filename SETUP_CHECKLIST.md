@@ -150,6 +150,17 @@ the canonical production alias returned stale public content and 404 for
 after merge, or disable/grant access through Vercel Deployment Protection before
 asking external testers to use a preview URL.
 
+After the production alias is pointed at the beta build, run the public
+deployment smoke check:
+
+```bash
+PUBLIC_DEPLOYMENT_URL=https://session-planner.vercel.app npm run smoke:deployment
+```
+
+This catches stale starter-app deploys, Vercel Authentication pages, missing
+public auth/join routes, and broken unauthenticated `/dashboard/` redirects. It
+does not replace the authenticated coach/player/parent smoke tests above.
+
 ## Remaining External Gates
 
 - Both connected Vercel projects should be green before merge. `session-planner`

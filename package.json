@@ -10,6 +10,7 @@
     "audit:mobile": "node scripts/audit-mobile-experience.mjs",
     "audit:beta": "node scripts/audit-beta-readiness.mjs",
     "smoke:public-routes": "node scripts/smoke-public-routes.mjs",
+    "smoke:deployment": "node scripts/smoke-deployment.mjs",
     "verify:supabase-migrations": "node scripts/verify-supabase-migrations.mjs",
     "prepare:mobile-webdir": "node scripts/prepare-capacitor-webdir.mjs",
     "build:mobile": "next build && npm run prepare:mobile-webdir && npx cap sync",
