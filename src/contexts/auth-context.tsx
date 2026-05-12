@@ -167,8 +167,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const activeMembershipRows = (data || []).filter(
+      (item: TeamMember & { team: Partial<Team> }) => item.status !== 'inactive'
+    );
+
     const memberships = await Promise.all(
-      (data || []).map(async (item: TeamMember & { team: Partial<Team> }) => {
+      activeMembershipRows.map(async (item: TeamMember & { team: Partial<Team> }) => {
         const team = hideTeamInviteCode(item.team);
 
         if (MANAGER_TEAM_ROLES.has(item.role)) {
