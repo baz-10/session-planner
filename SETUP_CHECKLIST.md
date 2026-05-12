@@ -105,6 +105,7 @@ current beta-readiness migrations:
 - `00036_unlinked_chat_attachment_cleanup.sql`
 - `00037_active_chat_participant_sync.sql`
 - `00038_team_member_status_not_null.sql`
+- `00039_session_activity_reference_scope.sql`
 
 Do not treat a green Vercel build as proof that migrations are applied.
 
