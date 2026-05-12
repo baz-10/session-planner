@@ -296,6 +296,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
   const currentMembership = teamMemberships.find((membership) => membership.team.id === activeTeamId);
   const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
   const canManagePlayLinks = canManageSessions;
+  const planActionLabel = canManageSessions ? 'Run live' : 'View plan';
 
   const showStatus = useCallback((message: SessionBuilderStatus) => {
     setStatusMessage(message);
@@ -1812,7 +1813,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
-              Session Builder
+              {canManageSessions ? 'Session Builder' : 'Practice Plan'}
             </h1>
             <div className="mt-1 truncate text-[17px] font-medium text-slate-500">
               {currentTeam?.name || 'Select a team'}
@@ -2083,7 +2084,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                 >
                   <Link href={`/dashboard/sessions/${session.id}/run`}>
                     <PlayCircle className="h-4 w-4" />
-                    Run live
+                    {planActionLabel}
                   </Link>
                 </Button>
               )}
@@ -2095,7 +2096,7 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
                   className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 >
                   <PlayCircle className="h-4 w-4" />
-                  Run live
+                  {planActionLabel}
                 </Button>
               )}
               {session.id && canManageSessions && (
@@ -2418,11 +2419,11 @@ export function SessionBuilder({ sessionId, isNew = false }: SessionBuilderProps
         {session.id && !hasUnsavedChanges && (
           <Link
             href={`/dashboard/sessions/${session.id}/run`}
-            aria-label="Run live"
+            aria-label={planActionLabel}
             className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-navy bg-white px-3 text-sm font-extrabold text-navy"
           >
             <PlayCircle className="h-5 w-5" />
-            Run
+            {canManageSessions ? 'Run' : 'View'}
           </Link>
         )}
         <button
