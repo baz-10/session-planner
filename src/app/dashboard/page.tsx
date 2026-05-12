@@ -78,7 +78,7 @@ function formatSessionDate(date: string | null): string {
 }
 
 export default function DashboardPage() {
-  const { user, profile, isLoading, currentTeam } = useAuth();
+  const { user, profile, isLoading, currentTeam, teamMemberships } = useAuth();
   const { displayName, logoUrl } = useBranding();
   const router = useRouter();
   const { getSessions } = useSessions();
@@ -88,6 +88,9 @@ export default function DashboardPage() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [snapshotError, setSnapshotError] = useState('');
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const sessionPrimaryActionLabel = canManageSessions ? 'Run live' : 'View plan';
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -257,15 +260,23 @@ export default function DashboardPage() {
       <section className="mb-7">
         <h2 className="mb-4 text-[23px] font-extrabold text-navy">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">
-          <MobileActionCard
-            href="/dashboard/sessions/new"
-            icon={<Plus className="h-8 w-8" />}
-            label="New Session"
-          />
+          {canManageSessions ? (
+            <MobileActionCard
+              href="/dashboard/sessions/new"
+              icon={<Plus className="h-8 w-8" />}
+              label="New Session"
+            />
+          ) : (
+            <MobileActionCard
+              href="/dashboard/sessions"
+              icon={<ClipboardList className="h-8 w-8" />}
+              label="View Plans"
+            />
+          )}
           <MobileActionCard
             href="/dashboard/events"
             icon={<CalendarDays className="h-7 w-7" />}
-            label="Schedule Event"
+            label={canManageSessions ? 'Schedule Event' : 'Events'}
           />
           <MobileActionCard
             href="/dashboard/chat"
@@ -273,9 +284,9 @@ export default function DashboardPage() {
             label="Team Chat"
           />
           <MobileActionCard
-            href="/dashboard/billing"
-            icon={<CreditCard className="h-7 w-7" />}
-            label="Billing"
+            href={canManageSessions ? '/dashboard/billing' : '/dashboard/team'}
+            icon={canManageSessions ? <CreditCard className="h-7 w-7" /> : <Users className="h-7 w-7" />}
+            label={canManageSessions ? 'Billing' : 'Team'}
           />
         </div>
       </section>
@@ -340,7 +351,7 @@ export default function DashboardPage() {
                     className="hidden min-h-11 shrink-0 items-center justify-center rounded-2xl border border-teal px-4 text-sm font-extrabold text-teal transition-colors hover:bg-accent/5 sm:inline-flex"
                   >
                     <PlayCircle className="mr-2 h-4 w-4" />
-                    Run live
+                    {sessionPrimaryActionLabel}
                   </Link>
                 </div>
                 <Link
@@ -348,7 +359,7 @@ export default function DashboardPage() {
                   className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-teal text-base font-extrabold text-teal transition-colors active:scale-[0.98] sm:hidden"
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
-                  Run live
+                  {sessionPrimaryActionLabel}
                 </Link>
               </MobileListCard>
             ))}
@@ -357,11 +368,21 @@ export default function DashboardPage() {
           <MobileEmptyState
             icon={<ClipboardList className="h-8 w-8" />}
             title="No sessions yet"
-            description="Create your first practice plan to get started."
+            description={
+              canManageSessions
+                ? 'Create your first practice plan to get started.'
+                : 'Practice plans will appear here when a coach shares them with the team.'
+            }
             action={
-              <Link href="/dashboard/sessions/new" className="btn-accent">
-                Create Session
-              </Link>
+              canManageSessions ? (
+                <Link href="/dashboard/sessions/new" className="btn-accent">
+                  Create Session
+                </Link>
+              ) : (
+                <Link href="/dashboard/events" className="btn-accent">
+                  View Events
+                </Link>
+              )
             }
           />
         )}
