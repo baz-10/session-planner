@@ -355,6 +355,10 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
+      if (participantIds.length < 2) {
+        return { success: false, error: 'Select at least two team members for a group chat.' };
+      }
+
       const { data: conversation, error } = await supabase.rpc('create_group_chat', {
         team_uuid: currentTeam.id,
         group_name: name,

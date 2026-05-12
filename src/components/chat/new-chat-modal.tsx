@@ -29,6 +29,7 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
   const [isCreating, setIsCreating] = useState(false);
   const [memberLoadError, setMemberLoadError] = useState('');
   const [error, setError] = useState('');
+  const groupNeedsMoreMembers = mode === 'group' && selectedIds.length < 2;
 
   const loadMembers = useCallback(async () => {
     if (!currentTeam) {
@@ -117,6 +118,11 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
 
       if (!groupName.trim()) {
         setError('Enter a group name before creating the chat.');
+        return;
+      }
+
+      if (selectedIds.length < 2) {
+        setError('Select at least two team members for a group chat.');
         return;
       }
 
@@ -314,13 +320,20 @@ export function NewChatModal({ onClose, onConversationCreated }: NewChatModalPro
             onClick={handleCreate}
             disabled={
               selectedIds.length === 0 ||
+              groupNeedsMoreMembers ||
               (mode === 'group' && !groupName.trim()) ||
               isCreating
             }
             aria-busy={isCreating}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
           >
-            {isCreating ? 'Creating...' : mode === 'dm' ? 'Start Chat' : 'Create Group'}
+            {isCreating
+              ? 'Creating...'
+              : mode === 'group' && groupNeedsMoreMembers
+                ? 'Select 2 People'
+                : mode === 'dm'
+                  ? 'Start Chat'
+                  : 'Create Group'}
           </button>
         </div>
       </div>
