@@ -73,6 +73,7 @@ export function OnboardingFlow({
   };
 
   const hasParentTeamMembership = Boolean(getJoinedParentTeamId());
+  const hasTeamMembership = teamMemberships.length > 0;
 
   useEffect(() => {
     if (!initialParentTeamId) return;
@@ -112,6 +113,11 @@ export function OnboardingFlow({
       if (parentTeamId) {
         setJoinedTeamId(parentTeamId);
         setStep('add-players');
+        return;
+      }
+
+      if (hasTeamMembership) {
+        setStep('complete');
         return;
       }
 
