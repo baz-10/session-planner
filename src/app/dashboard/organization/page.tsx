@@ -690,7 +690,8 @@ export default function OrganizationSettingsPage() {
                         <button
                           type="button"
                           onClick={() => void copyTeamInviteLink(team.id, team.name, 'player', teamInviteCode)}
-                          className="btn-secondary min-h-10 justify-center"
+                          disabled={!pageOrigin}
+                          className="btn-secondary min-h-10 justify-center disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <LinkIcon className="h-4 w-4" />
                           {copiedTeamLinkKey === `${team.id}:player` ? 'Copied' : 'Player Link'}
@@ -698,7 +699,8 @@ export default function OrganizationSettingsPage() {
                         <button
                           type="button"
                           onClick={() => void copyTeamInviteLink(team.id, team.name, 'parent', teamInviteCode)}
-                          className="btn-secondary min-h-10 justify-center"
+                          disabled={!pageOrigin}
+                          className="btn-secondary min-h-10 justify-center disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <LinkIcon className="h-4 w-4" />
                           {copiedTeamLinkKey === `${team.id}:parent` ? 'Copied' : 'Parent Link'}
