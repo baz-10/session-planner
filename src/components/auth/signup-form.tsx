@@ -33,14 +33,30 @@ const userTypeInfo: Record<UserType, { label: string; description: string; Icon:
   },
 };
 
+function getInviteUserType(redirectTo: string): UserType | null {
+  try {
+    const redirectUrl = new URL(redirectTo, 'https://session-planner.local');
+    if (redirectUrl.pathname !== '/join') return null;
+
+    const inviteRole = redirectUrl.searchParams.get('role');
+    if (inviteRole === 'parent') return 'parent';
+    if (inviteRole === 'player') return 'player';
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '/onboarding');
+  const inviteUserType = getInviteUserType(redirectTo);
   const { signUp, signInWithGoogle, signInWithApple, isLoading } = useAuth();
 
-  const [step, setStep] = useState<'type' | 'details'>('type');
-  const [userType, setUserType] = useState<UserType | null>(null);
+  const [step, setStep] = useState<'type' | 'details'>(inviteUserType ? 'details' : 'type');
+  const [userType, setUserType] = useState<UserType | null>(inviteUserType);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
