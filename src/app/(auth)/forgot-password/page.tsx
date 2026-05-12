@@ -1,11 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
-export default function ForgotPasswordPage() {
+function AuthPageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+        <p className="text-text-secondary">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+function ForgotPasswordPageContent() {
+  const searchParams = useSearchParams();
   const { resetPassword, isLoading } = useAuth();
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '');
+  const loginHref = redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : '/login';
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
@@ -20,7 +36,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await resetPassword(email.trim());
+      const { error } = await resetPassword(email.trim(), redirectTo || undefined);
 
       if (error) {
         setError(error.message);
@@ -36,14 +52,7 @@ export default function ForgotPasswordPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-          <p className="text-text-secondary">Loading...</p>
-        </div>
-      </div>
-    );
+    return <AuthPageLoading />;
   }
 
   return (
@@ -109,11 +118,19 @@ export default function ForgotPasswordPage() {
 
         <p className="mt-8 text-center text-text-secondary">
           Remembered your password?{' '}
-          <Link href="/login" className="text-teal font-semibold hover:text-teal-dark transition-colors">
+          <Link href={loginHref} className="text-teal font-semibold hover:text-teal-dark transition-colors">
             Sign in
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<AuthPageLoading />}>
+      <ForgotPasswordPageContent />
+    </Suspense>
   );
 }

@@ -9,8 +9,8 @@ const publicRoutes = [
   '/terms/',
   '/login/',
   '/signup/?redirect=%2Fjoin%3Frole%3Dparent',
-  '/forgot-password/',
-  '/reset-password/',
+  '/forgot-password/?redirect=%2Fjoin%3Frole%3Dparent',
+  '/reset-password/?redirect=%2Fjoin%3Frole%3Dparent',
   '/join/?role=parent',
 ];
 const nextBin = resolve(process.cwd(), 'node_modules/next/dist/bin/next');

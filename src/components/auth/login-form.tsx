@@ -151,6 +151,10 @@ export function LoginForm() {
     redirectTo === '/dashboard'
       ? '/signup'
       : `/signup?redirect=${encodeURIComponent(redirectTo)}`;
+  const forgotPasswordHref =
+    redirectTo === '/dashboard'
+      ? '/forgot-password'
+      : `/forgot-password?redirect=${encodeURIComponent(redirectTo)}`;
 
   return (
     <div className="min-h-screen flex">
@@ -258,7 +262,7 @@ export function LoginForm() {
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="password" className="label !mb-0">Password</label>
                 <Link
-                  href="/forgot-password"
+                  href={forgotPasswordHref}
                   className="text-sm text-teal hover:text-teal-dark transition-colors"
                 >
                   Forgot password?

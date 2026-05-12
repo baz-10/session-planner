@@ -75,7 +75,7 @@ interface AuthContextValue extends AuthState {
   signInWithGoogle: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
   signInWithApple: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+  resetPassword: (email: string, redirectTo?: string) => Promise<{ error: AuthError | null }>;
   updatePassword: (password: string) => Promise<{ error: AuthError | null }>;
 
   // Profile actions
@@ -474,6 +474,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return callbackUrl.toString();
   };
 
+  const buildResetPasswordUrl = (redirectTo?: string) => {
+    const resetUrl = new URL('/reset-password/', window.location.origin);
+    const nextPath = sanitizeLocalRedirect(redirectTo, '');
+    if (nextPath) {
+      resetUrl.searchParams.set('redirect', nextPath);
+    }
+    return resetUrl.toString();
+  };
+
   const signUp = async (
     email: string,
     password: string,
@@ -526,9 +535,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string, redirectTo?: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password/`,
+      redirectTo: buildResetPasswordUrl(redirectTo),
     });
     return { error };
   };

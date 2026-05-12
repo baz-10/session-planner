@@ -1,13 +1,30 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
-export default function ResetPasswordPage() {
+function AuthPageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+        <p className="text-text-secondary">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { updatePassword, user, isLoading } = useAuth();
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '');
+  const encodedRedirect = encodeURIComponent(redirectTo);
+  const forgotPasswordHref = redirectTo ? `/forgot-password?redirect=${encodedRedirect}` : '/forgot-password';
+  const loginHref = redirectTo ? `/login?redirect=${encodedRedirect}` : '/login';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -39,7 +56,11 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      router.push('/login?message=Password%20updated.%20Please%20sign%20in.');
+      const message = encodeURIComponent('Password updated. Please sign in.');
+      const nextLoginHref = redirectTo
+        ? `/login?message=${message}&redirect=${encodedRedirect}`
+        : `/login?message=${message}`;
+      router.push(nextLoginHref);
     } catch (error) {
       console.error('Unexpected error updating password:', error);
       setError(error instanceof Error ? error.message : 'Failed to update password');
@@ -49,14 +70,7 @@ export default function ResetPasswordPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-          <p className="text-text-secondary">Loading...</p>
-        </div>
-      </div>
-    );
+    return <AuthPageLoading />;
   }
 
   return (
@@ -78,7 +92,7 @@ export default function ResetPasswordPage() {
             <p className="text-text-secondary mb-8">
               Open this page from the password reset link in your email.
             </p>
-            <Link href="/forgot-password" className="btn-primary w-full py-3 inline-flex items-center justify-center">
+            <Link href={forgotPasswordHref} className="btn-primary w-full py-3 inline-flex items-center justify-center">
               Request a new reset link
             </Link>
           </>
@@ -143,11 +157,19 @@ export default function ResetPasswordPage() {
         )}
 
         <p className="mt-8 text-center text-text-secondary">
-          <Link href="/login" className="text-teal font-semibold hover:text-teal-dark transition-colors">
+          <Link href={loginHref} className="text-teal font-semibold hover:text-teal-dark transition-colors">
             Back to sign in
           </Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<AuthPageLoading />}>
+      <ResetPasswordPageContent />
+    </Suspense>
   );
 }
