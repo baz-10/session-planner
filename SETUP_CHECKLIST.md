@@ -130,10 +130,12 @@ Capture failures with screenshot, account role, route, expected result, actual
 result, console excerpt, and network/API response where available.
 
 Before sharing a URL with beta testers, verify it is not behind Vercel
-Authentication or other deployment protection. On 2026-05-11 the PR preview
-alias returned HTTP 401 for `/`, `/login/`, and `/join/?role=parent`; use the
-public production alias after merge, or disable/grant access through Vercel
-Deployment Protection before asking external testers to use a preview URL.
+Authentication or other deployment protection. On 2026-05-12 the PR preview
+alias returned HTTP 401 for `/` and `/join?role=parent` via direct fetch, while
+the canonical production alias returned stale public content and 404 for
+`/login` and `/join?role=parent`; use a freshly verified public production alias
+after merge, or disable/grant access through Vercel Deployment Protection before
+asking external testers to use a preview URL.
 
 ## Remaining External Gates
 

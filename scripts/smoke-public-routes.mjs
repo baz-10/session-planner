@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 
-const publicRoutes = ['/privacy/', '/terms/', '/login/'];
+const publicRoutes = ['/privacy/', '/terms/', '/login/', '/join/?role=parent'];
 const nextBin = resolve(process.cwd(), 'node_modules/next/dist/bin/next');
 
 if (!existsSync(resolve(process.cwd(), '.next'))) {
