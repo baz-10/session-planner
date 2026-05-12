@@ -61,6 +61,8 @@ const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try a
 const CHAT_READ_STATUS_ERROR = 'Messages loaded, but read status could not update. Refresh and try again.';
 const DIRECT_CHAT_CREATE_ERROR =
   'Direct message could not be opened. Make sure this person is still on the selected team.';
+const CHAT_ATTACHMENT_SCOPE_ERROR =
+  'Chat attachment access could not be verified. Refresh conversations and try again.';
 
 function getSafeAttachmentExtension(file: File) {
   return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
@@ -469,6 +471,49 @@ export function useChat() {
     ): Promise<{ success: boolean; message?: Message; error?: string }> => {
       if (!user || !currentTeam) {
         return { success: false, error: 'Not authenticated' };
+      }
+
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id, team_id, type, participants:conversation_participants(user_id)')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conversationError || !conversation) {
+        console.error('Error verifying chat attachment conversation:', conversationError);
+        return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+      }
+
+      if (conversation.team_id && conversation.team_id !== currentTeam.id) {
+        return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+      }
+
+      if (!conversation.team_id) {
+        if (conversation.type !== 'direct') {
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
+
+        const participants = Array.isArray(conversation.participants)
+          ? conversation.participants
+          : [];
+        const otherParticipant = participants.find((participant) => participant.user_id !== user.id);
+
+        if (!otherParticipant?.user_id) {
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
+
+        const { data: scopedConversationId, error: scopeError } = await supabase.rpc(
+          'get_or_create_dm',
+          {
+            other_user_id: otherParticipant.user_id,
+            team_uuid: currentTeam.id,
+          }
+        );
+
+        if (scopeError || scopedConversationId !== conversationId) {
+          console.error('Error scoping direct message before chat attachment upload:', scopeError);
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
       }
 
       const validationError = validateChatAttachment(file);
