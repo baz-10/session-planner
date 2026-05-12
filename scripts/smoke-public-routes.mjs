@@ -4,7 +4,15 @@ import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 
-const publicRoutes = ['/privacy/', '/terms/', '/login/', '/join/?role=parent'];
+const publicRoutes = [
+  '/privacy/',
+  '/terms/',
+  '/login/',
+  '/signup/?redirect=%2Fjoin%3Frole%3Dparent',
+  '/forgot-password/',
+  '/reset-password/',
+  '/join/?role=parent',
+];
 const nextBin = resolve(process.cwd(), 'node_modules/next/dist/bin/next');
 
 if (!existsSync(resolve(process.cwd(), '.next'))) {
