@@ -82,6 +82,14 @@ function getDrillMediaStoragePath(urlOrPath: string) {
   return fallbackPath || null;
 }
 
+function getUniqueDrillMediaStoragePaths(media: Array<{ url: string | null }>) {
+  const paths = media
+    .map((item) => (item.url ? getDrillMediaStoragePath(item.url) : null))
+    .filter((path): path is string => Boolean(path));
+
+  return Array.from(new Set(paths));
+}
+
 export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -317,6 +325,26 @@ export function useDrills() {
     async (drillId: string): Promise<{ success: boolean; error?: string }> => {
       if (!currentTeam) {
         return { success: false, error: 'Select a team before deleting this drill.' };
+      }
+
+      const { data: media, error: mediaLookupError } = await supabase
+        .from('drill_media')
+        .select('url')
+        .eq('drill_id', drillId);
+
+      if (mediaLookupError) {
+        console.error('Error loading drill media before delete:', mediaLookupError);
+        return { success: false, error: 'Failed to load drill media before deleting.' };
+      }
+
+      const mediaPaths = getUniqueDrillMediaStoragePaths(media || []);
+      if (mediaPaths.length > 0) {
+        const { error: storageError } = await supabase.storage.from(DRILL_MEDIA_BUCKET).remove(mediaPaths);
+
+        if (storageError) {
+          console.error('Error cleaning up drill media files before delete:', storageError);
+          return { success: false, error: 'Failed to clean up drill media before deleting.' };
+        }
       }
 
       const { error, count } = await supabase
