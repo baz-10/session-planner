@@ -128,8 +128,7 @@ DROP POLICY IF EXISTS "Coaches can manage all RSVPs" ON rsvps;
 CREATE POLICY "Coaches can manage all RSVPs"
   ON rsvps FOR ALL
   USING (
-    event_response_target_matches_event(event_id, user_id, player_id)
-    AND EXISTS (
+    EXISTS (
       SELECT 1
       FROM events
       WHERE events.id = rsvps.event_id
@@ -150,8 +149,7 @@ DROP POLICY IF EXISTS "Coaches can manage attendance" ON attendance_records;
 CREATE POLICY "Coaches can manage attendance"
   ON attendance_records FOR ALL
   USING (
-    event_response_target_matches_event(event_id, user_id, player_id)
-    AND EXISTS (
+    EXISTS (
       SELECT 1
       FROM events
       WHERE events.id = attendance_records.event_id
