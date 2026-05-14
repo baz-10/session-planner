@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -77,7 +78,7 @@ function formatSessionDate(date: string | null): string {
 }
 
 export default function DashboardPage() {
-  const { user, profile, isLoading, currentTeam } = useAuth();
+  const { user, profile, isLoading, currentTeam, teamMemberships } = useAuth();
   const { displayName, logoUrl } = useBranding();
   const router = useRouter();
   const { getSessions } = useSessions();
@@ -86,6 +87,11 @@ export default function DashboardPage() {
   const { getTeamMembers } = useTeam();
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState('');
+  const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
+  const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const sessionPrimaryActionLabel = canManageSessions ? 'Run live' : 'View plan';
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -101,11 +107,13 @@ export default function DashboardPage() {
     async function loadDashboardSnapshot() {
       if (!currentTeam?.id) {
         setSnapshot(emptySnapshot);
+        setSnapshotError('');
         setIsDashboardLoading(false);
         return;
       }
 
       setIsDashboardLoading(true);
+      setSnapshotError('');
 
       try {
         const now = new Date();
@@ -114,7 +122,7 @@ export default function DashboardPage() {
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
 
         const [sessions, drills, membersResult, attendanceStats] = await Promise.all([
-          getSessions(),
+          getSessions({ throwOnError: true }),
           getDrills(),
           getTeamMembers(currentTeam.id),
           getAttendanceStats({ startDate: monthStart, endDate: monthEnd }),
@@ -143,6 +151,12 @@ export default function DashboardPage() {
           attendanceEvents: attendanceStats.overall.totalEvents,
           recentSessions: sessions.slice(0, 5),
         });
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error loading dashboard summary:', error);
+          setSnapshot(emptySnapshot);
+          setSnapshotError('Dashboard summary did not load. Refresh the page to try again.');
+        }
       } finally {
         if (!cancelled) {
           setIsDashboardLoading(false);
@@ -168,16 +182,23 @@ export default function DashboardPage() {
   return (
     <MobilePageShell>
       <header className="mb-6 flex items-center gap-3">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
+        <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-navy text-white shadow-[0_14px_32px_rgba(15,31,51,0.15)]">
           {logoUrl ? (
-            <img src={logoUrl} alt={displayName} className="h-full w-full object-cover" />
+            <Image
+              src={logoUrl}
+              alt={displayName}
+              fill
+              sizes="64px"
+              className="object-cover"
+              unoptimized
+            />
           ) : (
             <ClipboardList className="h-8 w-8" />
           )}
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[23px] font-extrabold leading-tight text-navy md:text-3xl">
-            Welcome back, {profile?.full_name?.split(' ')[0] || 'Coach'}
+            Welcome back, {firstName}
           </h1>
           <div className="mt-1 flex min-w-0 items-center gap-2 text-[17px] font-medium text-slate-500">
             <span className="truncate">{currentTeam?.name || 'Select a team'}</span>
@@ -231,18 +252,32 @@ export default function DashboardPage() {
         />
       </section>
 
+      {snapshotError && (
+        <div className="mb-7 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {snapshotError}
+        </div>
+      )}
+
       <section className="mb-7">
         <h2 className="mb-4 text-[23px] font-extrabold text-navy">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5">
-          <MobileActionCard
-            href="/dashboard/sessions/new"
-            icon={<Plus className="h-8 w-8" />}
-            label="New Session"
-          />
+          {canManageSessions ? (
+            <MobileActionCard
+              href="/dashboard/sessions/new"
+              icon={<Plus className="h-8 w-8" />}
+              label="New Session"
+            />
+          ) : (
+            <MobileActionCard
+              href="/dashboard/sessions"
+              icon={<ClipboardList className="h-8 w-8" />}
+              label="View Plans"
+            />
+          )}
           <MobileActionCard
             href="/dashboard/events"
             icon={<CalendarDays className="h-7 w-7" />}
-            label="Schedule Event"
+            label={canManageSessions ? 'Schedule Event' : 'Events'}
           />
           <MobileActionCard
             href="/dashboard/chat"
@@ -250,9 +285,9 @@ export default function DashboardPage() {
             label="Team Chat"
           />
           <MobileActionCard
-            href="/dashboard/billing"
-            icon={<CreditCard className="h-7 w-7" />}
-            label="Billing"
+            href={canManageSessions ? '/dashboard/billing' : '/dashboard/team'}
+            icon={canManageSessions ? <CreditCard className="h-7 w-7" /> : <Users className="h-7 w-7" />}
+            label={canManageSessions ? 'Billing' : 'Team'}
           />
         </div>
       </section>
@@ -317,7 +352,7 @@ export default function DashboardPage() {
                     className="hidden min-h-11 shrink-0 items-center justify-center rounded-2xl border border-teal px-4 text-sm font-extrabold text-teal transition-colors hover:bg-accent/5 sm:inline-flex"
                   >
                     <PlayCircle className="mr-2 h-4 w-4" />
-                    Run live
+                    {sessionPrimaryActionLabel}
                   </Link>
                 </div>
                 <Link
@@ -325,7 +360,7 @@ export default function DashboardPage() {
                   className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-teal text-base font-extrabold text-teal transition-colors active:scale-[0.98] sm:hidden"
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
-                  Run live
+                  {sessionPrimaryActionLabel}
                 </Link>
               </MobileListCard>
             ))}
@@ -334,11 +369,21 @@ export default function DashboardPage() {
           <MobileEmptyState
             icon={<ClipboardList className="h-8 w-8" />}
             title="No sessions yet"
-            description="Create your first practice plan to get started."
+            description={
+              canManageSessions
+                ? 'Create your first practice plan to get started.'
+                : 'Practice plans will appear here when a coach shares them with the team.'
+            }
             action={
-              <Link href="/dashboard/sessions/new" className="btn-accent">
-                Create Session
-              </Link>
+              canManageSessions ? (
+                <Link href="/dashboard/sessions/new" className="btn-accent">
+                  Create Session
+                </Link>
+              ) : (
+                <Link href="/dashboard/events" className="btn-accent">
+                  View Events
+                </Link>
+              )
             }
           />
         )}

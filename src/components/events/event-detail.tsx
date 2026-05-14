@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { format, isPast } from 'date-fns';
-import { PlayCircle } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ClipboardList, Clock, MapPin, PlayCircle, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
+import { useConfirmDialog } from '@/components/ui';
 import { EventForm } from './event-form';
 import { RsvpPanel } from './rsvp-panel';
 import { AttendanceTracker } from './attendance-tracker';
@@ -19,6 +21,7 @@ import type {
   AttendanceRecord,
   AttendanceRiskSnapshot,
 } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 interface RsvpWithDetails extends Rsvp {
   user?: Profile | null;
@@ -42,11 +45,11 @@ interface EventDetailProps {
   onBack: () => void;
 }
 
-const EVENT_TYPE_ICONS: Record<string, string> = {
-  practice: '🏀',
-  game: '🏆',
-  tournament: '🎯',
-  other: '📅',
+const EVENT_TYPE_ICONS: Record<string, LucideIcon> = {
+  practice: ClipboardList,
+  game: Trophy,
+  tournament: Target,
+  other: CalendarDays,
 };
 
 const RISK_CLASSES: Record<string, string> = {
@@ -72,48 +75,94 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showEditForm, setShowEditForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'rsvp' | 'attendance' | 'plan'>('rsvp');
+  const [actionError, setActionError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isAdminOrCoach = teamMembership?.role === 'admin' || teamMembership?.role === 'coach';
   const isEventPast = event ? isPast(new Date(event.start_time)) : false;
 
-  useEffect(() => {
-    loadEvent();
-  }, [eventId]);
-
-  const loadEvent = async () => {
+  const loadEvent = useCallback(async () => {
     setIsLoading(true);
-    const data = await getEvent(eventId);
-    setEvent(data);
+    setActionError('');
+    try {
+      const data = await getEvent(eventId, { throwOnError: true });
+      setEvent(data);
 
-    // Load session details if linked
-    if (data?.session_id) {
-      const session = await getSession(data.session_id);
-      setSessionDetails(session);
+      // Load session details if linked
+      if (data?.session_id) {
+        const session = await getSession(data.session_id);
+        setSessionDetails(session);
+      } else {
+        setSessionDetails(null);
+      }
+    } catch (error) {
+      console.error('Unexpected error loading event:', error);
+      setEvent(null);
+      setSessionDetails(null);
+      setActionError('Event details could not load. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
+  }, [eventId, getEvent, getSession]);
 
-    setIsLoading(false);
-  };
+  useEffect(() => {
+    void loadEvent();
+  }, [loadEvent]);
 
   const handleDelete = async () => {
-    if (!event) return;
+    if (!event || isDeleting) return;
 
     let deleteSeries = false;
 
     if (event.recurrence_series_id) {
-      deleteSeries = confirm(
-        'Delete the entire recurring series? Click OK for full series, Cancel for one occurrence.'
-      );
+      deleteSeries = await confirmAction({
+        title: 'Delete recurring series?',
+        description: 'Delete every event in this recurring series, or choose only this occurrence.',
+        confirmLabel: 'Delete series',
+        cancelLabel: 'Choose occurrence',
+        confirmVariant: 'destructive',
+      });
 
-      if (!deleteSeries && !confirm('Delete only this event occurrence?')) {
+      if (!deleteSeries) {
+        const deleteOccurrence = await confirmAction({
+          title: 'Delete this occurrence?',
+          description: 'Only this event occurrence will be removed from the schedule.',
+          confirmLabel: 'Delete occurrence',
+          confirmVariant: 'destructive',
+        });
+
+        if (!deleteOccurrence) {
+          return;
+        }
+      }
+    } else {
+      const confirmed = await confirmAction({
+        title: 'Delete event?',
+        description: `"${event.title}" will be removed from the schedule.`,
+        confirmLabel: 'Delete event',
+        confirmVariant: 'destructive',
+      });
+
+      if (!confirmed) {
         return;
       }
-    } else if (!confirm('Are you sure you want to delete this event?')) {
-      return;
     }
 
-    const result = await deleteEvent(eventId, { deleteSeries });
-    if (result.success) {
-      onBack();
+    setIsDeleting(true);
+    setActionError('');
+    try {
+      const result = await deleteEvent(eventId, { deleteSeries });
+      if (result.success) {
+        onBack();
+      } else {
+        setActionError(result.error || 'Failed to delete event.');
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting event:', error);
+      setActionError('Failed to delete event. Check your connection and try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -129,7 +178,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">Event not found</p>
-        <button onClick={onBack} className="mt-4 text-primary hover:underline">
+        {actionError && (
+          <div role="alert" className="mx-auto mt-4 max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
+        <button type="button" onClick={onBack} className="mt-4 text-primary hover:underline">
           Go back
         </button>
       </div>
@@ -137,6 +191,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
   }
 
   const counts = getRsvpCounts(event.rsvps);
+  const EventTypeIcon = EVENT_TYPE_ICONS[event.type] || CalendarDays;
 
   return (
     <div className="space-y-6">
@@ -144,35 +199,47 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex items-start justify-between mb-4">
           <button
+            type="button"
             onClick={onBack}
             className="flex items-center gap-1 text-gray-500 hover:text-gray-700"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
             Back
           </button>
 
           {isAdminOrCoach && (
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowEditForm(true)}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                disabled={isDeleting}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Edit
               </button>
               <button
+                type="button"
                 onClick={handleDelete}
-                className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                disabled={isDeleting}
+                aria-busy={isDeleting}
+                className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Delete
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           )}
         </div>
 
+        {actionError && (
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
+
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-4xl">{EVENT_TYPE_ICONS[event.type]}</span>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <EventTypeIcon className="h-7 w-7" aria-hidden="true" />
+          </span>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{event.title}</h1>
             <p className="text-gray-500 capitalize">{event.type}</p>
@@ -206,16 +273,12 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <div className="flex items-center gap-3 text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
               <span>{format(new Date(event.start_time), 'EEEE, MMMM d, yyyy')}</span>
             </div>
 
             <div className="flex items-center gap-3 text-gray-600">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Clock className="h-5 w-5" aria-hidden="true" />
               <span>
                 {format(new Date(event.start_time), 'h:mm a')}
                 {event.end_time && ` - ${format(new Date(event.end_time), 'h:mm a')}`}
@@ -224,19 +287,14 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
 
             {event.meet_time && (
               <div className="flex items-center gap-3 text-orange-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <Clock className="h-5 w-5" aria-hidden="true" />
                 <span>Meet at {format(new Date(event.meet_time), 'h:mm a')}</span>
               </div>
             )}
 
             {event.location && (
               <div className="flex items-center gap-3 text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+                <MapPin className="h-5 w-5" aria-hidden="true" />
                 <span>{event.location}</span>
               </div>
             )}
@@ -285,6 +343,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
         <div className="border-b border-gray-200">
           <nav className="flex">
             <button
+              type="button"
               onClick={() => setActiveTab('rsvp')}
               className={`px-6 py-3 text-sm font-medium border-b-2 ${
                 activeTab === 'rsvp'
@@ -296,6 +355,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             </button>
             {isEventPast && isAdminOrCoach && (
               <button
+                type="button"
                 onClick={() => setActiveTab('attendance')}
                 className={`px-6 py-3 text-sm font-medium border-b-2 ${
                   activeTab === 'attendance'
@@ -308,6 +368,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
             )}
             {event.session_id && (
               <button
+                type="button"
                 onClick={() => setActiveTab('plan')}
                 className={`px-6 py-3 text-sm font-medium border-b-2 ${
                   activeTab === 'plan'
@@ -373,10 +434,13 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
                             {activity.linked_play_id ? (
                               <div className="flex items-center gap-2">
                                 {activity.linked_play_thumbnail_data_url ? (
-                                  <img
+                                  <Image
                                     src={activity.linked_play_thumbnail_data_url}
                                     alt={activity.linked_play_name_snapshot || 'Linked play'}
+                                    width={48}
+                                    height={32}
                                     className="h-8 w-12 rounded border border-gray-200 object-cover"
+                                    unoptimized
                                   />
                                 ) : (
                                   <span className="inline-block h-8 w-12 rounded border border-gray-200 bg-gray-100" />
@@ -416,10 +480,11 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
           onClose={() => setShowEditForm(false)}
           onSuccess={() => {
             setShowEditForm(false);
-            loadEvent();
+            void loadEvent();
           }}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

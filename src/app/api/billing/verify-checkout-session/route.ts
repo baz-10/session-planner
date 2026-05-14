@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 
 const STRIPE_BASE_URL = 'https://api.stripe.com/v1';
 
@@ -16,7 +17,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as { sessionId?: string };
+    const parsedBody = await parseJsonObjectBody<{ sessionId?: string }>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.body;
     const sessionId = body.sessionId;
 
     if (!sessionId) {
@@ -156,18 +160,25 @@ export async function POST(request: NextRequest) {
         }
 
         paymentRecordId = insertedPayment?.id || null;
+        if (!paymentRecordId) {
+          console.error('Fallback payment row was created without returning an id.');
+          return NextResponse.json(
+            { success: false, error: 'Payment succeeded but could not be linked to the invoice.' },
+            { status: 500 }
+          );
+        }
       } else {
         paymentRecordId = updatedPayment.id;
       }
 
       if (recipientInstallmentId) {
-        const { error: installmentUpdateError } = await supabase
+        const { error: installmentUpdateError, count: installmentUpdateCount } = await supabase
           .from('billing_recipient_installments')
           .update({
             status: 'paid',
             paid_payment_id: paymentRecordId,
             paid_at: new Date().toISOString(),
-          })
+          }, { count: 'exact' })
           .eq('id', recipientInstallmentId)
           .eq('invoice_id', invoiceId)
           .eq('user_id', user.id);
@@ -177,6 +188,13 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             { success: false, error: 'Payment succeeded but installment status was not updated.' },
             { status: 500 }
+          );
+        }
+
+        if (installmentUpdateCount !== 1) {
+          return NextResponse.json(
+            { success: false, error: 'Payment succeeded but the installment was not found.' },
+            { status: 409 }
           );
         }
       }
@@ -190,12 +208,20 @@ export async function POST(request: NextRequest) {
 
     const mappedStatus = sessionStatus === 'expired' ? 'expired' : 'pending';
 
-    await supabase
+    const { error: statusUpdateError } = await supabase
       .from('billing_payments')
       .update({ status: mappedStatus })
       .eq('provider_checkout_session_id', sessionId)
       .eq('user_id', user.id)
       .in('status', ['pending', 'failed']);
+
+    if (statusUpdateError) {
+      console.error('Error updating billing payment checkout status:', statusUpdateError);
+      return NextResponse.json(
+        { success: false, error: 'Unable to record this checkout status.' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

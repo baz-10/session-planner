@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import Image from 'next/image';
+import { Paperclip } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { useAuth } from '@/contexts/auth-context';
 import type { Message, Profile } from '@/types/database';
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 interface MessageListProps {
@@ -48,17 +50,26 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
     return current.sender_id !== next.sender_id;
   };
 
+  const getAttachmentFallbackLabel = (message: MessageWithSender) => {
+    if (message.type === 'image') return 'Image could not load. Open the conversation again to retry.';
+    return `${message.metadata?.file_name || 'File'} could not load. Open the conversation again to retry.`;
+  };
+
+  const getSenderDisplayName = (message: MessageWithSender) => {
+    return message.sender?.full_name || message.sender?.email || 'Team member';
+  };
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading messages">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
 
   if (messages.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500">
+      <div className="flex flex-1 items-center justify-center text-gray-500">
         <p>No messages yet. Start the conversation!</p>
       </div>
     );
@@ -85,13 +96,13 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
             {/* Message */}
             <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showAvatar ? 'mb-2' : ''}`}>
-              <div className={`flex items-end gap-2 max-w-[75%] ${isOwn ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex max-w-[75%] min-w-0 items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 {!isOwn && (
                   <div className={`w-8 h-8 flex-shrink-0 ${showAvatar ? '' : 'invisible'}`}>
                     {showAvatar && (
                       <div className="w-8 h-8 rounded-full bg-gray-300 text-white flex items-center justify-center text-sm font-medium">
-                        {message.sender.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                        {getSenderDisplayName(message).charAt(0).toUpperCase() || 'U'}
                       </div>
                     )}
                   </div>
@@ -99,7 +110,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
                 {/* Message bubble */}
                 <div
-                  className={`rounded-2xl px-4 py-2 ${
+                  className={`min-w-0 rounded-2xl px-4 py-2 ${
                     isOwn
                       ? 'bg-primary text-white rounded-br-sm'
                       : 'bg-gray-100 text-gray-900 rounded-bl-sm'
@@ -108,7 +119,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                   {/* Sender name (for group chats) */}
                   {!isOwn && showAvatar && (
                     <div className="text-xs font-medium text-primary mb-1">
-                      {message.sender.full_name}
+                      {getSenderDisplayName(message)}
                     </div>
                   )}
 
@@ -119,13 +130,28 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
                   {message.type === 'image' && message.metadata?.file_url && (
                     <div className="max-w-xs">
-                      <img
-                        src={message.metadata.file_url}
-                        alt="Shared image"
-                        className="rounded-lg max-h-64 cursor-pointer"
-                        onClick={() => window.open(message.metadata.file_url, '_blank')}
-                      />
+                      <a
+                        href={message.metadata.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open shared image"
+                      >
+                        <Image
+                          src={message.metadata.file_url}
+                          alt="Shared image"
+                          width={320}
+                          height={256}
+                          className="h-auto max-h-64 w-auto cursor-pointer rounded-lg object-contain"
+                          unoptimized
+                        />
+                      </a>
                     </div>
+                  )}
+
+                  {message.type === 'image' && !message.metadata?.file_url && (
+                    <p className="text-sm italic" role="status">
+                      {getAttachmentFallbackLabel(message)}
+                    </p>
                   )}
 
                   {message.type === 'file' && message.metadata?.file_url && (
@@ -133,11 +159,20 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                       href={message.metadata.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`flex items-center gap-2 ${isOwn ? 'text-white' : 'text-primary'}`}
+                      aria-label={`Open shared file ${message.metadata.file_name || ''}`.trim()}
+                      className={`flex max-w-full min-w-0 items-center gap-2 ${isOwn ? 'text-white' : 'text-primary'}`}
                     >
-                      <span>📎</span>
-                      <span className="underline">{message.metadata.file_name || 'File'}</span>
+                      <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 break-words underline">
+                        {message.metadata.file_name || 'File'}
+                      </span>
                     </a>
+                  )}
+
+                  {message.type === 'file' && !message.metadata?.file_url && (
+                    <p className="text-sm italic" role="status">
+                      {getAttachmentFallbackLabel(message)}
+                    </p>
                   )}
 
                   {message.type === 'system' && (

@@ -3,6 +3,14 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  POST_ATTACHMENT_EXTENSIONS,
+  POST_ATTACHMENT_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isSafeVideoFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import type {
   Post,
   PostAttachment,
@@ -37,26 +45,125 @@ interface ReactionSummary {
   hasReacted: boolean;
 }
 
+export const MAX_POST_ATTACHMENTS = 5;
+export const MAX_POST_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const POST_ATTACHMENT_BUCKET = 'attachments';
+const SIGNED_POST_ATTACHMENT_URL_SECONDS = 60 * 60;
+const STALE_POST_ERROR = 'This post could not be updated. It may have been removed or your access may have changed.';
+const STALE_COMMENT_ERROR =
+  'This comment could not be updated. It may have been removed or your access may have changed.';
+
+type GetPostsResult =
+  | { success: true; posts: PostWithDetails[] }
+  | { success: false; posts: PostWithDetails[]; error: string };
+
+function validatePostAttachment(file: File): string | null {
+  if (file.size > MAX_POST_ATTACHMENT_BYTES) {
+    return `${file.name} is larger than 25 MB.`;
+  }
+
+  if (!isTrustedAttachmentFile(file, POST_ATTACHMENT_MIME_TYPES, POST_ATTACHMENT_EXTENSIONS)) {
+    return `${file.name} is not a supported attachment type.`;
+  }
+
+  return null;
+}
+
+function createPostAttachmentObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
+}
+
+function getPostAttachmentStoragePath(publicUrl: string) {
+  const urlWithoutQuery = publicUrl.split(/[?#]/)[0];
+  const marker = `/${POST_ATTACHMENT_BUCKET}/`;
+  const markerIndex = urlWithoutQuery.indexOf(marker);
+
+  if (markerIndex >= 0) {
+    const storagePath = decodeURIComponent(urlWithoutQuery.slice(markerIndex + marker.length));
+    return storagePath || null;
+  }
+
+  try {
+    const pathname = new URL(publicUrl).pathname;
+    const pathMarkerIndex = pathname.indexOf(marker);
+
+    if (pathMarkerIndex >= 0) {
+      const storagePath = decodeURIComponent(pathname.slice(pathMarkerIndex + marker.length));
+      return storagePath || null;
+    }
+  } catch {
+    // Fall through to the legacy path extraction below.
+  }
+
+  const fallbackPath = urlWithoutQuery.split('/').filter(Boolean).slice(-4).join('/');
+  return fallbackPath || null;
+}
+
+function getUniquePostAttachmentStoragePaths(attachments: Array<{ url: string | null }>) {
+  const paths = attachments
+    .map((attachment) => (attachment.url ? getPostAttachmentStoragePath(attachment.url) : null))
+    .filter((path): path is string => Boolean(path));
+
+  return Array.from(new Set(paths));
+}
+
 export function usePosts() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
+  const attachSignedAttachmentUrls = useCallback(
+    async (posts: PostWithDetails[]): Promise<PostWithDetails[]> => {
+      return Promise.all(
+        posts.map(async (post) => ({
+          ...post,
+          attachments: await Promise.all(
+            (post.attachments || []).map(async (attachment) => {
+              const storagePath = attachment.url ? getPostAttachmentStoragePath(attachment.url) : null;
+              if (!storagePath) {
+                return attachment;
+              }
+
+              const { data, error } = await supabase.storage
+                .from(POST_ATTACHMENT_BUCKET)
+                .createSignedUrl(storagePath, SIGNED_POST_ATTACHMENT_URL_SECONDS);
+
+              if (error || !data?.signedUrl) {
+                console.error('Error creating signed post attachment URL:', error);
+                return attachment;
+              }
+
+              return { ...attachment, url: data.signedUrl };
+            })
+          ),
+        }))
+      );
+    },
+    [supabase]
+  );
+
   /**
    * Get all posts for the current team
    */
   const getPosts = useCallback(
-    async (limit = 20, offset = 0): Promise<PostWithDetails[]> => {
-      if (!currentTeam || !user) return [];
+    async (limit = 20, offset = 0): Promise<GetPostsResult> => {
+      if (!currentTeam || !user) {
+        return { success: false, posts: [], error: 'Select a team to view the feed.' };
+      }
 
       const { data: posts, error } = await supabase
         .from('posts')
         .select(`
           *,
-          author:profiles!author_id(*),
+          author:profiles!author_id(id, email, full_name, avatar_url),
           attachments:post_attachments(*),
-          reactions(*, user:profiles!user_id(*)),
-          comments(*, author:profiles!author_id(*))
+          reactions(*, user:profiles!user_id(id, email, full_name, avatar_url)),
+          comments(*, author:profiles!author_id(id, email, full_name, avatar_url))
         `)
         .eq('team_id', currentTeam.id)
         .order('pinned', { ascending: false })
@@ -65,7 +172,7 @@ export function usePosts() {
 
       if (error) {
         console.error('Error fetching posts:', error);
-        return [];
+        return { success: false, posts: [], error: 'Failed to load team feed.' };
       }
 
       // Get view counts and check if user has viewed
@@ -85,13 +192,15 @@ export function usePosts() {
         }
       });
 
-      return posts.map((post) => ({
+      const postsWithDetails = posts.map((post) => ({
         ...post,
         view_count: viewCounts.get(post.id) || 0,
         has_viewed: hasViewed.get(post.id) || false,
       })) as PostWithDetails[];
+
+      return { success: true, posts: await attachSignedAttachmentUrls(postsWithDetails) };
     },
-    [supabase, currentTeam, user]
+    [supabase, currentTeam, user, attachSignedAttachmentUrls]
   );
 
   /**
@@ -105,10 +214,10 @@ export function usePosts() {
         .from('posts')
         .select(`
           *,
-          author:profiles!author_id(*),
+          author:profiles!author_id(id, email, full_name, avatar_url),
           attachments:post_attachments(*),
-          reactions(*, user:profiles!user_id(*)),
-          comments(*, author:profiles!author_id(*))
+          reactions(*, user:profiles!user_id(id, email, full_name, avatar_url)),
+          comments(*, author:profiles!author_id(id, email, full_name, avatar_url))
         `)
         .eq('id', postId)
         .single();
@@ -132,13 +241,75 @@ export function usePosts() {
         .eq('user_id', user.id)
         .single();
 
-      return {
+      const postWithDetails = {
         ...post,
         view_count: count || 0,
         has_viewed: !!userView,
       } as PostWithDetails;
+
+      const [signedPost] = await attachSignedAttachmentUrls([postWithDetails]);
+      return signedPost || postWithDetails;
     },
-    [supabase, user]
+    [supabase, user, attachSignedAttachmentUrls]
+  );
+
+  /**
+   * Upload an attachment to a post
+   */
+  const uploadAttachment = useCallback(
+    async (
+      postId: string,
+      file: File
+    ): Promise<{ success: boolean; attachment?: PostAttachment; storagePath?: string; error?: string }> => {
+      if (!user || !currentTeam) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
+      const fileExt = getSafeFileExtension(file, POST_ATTACHMENT_EXTENSIONS);
+      const filePath = `${currentTeam.id}/posts/${postId}/${createPostAttachmentObjectName(fileExt)}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(POST_ATTACHMENT_BUCKET)
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Error uploading file:', uploadError);
+        return { success: false, error: 'Failed to upload file' };
+      }
+
+      // Determine attachment type
+      let attachmentType: AttachmentType = 'document';
+      if (isSafeImageFile(file)) attachmentType = 'image';
+      else if (isSafeVideoFile(file)) attachmentType = 'video';
+
+      const { data: attachment, error } = await supabase
+        .from('post_attachments')
+        .insert({
+          post_id: postId,
+          type: attachmentType,
+          url: filePath,
+          filename: file.name,
+          size_bytes: file.size,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving attachment:', error);
+        const { error: cleanupError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove([filePath]);
+
+        if (cleanupError) {
+          console.error('Error cleaning up failed post attachment upload:', cleanupError);
+        }
+
+        return { success: false, error: 'Failed to save attachment record' };
+      }
+
+      return { success: true, attachment: attachment as PostAttachment, storagePath: filePath };
+    },
+    [user, currentTeam, supabase]
   );
 
   /**
@@ -155,34 +326,70 @@ export function usePosts() {
 
       setIsLoading(true);
 
-      const { data: post, error } = await supabase
-        .from('posts')
-        .insert({
-          team_id: currentTeam.id,
-          author_id: user.id,
-          content: input.content,
-          pinned: false,
-        })
-        .select()
-        .single();
-
-      if (error || !post) {
-        setIsLoading(false);
-        console.error('Error creating post:', error);
-        return { success: false, error: 'Failed to create post' };
-      }
-
-      // Upload attachments if any
-      if (attachmentFiles && attachmentFiles.length > 0) {
-        for (const file of attachmentFiles) {
-          await uploadAttachment(post.id, file);
+      try {
+        if (attachmentFiles && attachmentFiles.length > MAX_POST_ATTACHMENTS) {
+          return {
+            success: false,
+            error: `Attach up to ${MAX_POST_ATTACHMENTS} files per post.`,
+          };
         }
-      }
 
-      setIsLoading(false);
-      return { success: true, post: post as Post };
+        for (const file of attachmentFiles || []) {
+          const validationError = validatePostAttachment(file);
+          if (validationError) {
+            return { success: false, error: validationError };
+          }
+        }
+
+        const { data: post, error } = await supabase
+          .from('posts')
+          .insert({
+            team_id: currentTeam.id,
+            author_id: user.id,
+            content: input.content,
+            pinned: false,
+          })
+          .select()
+          .single();
+
+        if (error || !post) {
+          console.error('Error creating post:', error);
+          return { success: false, error: 'Failed to create post' };
+        }
+
+        const uploadedAttachmentPaths: string[] = [];
+
+        for (const file of attachmentFiles || []) {
+          const result = await uploadAttachment(post.id, file);
+          if (!result.success) {
+            if (uploadedAttachmentPaths.length > 0) {
+              const { error: cleanupError } = await supabase.storage
+                .from(POST_ATTACHMENT_BUCKET)
+                .remove(uploadedAttachmentPaths);
+
+              if (cleanupError) {
+                console.error('Error cleaning up post attachments after failed post create:', cleanupError);
+              }
+            }
+
+            await supabase.from('posts').delete().eq('id', post.id);
+            return {
+              success: false,
+              error: result.error || 'Failed to upload one or more attachments.',
+            };
+          }
+
+          if (result.storagePath) {
+            uploadedAttachmentPaths.push(result.storagePath);
+          }
+        }
+
+        return { success: true, post: post as Post };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [user, currentTeam, supabase]
+    [user, currentTeam, supabase, uploadAttachment]
   );
 
   /**
@@ -193,14 +400,18 @@ export function usePosts() {
       postId: string,
       content: string
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('posts')
-        .update({ content })
+        .update({ content }, { count: 'exact' })
         .eq('id', postId);
 
       if (error) {
         console.error('Error updating post:', error);
         return { success: false, error: 'Failed to update post' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
       }
 
       return { success: true };
@@ -213,11 +424,39 @@ export function usePosts() {
    */
   const deletePost = useCallback(
     async (postId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('posts').delete().eq('id', postId);
+      const { data: attachments, error: attachmentLookupError } = await supabase
+        .from('post_attachments')
+        .select('url')
+        .eq('post_id', postId);
+
+      if (attachmentLookupError) {
+        console.error('Error loading post attachments before delete:', attachmentLookupError);
+      }
+
+      const attachmentPaths = getUniquePostAttachmentStoragePaths(attachments || []);
+
+      const { error, count } = await supabase
+        .from('posts')
+        .delete({ count: 'exact' })
+        .eq('id', postId);
 
       if (error) {
         console.error('Error deleting post:', error);
         return { success: false, error: 'Failed to delete post' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
+      }
+
+      if (attachmentPaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove(attachmentPaths);
+
+        if (storageError) {
+          console.error('Error cleaning up deleted post attachment files:', storageError);
+        }
       }
 
       return { success: true };
@@ -233,17 +472,21 @@ export function usePosts() {
       postId: string,
       pinned: boolean
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('posts')
         .update({
           pinned,
           pinned_at: pinned ? new Date().toISOString() : null,
-        })
+        }, { count: 'exact' })
         .eq('id', postId);
 
       if (error) {
         console.error('Error toggling pin:', error);
         return { success: false, error: 'Failed to toggle pin' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_POST_ERROR };
       }
 
       return { success: true };
@@ -252,74 +495,44 @@ export function usePosts() {
   );
 
   /**
-   * Upload an attachment to a post
-   */
-  const uploadAttachment = useCallback(
-    async (
-      postId: string,
-      file: File
-    ): Promise<{ success: boolean; attachment?: PostAttachment; error?: string }> => {
-      if (!user || !currentTeam) {
-        return { success: false, error: 'Not authenticated' };
-      }
-
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${currentTeam.id}/posts/${postId}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        console.error('Error uploading file:', uploadError);
-        return { success: false, error: 'Failed to upload file' };
-      }
-
-      const { data: publicUrl } = supabase.storage
-        .from('attachments')
-        .getPublicUrl(filePath);
-
-      // Determine attachment type
-      let attachmentType: AttachmentType = 'document';
-      if (file.type.startsWith('image/')) attachmentType = 'image';
-      else if (file.type.startsWith('video/')) attachmentType = 'video';
-      else if (file.type.startsWith('audio/')) attachmentType = 'audio';
-
-      const { data: attachment, error } = await supabase
-        .from('post_attachments')
-        .insert({
-          post_id: postId,
-          type: attachmentType,
-          url: publicUrl.publicUrl,
-          filename: file.name,
-          size_bytes: file.size,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error saving attachment:', error);
-        return { success: false, error: 'Failed to save attachment record' };
-      }
-
-      return { success: true, attachment: attachment as PostAttachment };
-    },
-    [user, currentTeam, supabase]
-  );
-
-  /**
    * Delete an attachment
    */
   const deleteAttachment = useCallback(
     async (attachmentId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { data: attachment, error: attachmentLookupError } = await supabase
         .from('post_attachments')
-        .delete()
+        .select('url')
+        .eq('id', attachmentId)
+        .maybeSingle();
+
+      if (attachmentLookupError) {
+        console.error('Error loading post attachment before delete:', attachmentLookupError);
+      }
+
+      const attachmentPath = attachment?.url ? getPostAttachmentStoragePath(attachment.url) : null;
+
+      const { error, count } = await supabase
+        .from('post_attachments')
+        .delete({ count: 'exact' })
         .eq('id', attachmentId);
 
       if (error) {
         console.error('Error deleting attachment:', error);
         return { success: false, error: 'Failed to delete attachment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: 'This attachment could not be deleted. Refresh and try again.' };
+      }
+
+      if (attachmentPath) {
+        const { error: storageError } = await supabase.storage
+          .from(POST_ATTACHMENT_BUCKET)
+          .remove([attachmentPath]);
+
+        if (storageError) {
+          console.error('Error cleaning up deleted post attachment file:', storageError);
+        }
       }
 
       return { success: true };
@@ -452,14 +665,18 @@ export function usePosts() {
       commentId: string,
       content: string
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('comments')
-        .update({ content })
+        .update({ content }, { count: 'exact' })
         .eq('id', commentId);
 
       if (error) {
         console.error('Error updating comment:', error);
         return { success: false, error: 'Failed to update comment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_COMMENT_ERROR };
       }
 
       return { success: true };
@@ -472,14 +689,18 @@ export function usePosts() {
    */
   const deleteComment = useCallback(
     async (commentId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('comments')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', commentId);
 
       if (error) {
         console.error('Error deleting comment:', error);
         return { success: false, error: 'Failed to delete comment' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_COMMENT_ERROR };
       }
 
       return { success: true };

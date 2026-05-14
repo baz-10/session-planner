@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Bell, BellOff, ChevronLeft, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { MessageList } from './message-list';
 import { MessageInput } from './message-input';
+import { useConfirmDialog } from '@/components/ui/action-dialogs';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface ConversationWithDetails extends Conversation {
@@ -18,60 +20,170 @@ interface ConversationWithDetails extends Conversation {
 }
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 interface ChatViewProps {
   conversation: ConversationWithDetails;
   onBack?: () => void;
+  onConversationLeft?: () => void;
 }
 
-export function ChatView({ conversation, onBack }: ChatViewProps) {
+export function ChatView({ conversation, onBack, onConversationLeft }: ChatViewProps) {
   const { user } = useAuth();
-  const { getMessages, sendMessage, sendFileMessage, markAsRead, subscribeToMessages } = useChat();
+  const {
+    getMessages,
+    sendMessage,
+    sendFileMessage,
+    markAsRead,
+    subscribeToMessages,
+    toggleMute,
+    leaveConversation,
+  } = useChat();
+  const { confirmAction, confirmDialog } = useConfirmDialog();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [readStatusError, setReadStatusError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isUpdatingMute, setIsUpdatingMute] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const participants = conversation.participants || [];
+  const currentParticipant = participants.find((participant) => participant.user_id === user?.id);
+
+  const getDirectParticipant = () => {
+    return participants.find((participant) => participant.user_id !== user?.id);
+  };
+
+  const getParticipantDisplayName = (participant?: ParticipantWithProfile | null) => {
+    return participant?.user?.full_name || participant?.user?.email || 'Team member';
+  };
 
   const getConversationName = () => {
     if (conversation.name) return conversation.name;
 
     // For DMs, show the other person's name
     if (conversation.type === 'direct') {
-      const otherParticipant = conversation.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name || 'Unknown';
+      return getParticipantDisplayName(getDirectParticipant());
     }
 
     return 'Conversation';
   };
 
-  const loadMessages = useCallback(async () => {
-    setIsLoading(true);
-    const data = await getMessages(conversation.id);
-    setMessages(data);
-    setIsLoading(false);
+  const markConversationRead = useCallback(async () => {
+    const result = await markAsRead(conversation.id);
+    setReadStatusError(result.success ? '' : result.error || 'Read status could not update.');
+  }, [conversation.id, markAsRead]);
 
-    // Mark as read
-    markAsRead(conversation.id);
-  }, [conversation.id, getMessages, markAsRead]);
+  useEffect(() => {
+    setIsMuted(currentParticipant?.is_muted ?? false);
+    setActionError('');
+  }, [conversation.id, currentParticipant?.is_muted]);
+
+  const loadMessages = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
+
+    try {
+      setLoadError('');
+      const data = await getMessages(conversation.id, 50, undefined, { throwOnError: true });
+      setMessages(data);
+
+      // Mark as read after a successful load.
+      await markConversationRead();
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      setMessages([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Messages could not load. Check your connection and try again.'
+      );
+    } finally {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+    }
+  }, [conversation.id, getMessages, markConversationRead]);
 
   useEffect(() => {
     loadMessages();
 
     // Subscribe to new messages
     const unsubscribe = subscribeToMessages(conversation.id, (newMessage) => {
-      setMessages((prev) => [...prev, newMessage]);
-      markAsRead(conversation.id);
+      setMessages((prev) => (
+        prev.some((message) => message.id === newMessage.id) ? prev : [...prev, newMessage]
+      ));
+      void markConversationRead();
     });
 
     return unsubscribe;
-  }, [conversation.id, loadMessages, subscribeToMessages, markAsRead]);
+  }, [conversation.id, loadMessages, subscribeToMessages, markConversationRead]);
 
   const handleSendMessage = async (content: string) => {
-    await sendMessage({ conversation_id: conversation.id, content });
+    const result = await sendMessage({ conversation_id: conversation.id, content });
+    if (result.success) {
+      await loadMessages(false);
+    }
+    return result;
   };
 
   const handleSendFile = async (file: File) => {
-    await sendFileMessage(conversation.id, file);
+    const result = await sendFileMessage(conversation.id, file);
+    if (result.success) {
+      await loadMessages(false);
+    }
+    return result;
+  };
+
+  const handleToggleMute = async () => {
+    if (!currentParticipant || isUpdatingMute || isLeaving) return;
+
+    const nextMuted = !isMuted;
+    setActionError('');
+    setIsUpdatingMute(true);
+
+    try {
+      const result = await toggleMute(conversation.id, nextMuted);
+      if (result.success) {
+        setIsMuted(nextMuted);
+        return;
+      }
+
+      setActionError(result.error || 'Conversation notification setting could not be updated.');
+    } finally {
+      setIsUpdatingMute(false);
+    }
+  };
+
+  const handleLeaveConversation = async () => {
+    if (conversation.type !== 'group' || isLeaving) return;
+
+    const confirmed = await confirmAction({
+      title: 'Leave Group Chat',
+      description: 'You will stop receiving messages from this group chat. Another team member will need to add you back.',
+      confirmLabel: 'Leave Chat',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    setActionError('');
+    setIsLeaving(true);
+
+    try {
+      const result = await leaveConversation(conversation.id);
+      if (result.success) {
+        onConversationLeft?.();
+        return;
+      }
+
+      setActionError(result.error || 'Conversation could not be left.');
+    } finally {
+      setIsLeaving(false);
+    }
   };
 
   return (
@@ -80,12 +192,12 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
       <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
         {onBack && (
           <button
+            type="button"
             onClick={onBack}
             className="p-1 text-gray-500 hover:text-gray-700 rounded md:hidden"
+            aria-label="Back to conversations"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
           </button>
         )}
 
@@ -93,12 +205,11 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
           conversation.type === 'direct' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
         }`}>
-          {conversation.type === 'team' && '👥'}
-          {conversation.type === 'coaches' && '🏀'}
-          {conversation.type === 'group' && '👥'}
+          {conversation.type === 'team' && <Users className="h-5 w-5" aria-hidden="true" />}
+          {conversation.type === 'coaches' && <ShieldCheck className="h-5 w-5" aria-hidden="true" />}
+          {conversation.type === 'group' && <Users className="h-5 w-5" aria-hidden="true" />}
           {conversation.type === 'direct' && (() => {
-            const otherParticipant = conversation.participants.find((p) => p.user_id !== user?.id);
-            return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';
+            return getParticipantDisplayName(getDirectParticipant()).charAt(0).toUpperCase() || 'U';
           })()}
         </div>
 
@@ -106,27 +217,80 @@ export function ChatView({ conversation, onBack }: ChatViewProps) {
           <h2 className="font-semibold text-gray-900">{getConversationName()}</h2>
           {conversation.type !== 'direct' && (
             <p className="text-sm text-gray-500">
-              {conversation.participants.length} members
+              {participants.length} members
             </p>
           )}
         </div>
 
-        {/* Menu button */}
-        <button className="p-2 text-gray-400 hover:text-gray-600 rounded">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => void handleToggleMute()}
+            disabled={!currentParticipant || isUpdatingMute || isLeaving}
+            aria-label={isMuted ? 'Unmute conversation' : 'Mute conversation'}
+            aria-pressed={isMuted}
+            title={isMuted ? 'Unmute conversation' : 'Mute conversation'}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-wait disabled:opacity-50"
+          >
+            {isMuted ? (
+              <BellOff className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Bell className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
+          {conversation.type === 'group' && (
+            <button
+              type="button"
+              onClick={() => void handleLeaveConversation()}
+              disabled={isLeaving}
+              aria-label="Leave group chat"
+              title="Leave group chat"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-50"
+            >
+              <LogOut className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
+      {actionError && (
+        <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700">
+          {actionError}
+        </div>
+      )}
+
       {/* Messages */}
-      <MessageList messages={messages} isLoading={isLoading} />
+      {loadError ? (
+        <div className="flex flex-1 items-center justify-center bg-background px-6 text-center">
+          <div>
+            <p role="alert" className="text-sm font-semibold text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadMessages()}
+              className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {readStatusError && (
+            <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
+              {readStatusError}
+            </div>
+          )}
+          <MessageList messages={messages} isLoading={isLoading} />
+        </>
+      )}
 
       {/* Input */}
       <MessageInput
         onSendMessage={handleSendMessage}
         onSendFile={handleSendFile}
+        disabled={Boolean(loadError)}
       />
+      {confirmDialog}
     </div>
   );
 }

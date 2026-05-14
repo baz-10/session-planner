@@ -1,14 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 import { useOrganization } from '@/hooks/use-organization';
+import {
+  normalizeOrganizationCode,
+  ORGANIZATION_CODE_LENGTH,
+} from '@/lib/utils/organization-code';
 
 type SetupMode = 'choose' | 'create' | 'join';
 
 export default function OrganizationSetupPage() {
   const router = useRouter();
+  const { profile } = useAuth();
   const { createOrganization, joinOrganization } = useOrganization();
 
   const [mode, setMode] = useState<SetupMode>('choose');
@@ -20,10 +26,20 @@ export default function OrganizationSetupPage() {
   const [logoUrl, setLogoUrl] = useState('');
 
   // Join form state
-  const [organizationId, setOrganizationId] = useState('');
+  const [organizationCode, setOrganizationCode] = useState('');
+
+  useEffect(() => {
+    const inviteCode = new URLSearchParams(window.location.search).get('code');
+    if (!inviteCode) return;
+
+    setOrganizationCode(normalizeOrganizationCode(inviteCode));
+    setMode('join');
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
+
     if (!orgName.trim()) {
       setError('Please enter an organization name');
       return;
@@ -32,32 +48,49 @@ export default function OrganizationSetupPage() {
     setIsLoading(true);
     setError(null);
 
-    const result = await createOrganization(orgName.trim(), logoUrl.trim() || undefined);
+    try {
+      const result = await createOrganization(orgName.trim(), logoUrl.trim() || undefined);
 
-    if (result.success) {
-      router.push('/dashboard/organization');
-    } else {
+      if (result.success) {
+        router.push(profile?.onboarding_completed ? '/dashboard/organization' : '/onboarding');
+        return;
+      }
+
       setError(result.error || 'Failed to create organization');
+    } catch (error) {
+      console.error('Unexpected error creating organization:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create organization');
+    } finally {
       setIsLoading(false);
     }
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organizationId.trim()) {
-      setError('Please enter an organization ID');
+    if (isLoading) return;
+
+    const normalizedCode = normalizeOrganizationCode(organizationCode);
+    if (normalizedCode.length !== ORGANIZATION_CODE_LENGTH) {
+      setError('Please enter a valid 8-character organization invite code');
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    const result = await joinOrganization(organizationId.trim());
+    try {
+      const result = await joinOrganization(normalizedCode);
 
-    if (result.success) {
-      router.push('/dashboard/organization');
-    } else {
+      if (result.success) {
+        router.push(profile?.onboarding_completed ? '/dashboard/organization' : '/onboarding');
+        return;
+      }
+
       setError(result.error || 'Failed to join organization');
+    } catch (error) {
+      console.error('Unexpected error joining organization:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join organization');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -83,6 +116,7 @@ export default function OrganizationSetupPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Create Option */}
           <button
+            type="button"
             onClick={() => setMode('create')}
             className="card card-hover p-6 text-left transition-all hover:border-teal"
           >
@@ -93,12 +127,13 @@ export default function OrganizationSetupPage() {
             </div>
             <h3 className="text-lg font-semibold text-navy mb-2">Create Organization</h3>
             <p className="text-text-secondary text-sm">
-              Start a new organization and invite others to join. Perfect for clubs, leagues, or schools.
+              Start a new organization and invite others with a member-only invite code.
             </p>
           </button>
 
           {/* Join Option */}
           <button
+            type="button"
             onClick={() => setMode('join')}
             className="card card-hover p-6 text-left transition-all hover:border-teal"
           >
@@ -114,7 +149,7 @@ export default function OrganizationSetupPage() {
             </div>
             <h3 className="text-lg font-semibold text-navy mb-2">Join Organization</h3>
             <p className="text-text-secondary text-sm">
-              Join an existing organization with an invite. Ask your admin for the organization ID.
+              Join an existing organization with an invite code from an admin.
             </p>
           </button>
         </div>
@@ -128,6 +163,7 @@ export default function OrganizationSetupPage() {
       <div className="p-6 md:p-8 max-w-xl mx-auto">
         <div className="mb-8">
           <button
+            type="button"
             onClick={() => {
               setMode('choose');
               setError(null);
@@ -144,12 +180,12 @@ export default function OrganizationSetupPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="card p-6">
+        <form onSubmit={handleCreate} className="card p-6" aria-busy={isLoading}>
           <div className="form-group">
             <label htmlFor="orgName" className="label">
               Organization Name *
@@ -196,10 +232,10 @@ export default function OrganizationSetupPage() {
             >
               Cancel
             </button>
-            <button type="submit" className="btn-primary flex-1" disabled={isLoading}>
+            <button type="submit" className="btn-primary flex-1" disabled={isLoading} aria-busy={isLoading}>
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                   Creating...
                 </>
               ) : (
@@ -222,6 +258,7 @@ export default function OrganizationSetupPage() {
     <div className="p-6 md:p-8 max-w-xl mx-auto">
       <div className="mb-8">
         <button
+          type="button"
           onClick={() => {
             setMode('choose');
             setError(null);
@@ -234,32 +271,34 @@ export default function OrganizationSetupPage() {
           Back
         </button>
         <h1 className="text-2xl md:text-3xl font-bold text-navy mb-2">Join Organization</h1>
-        <p className="text-text-secondary">Enter the organization ID provided by your admin.</p>
+        <p className="text-text-secondary">Enter the organization invite code provided by your admin.</p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleJoin} className="card p-6">
+      <form onSubmit={handleJoin} className="card p-6" aria-busy={isLoading}>
         <div className="form-group">
-          <label htmlFor="organizationId" className="label">
-            Organization ID *
+          <label htmlFor="organizationCode" className="label">
+            Organization Invite Code *
           </label>
           <input
-            id="organizationId"
+            id="organizationCode"
             type="text"
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            placeholder="e.g., abc123-def456-..."
+            value={organizationCode}
+            onChange={(e) => setOrganizationCode(normalizeOrganizationCode(e.target.value))}
+            placeholder="e.g., A1B2C3D4"
             required
-            className="input font-mono text-sm"
+            autoCapitalize="characters"
+            autoComplete="off"
+            className="input font-mono text-sm uppercase tracking-wider"
             disabled={isLoading}
           />
           <p className="text-xs text-text-muted mt-1">
-            Ask your organization admin for this ID.
+            Enter the 8-character code from your admin. New users join as members.
           </p>
         </div>
 
@@ -275,10 +314,15 @@ export default function OrganizationSetupPage() {
           >
             Cancel
           </button>
-          <button type="submit" className="btn-primary flex-1" disabled={isLoading}>
+          <button
+            type="submit"
+            className="btn-primary flex-1"
+            disabled={isLoading || organizationCode.length !== ORGANIZATION_CODE_LENGTH}
+            aria-busy={isLoading}
+          >
             {isLoading ? (
               <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 Joining...
               </>
             ) : (

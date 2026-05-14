@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { ImageIcon, MessageCircle, Paperclip, Users } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import type { Conversation, Message, Profile, ConversationParticipant } from '@/types/database';
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface ConversationWithDetails extends Conversation {
@@ -26,61 +27,124 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   const { getConversations, subscribeToConversations } = useChat();
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const conversationIdKey = useMemo(
+    () => conversations.map((conversation) => conversation.id).sort().join('|'),
+    [conversations]
+  );
 
-  const loadConversations = async () => {
-    const data = await getConversations();
-    setConversations(data);
-    setIsLoading(false);
-  };
+  const loadConversations = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
+    setLoadError('');
+
+    try {
+      const data = await getConversations({ throwOnError: true });
+      setConversations(data);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      setConversations([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Conversations could not load. Check your connection and try again.'
+      );
+    } finally {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+    }
+  }, [getConversations]);
 
   useEffect(() => {
-    loadConversations();
+    void loadConversations();
+  }, [loadConversations]);
 
-    // Subscribe to updates
+  useEffect(() => {
+    const conversationIds = conversationIdKey ? conversationIdKey.split('|') : [];
     const unsubscribe = subscribeToConversations(() => {
-      loadConversations();
-    });
+      loadConversations(false);
+    }, conversationIds);
 
     return unsubscribe;
-  }, []);
+  }, [conversationIdKey, loadConversations, subscribeToConversations]);
+
+  const getParticipantDisplayName = (participant?: ParticipantWithProfile | null) => {
+    return participant?.user?.full_name || participant?.user?.email || 'Team member';
+  };
 
   const getConversationName = (conv: ConversationWithDetails) => {
     if (conv.name) return conv.name;
+    const participants = Array.isArray(conv.participants) ? conv.participants : [];
 
     // For DMs, show the other person's name
     if (conv.type === 'direct') {
-      const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name || 'Unknown';
+      const otherParticipant = participants.find((p) => p.user_id !== user?.id);
+      return getParticipantDisplayName(otherParticipant);
     }
 
     return 'Conversation';
   };
 
-  const getConversationAvatar = (conv: ConversationWithDetails) => {
-    if (conv.type === 'team') return '👥';
-    if (conv.type === 'coaches') return '🏀';
-    if (conv.type === 'group') return '👥';
+  const renderConversationAvatar = (conv: ConversationWithDetails) => {
+    const participants = Array.isArray(conv.participants) ? conv.participants : [];
 
-    // For DMs, show the other person's initial
     if (conv.type === 'direct') {
-      const otherParticipant = conv.participants.find((p) => p.user_id !== user?.id);
-      return otherParticipant?.user?.full_name?.charAt(0)?.toUpperCase() || 'U';
+      const otherParticipant = participants.find((p) => p.user_id !== user?.id);
+      return getParticipantDisplayName(otherParticipant).charAt(0).toUpperCase() || 'U';
     }
 
-    return '💬';
+    if (conv.type === 'team' || conv.type === 'group') {
+      return <Users className="h-5 w-5" aria-hidden="true" />;
+    }
+
+    return <MessageCircle className="h-5 w-5" aria-hidden="true" />;
   };
 
-  const getLastMessagePreview = (message: Message | null) => {
+  const getLastMessagePreviewText = (message: Message | null) => {
     if (!message) return 'No messages yet';
-    if (message.type === 'image') return '📷 Image';
-    if (message.type === 'file') return '📎 File';
+    if (message.type === 'image') return 'Image';
+    if (message.type === 'file') return 'File';
     return message.content || '';
+  };
+
+  const renderLastMessagePreview = (message: Message | null) => {
+    const text = getLastMessagePreviewText(message);
+    if (message?.type === 'image') {
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{text}</span>
+        </span>
+      );
+    }
+
+    if (message?.type === 'file') {
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{text}</span>
+        </span>
+      );
+    }
+
+    return text;
+  };
+
+  const getConversationActionLabel = (conv: ConversationWithDetails) => {
+    const name = getConversationName(conv);
+    const unreadText = conv.unread_count > 0
+      ? `, ${conv.unread_count} unread message${conv.unread_count === 1 ? '' : 's'}`
+      : '';
+    const preview = getLastMessagePreviewText(conv.last_message);
+    return `Open ${name}${unreadText}. Last message: ${preview}`;
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      <div className="flex h-32 items-center justify-center" role="status" aria-label="Loading conversations">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
@@ -88,7 +152,20 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
   if (conversations.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>No conversations yet</p>
+        {loadError ? (
+          <>
+            <p role="alert" className="px-4 text-sm font-medium text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadConversations()}
+              className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            >
+              Try again
+            </button>
+          </>
+        ) : (
+          <p>No conversations yet</p>
+        )}
       </div>
     );
   }
@@ -98,7 +175,10 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
       {conversations.map((conv) => (
         <button
           key={conv.id}
+          type="button"
           onClick={() => onSelectConversation(conv)}
+          aria-label={getConversationActionLabel(conv)}
+          aria-current={selectedId === conv.id ? 'true' : undefined}
           className={`w-full flex items-center gap-3 p-4 hover:bg-gray-50 text-left ${
             selectedId === conv.id ? 'bg-primary/5' : ''
           }`}
@@ -107,7 +187,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0 ${
             conv.type === 'direct' ? 'bg-primary text-white' : 'bg-gray-200 text-gray-600'
           }`}>
-            {getConversationAvatar(conv)}
+            {renderConversationAvatar(conv)}
           </div>
 
           {/* Content */}
@@ -124,7 +204,7 @@ export function ConversationList({ onSelectConversation, selectedId }: Conversat
             </div>
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500 truncate">
-                {getLastMessagePreview(conv.last_message)}
+                {renderLastMessagePreview(conv.last_message)}
               </p>
               {conv.unread_count > 0 && (
                 <span className="ml-2 w-5 h-5 bg-primary text-white text-xs rounded-full flex items-center justify-center flex-shrink-0">

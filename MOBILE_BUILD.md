@@ -6,8 +6,8 @@ This guide covers building and running the Session Planner iOS app using Capacit
 
 1. **macOS** - Required for iOS development
 2. **Xcode 15+** - Download from Mac App Store
-3. **CocoaPods** - Install with `sudo gem install cocoapods`
-4. **Node.js 18+** - For building the web app
+3. **CocoaPods** - Install with `sudo gem install cocoapods` or Homebrew
+4. **Node.js 20+** - Required by the Capacitor 7 CLI and for building the web app
 
 ## Project Structure
 
@@ -49,6 +49,9 @@ npm run cap:sync
 
 Direct `npx cap sync` also works after `out/` has been prepared.
 
+The native toolchain is pinned to Capacitor 7.6.x. Run `npx cap doctor` before
+native beta work; iOS sync will stop until CocoaPods is installed locally.
+
 ### Hosted Next.js App URL
 
 Because the app relies on Next.js API routes and dynamic authenticated pages, the
@@ -58,8 +61,10 @@ current native build should point Capacitor at the deployed web app:
 CAPACITOR_SERVER_URL=https://your-session-planner-domain.example npm run build:mobile
 ```
 
-Without `CAPACITOR_SERVER_URL`, Capacitor syncs a lightweight placeholder shell.
-That is useful for native project validation, but it is not the full live app.
+Without `CAPACITOR_SERVER_URL`, the mobile build now fails before `npx cap sync`
+so a placeholder shell is not accidentally shipped. For local native project
+validation only, set `CAPACITOR_ALLOW_PLACEHOLDER_WEBDIR=1` to prepare the
+lightweight placeholder shell.
 
 ### 3. Open in Xcode
 

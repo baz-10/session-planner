@@ -16,13 +16,19 @@ interface PlayFilters {
   tag?: string;
 }
 
+interface PlayReadOptions {
+  throwOnError?: boolean;
+}
+
+const STALE_PLAY_ERROR = 'Play access changed. Refresh the library and try again.';
+
 export function usePlays() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
   const getPlays = useCallback(
-    async (filters: PlayFilters = {}): Promise<Play[]> => {
+    async (filters: PlayFilters = {}, options: PlayReadOptions = {}): Promise<Play[]> => {
       if (!currentTeam) return [];
 
       let query = supabase
@@ -47,6 +53,9 @@ export function usePlays() {
 
       if (error) {
         console.error('Error fetching plays:', error);
+        if (options.throwOnError) {
+          throw new Error('Failed to load play library.');
+        }
         return [];
       }
 
@@ -57,10 +66,13 @@ export function usePlays() {
 
   const getPlay = useCallback(
     async (playId: string): Promise<Play | null> => {
+      if (!currentTeam) return null;
+
       const { data, error } = await supabase
         .from('plays')
         .select('*')
         .eq('id', playId)
+        .eq('team_id', currentTeam.id)
         .single();
 
       if (error || !data) {
@@ -70,7 +82,7 @@ export function usePlays() {
 
       return data as Play;
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const createPlay = useCallback(
@@ -79,70 +91,112 @@ export function usePlays() {
         return { success: false, error: 'Not authenticated or no team selected' };
       }
 
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from('plays')
-        .insert({
-          team_id: input.team_id || currentTeam.id,
-          organization_id: input.organization_id || null,
-          name: input.name,
-          description: input.description || null,
-          play_type: input.play_type || 'offense',
-          court_template: input.court_template || 'half_court',
-          tags: input.tags || [],
-          diagram: input.diagram,
-          thumbnail_data_url: input.thumbnail_data_url || null,
-          version: input.version || 1,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-      setIsLoading(false);
-
-      if (error || !data) {
-        console.error('Error creating play:', error);
-        return { success: false, error: error?.message || 'Failed to create play' };
+      if (input.team_id && input.team_id !== currentTeam.id) {
+        return { success: false, error: 'Select the target team before creating this play.' };
       }
 
-      return { success: true, play: data as Play };
+      setIsLoading(true);
+
+      try {
+        const { data, error } = await supabase
+          .from('plays')
+          .insert({
+            team_id: currentTeam.id,
+            organization_id: input.organization_id || null,
+            name: input.name,
+            description: input.description || null,
+            play_type: input.play_type || 'offense',
+            court_template: input.court_template || 'half_court',
+            tags: input.tags || [],
+            diagram: input.diagram,
+            thumbnail_data_url: input.thumbnail_data_url || null,
+            version: input.version || 1,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (error || !data) {
+          console.error('Error creating play:', error);
+          return { success: false, error: error?.message || 'Failed to create play' };
+        }
+
+        return { success: true, play: data as Play };
+      } catch (error) {
+        console.error('Unexpected error creating play:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create play',
+        };
+      } finally {
+        setIsLoading(false);
+      }
     },
     [user, currentTeam, supabase]
   );
 
   const updatePlay = useCallback(
     async (playId: string, updates: UpdatePlayInput): Promise<{ success: boolean; error?: string }> => {
-      setIsLoading(true);
-      const { error } = await supabase
-        .from('plays')
-        .update(updates)
-        .eq('id', playId);
-      setIsLoading(false);
-
-      if (error) {
-        console.error('Error updating play:', error);
-        return { success: false, error: error.message || 'Failed to update play' };
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before updating this play.' };
       }
 
-      return { success: true };
+      setIsLoading(true);
+
+      try {
+        const { error, count } = await supabase
+          .from('plays')
+          .update(updates, { count: 'exact' })
+          .eq('id', playId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating play:', error);
+          return { success: false, error: error.message || 'Failed to update play' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_PLAY_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating play:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update play',
+        };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const deletePlay = useCallback(
     async (playId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before deleting this play.' };
+      }
+
+      const { error, count } = await supabase
         .from('plays')
-        .delete()
-        .eq('id', playId);
+        .delete({ count: 'exact' })
+        .eq('id', playId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error deleting play:', error);
         return { success: false, error: error.message || 'Failed to delete play' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_PLAY_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   const duplicatePlay = useCallback(
@@ -167,11 +221,11 @@ export function usePlays() {
   );
 
   const searchPlays = useCallback(
-    async (queryText: string): Promise<Play[]> => {
+    async (queryText: string, options: PlayReadOptions = {}): Promise<Play[]> => {
       const normalized = queryText.trim().toLowerCase();
       if (!normalized) return [];
 
-      const plays = await getPlays();
+      const plays = await getPlays({}, options);
       return plays.filter((play) => {
         const searchable = [play.name, play.description || '', (play.tags || []).join(' ')].join(' ').toLowerCase();
         return searchable.includes(normalized);

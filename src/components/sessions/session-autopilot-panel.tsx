@@ -165,8 +165,10 @@ export function SessionAutopilotPanel({
             </p>
           </div>
           <button
+            type="button"
             onClick={handleGenerate}
             disabled={disabled || isGenerating || !teamId}
+            aria-busy={isGenerating}
             className="min-h-12 shrink-0 rounded-2xl bg-navy px-4 text-sm font-extrabold text-white disabled:opacity-50"
           >
             {isGenerating ? 'Generating' : 'Generate'}
@@ -230,29 +232,37 @@ export function SessionAutopilotPanel({
               : 'border-slate-200 bg-white'
           }
         >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className={warnings.length > 0 ? 'h-5 w-5 text-amber-600' : 'h-5 w-5 text-slate-400'} />
-            <h3 className="text-lg font-extrabold text-navy">Warnings</h3>
+          <div
+            role={warnings.length > 0 ? 'status' : undefined}
+            aria-live={warnings.length > 0 ? 'polite' : undefined}
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className={warnings.length > 0 ? 'h-5 w-5 text-amber-600' : 'h-5 w-5 text-slate-400'} />
+              <h3 className="text-lg font-extrabold text-navy">Warnings</h3>
+            </div>
+            {warnings.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {warnings.map((warning) => (
+                  <li key={warning} className="flex gap-2 text-sm font-medium leading-5 text-amber-900">
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm font-medium text-slate-500">
+                Generate plans to surface attendance and balance warnings.
+              </p>
+            )}
           </div>
-          {warnings.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {warnings.map((warning) => (
-                <li key={warning} className="flex gap-2 text-sm font-medium leading-5 text-amber-900">
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
-                  {warning}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm font-medium text-slate-500">
-              Generate plans to surface attendance and balance warnings.
-            </p>
-          )}
         </MobileListCard>
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+        <div
+          role="alert"
+          className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+        >
           {error}
         </div>
       )}
@@ -301,8 +311,10 @@ export function SessionAutopilotPanel({
               </div>
 
               <button
+                type="button"
                 onClick={() => handleApply(variant)}
                 disabled={disabled || isApplyingKey !== null}
+                aria-busy={isApplyingKey === variant.key}
                 className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-teal bg-white text-base font-extrabold text-teal disabled:opacity-50"
               >
                 {isApplyingKey === variant.key ? (

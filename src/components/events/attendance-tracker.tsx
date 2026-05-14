@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
@@ -14,7 +14,7 @@ interface AttendanceRecordWithDetails extends AttendanceRecord {
 interface AttendanceTrackerProps {
   eventId: string;
   existingRecords: AttendanceRecordWithDetails[];
-  onUpdate: () => void;
+  onUpdate: () => void | Promise<void>;
 }
 
 interface PlayerAttendance {
@@ -45,10 +45,49 @@ export function AttendanceTracker({
   const [attendance, setAttendance] = useState<Map<string, PlayerAttendance>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+
+  const loadPlayers = useCallback(async () => {
+    if (!currentTeam) {
+      setPlayers([]);
+      setLoadError('');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError('');
+
+    try {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .eq('team_id', currentTeam.id)
+        .eq('status', 'active')
+        .order('last_name');
+
+      if (error) {
+        console.error('Error loading players for attendance:', error);
+        setPlayers([]);
+        setLoadError('Players could not load for attendance. Refresh and try again.');
+        return;
+      }
+
+      setPlayers((data || []) as Player[]);
+    } catch (error) {
+      console.error('Unexpected error loading players for attendance:', error);
+      setPlayers([]);
+      setLoadError('Players could not load for attendance. Refresh and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentTeam, supabase]);
 
   useEffect(() => {
-    loadPlayers();
-  }, [currentTeam?.id]);
+    void loadPlayers();
+  }, [loadPlayers]);
 
   useEffect(() => {
     // Initialize attendance from existing records
@@ -68,23 +107,10 @@ export function AttendanceTracker({
     setAttendance(map);
   }, [players, existingRecords]);
 
-  const loadPlayers = async () => {
-    if (!currentTeam) return;
-
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('team_id', currentTeam.id)
-      .eq('status', 'active')
-      .order('last_name');
-
-    if (data) {
-      setPlayers(data as Player[]);
-    }
-    setIsLoading(false);
-  };
-
   const updatePlayerStatus = (playerId: string, status: AttendanceStatus) => {
+    if (isSaving) return;
+
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       const player = newMap.get(playerId);
@@ -96,6 +122,9 @@ export function AttendanceTracker({
   };
 
   const updatePlayerNotes = (playerId: string, notes: string) => {
+    if (isSaving) return;
+
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       const player = newMap.get(playerId);
@@ -107,7 +136,11 @@ export function AttendanceTracker({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     setIsSaving(true);
+    setSaveError('');
+    setSaveMessage('');
 
     const records = Array.from(attendance.values()).map((a) => ({
       playerId: a.playerId,
@@ -115,16 +148,27 @@ export function AttendanceTracker({
       notes: a.notes || undefined,
     }));
 
-    const result = await recordAttendance(eventId, records);
+    try {
+      const result = await recordAttendance(eventId, records);
 
-    if (result.success) {
-      onUpdate();
+      if (result.success) {
+        await onUpdate();
+        setSaveMessage('Attendance saved.');
+      } else {
+        setSaveError(result.error || 'Failed to save attendance.');
+      }
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      setSaveError('Failed to save attendance. Refresh and try again.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsSaving(false);
   };
 
   const markAllAs = (status: AttendanceStatus) => {
+    if (isSaving) return;
+
+    setSaveMessage('');
     setAttendance((prev) => {
       const newMap = new Map(prev);
       newMap.forEach((player, id) => {
@@ -136,8 +180,8 @@ export function AttendanceTracker({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      <div className="flex h-32 items-center justify-center" role="status" aria-label="Loading attendance">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary" aria-hidden="true"></div>
       </div>
     );
   }
@@ -145,7 +189,20 @@ export function AttendanceTracker({
   if (players.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p>No players on this team yet.</p>
+        {loadError ? (
+          <div role="alert" className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadPlayers()}
+              className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-bold text-red-700 shadow-sm hover:bg-red-100"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <p>No players on this team yet.</p>
+        )}
       </div>
     );
   }
@@ -159,31 +216,47 @@ export function AttendanceTracker({
 
   return (
     <div className="space-y-4">
+      {saveError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {saveError}
+        </div>
+      )}
+      {saveMessage && (
+        <div role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+          {saveMessage}
+        </div>
+      )}
+
       {/* Quick actions */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <span className="text-sm text-gray-500">Mark all as:</span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-full text-sm text-gray-500 sm:w-auto">Mark all as:</span>
           {ATTENDANCE_OPTIONS.map((opt) => (
             <button
+              type="button"
               key={opt.value}
               onClick={() => markAllAs(opt.value)}
-              className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50"
+              disabled={isSaving}
+              aria-busy={isSaving}
+              className="min-h-10 rounded border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50"
             >
               {opt.label}
             </button>
           ))}
         </div>
         <button
+          type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
+          aria-busy={isSaving}
+          className="min-h-11 w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary-light disabled:opacity-50 sm:w-auto"
         >
           {isSaving ? 'Saving...' : 'Save Attendance'}
         </button>
       </div>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-4 gap-2 text-center">
+      <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
         <div className="bg-green-50 rounded-lg p-2">
           <div className="text-lg font-bold text-green-600">{stats.present}</div>
           <div className="text-xs text-gray-500">Present</div>
@@ -205,24 +278,28 @@ export function AttendanceTracker({
       {/* Player list */}
       <div className="border rounded-lg divide-y">
         {Array.from(attendance.values()).map((player) => (
-          <div key={player.playerId} className="p-3 flex items-center gap-4">
+          <div key={player.playerId} className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:gap-4">
             {/* Player info */}
-            <div className="w-48 flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 md:w-48 md:shrink-0">
               {player.jerseyNumber && (
-                <span className="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
                   {player.jerseyNumber}
                 </span>
               )}
-              <span className="font-medium">{player.playerName}</span>
+              <span className="truncate font-medium">{player.playerName}</span>
             </div>
 
             {/* Status buttons */}
-            <div className="flex gap-1">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:gap-1">
               {ATTENDANCE_OPTIONS.map((opt) => (
                 <button
+                  type="button"
                   key={opt.value}
                   onClick={() => updatePlayerStatus(player.playerId, opt.value)}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  disabled={isSaving}
+                  aria-busy={isSaving}
+                  aria-pressed={player.status === opt.value}
+                  className={`min-h-10 rounded px-3 py-1 text-sm font-medium transition-colors ${
                     player.status === opt.value
                       ? opt.color.replace('100', '500').replace('700', 'white')
                       : opt.color + ' hover:opacity-80'
@@ -254,7 +331,9 @@ export function AttendanceTracker({
               value={player.notes}
               onChange={(e) => updatePlayerNotes(player.playerId, e.target.value)}
               placeholder="Notes..."
-              className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+              disabled={isSaving}
+              aria-label={`Attendance notes for ${player.playerName}`}
+              className="min-h-10 w-full rounded border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary md:flex-1"
             />
           </div>
         ))}

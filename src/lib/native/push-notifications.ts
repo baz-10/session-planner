@@ -16,6 +16,12 @@ export interface PushNotificationHandlers {
 
 let isInitialized = false;
 
+function logPushDebug(...args: unknown[]) {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(...args);
+  }
+}
+
 /**
  * Initialize push notifications
  */
@@ -43,7 +49,7 @@ export async function initializePushNotifications(
 
     // Set up listeners
     PushNotifications.addListener('registration', (token: Token) => {
-      console.log('Push registration success:', token.value);
+      logPushDebug('Push registration success');
       handlers?.onRegistration?.(token.value);
     });
 
@@ -53,12 +59,12 @@ export async function initializePushNotifications(
     });
 
     PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('Push notification received:', notification);
+      logPushDebug('Push notification received');
       handlers?.onNotificationReceived?.(notification);
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-      console.log('Push notification action:', action);
+      logPushDebug('Push notification action performed');
       handlers?.onNotificationAction?.(action);
     });
 

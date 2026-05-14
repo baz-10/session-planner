@@ -1,17 +1,18 @@
 import { PlayDetailClient } from './play-detail-client';
 
 export async function generateStaticParams() {
-  return [{ id: 'placeholder' }];
+  return [];
 }
 
 export const dynamicParams = true;
 
 interface PlayPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function PlayPage({ params }: PlayPageProps) {
-  return <PlayDetailClient playId={params.id} />;
+export default async function PlayPage({ params }: PlayPageProps) {
+  const { id } = await params;
+  return <PlayDetailClient playId={id} />;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useMemo } from 'react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import {
   COURT_TEMPLATE_ASSET,
@@ -33,11 +34,14 @@ export function CourtSurface({
 
   if (!markup) {
     return (
-      <img
+      <Image
         src={COURT_TEMPLATE_ASSET[courtTemplate]}
         alt=""
         aria-hidden="true"
+        width={1200}
+        height={800}
         className={cn('h-full w-full object-cover', className)}
+        unoptimized
       />
     );
   }

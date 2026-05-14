@@ -151,7 +151,8 @@ export function useBilling() {
         profile:profiles(id, full_name, email)
       `)
       .eq('team_id', currentTeam.id)
-      .in('role', ['player', 'parent']);
+      .in('role', ['player', 'parent'])
+      .neq('status', 'inactive');
 
     if (error) {
       console.error('Error loading billable members:', error);
@@ -228,6 +229,18 @@ export function useBilling() {
           return { success: false, error: 'Failed to create invoice' };
         }
 
+        const cleanupPartialInvoice = async (reason: string) => {
+          const { error: cleanupError } = await supabase
+            .from('billing_invoices')
+            .delete()
+            .eq('id', invoice.id)
+            .eq('team_id', currentTeam.id);
+
+          if (cleanupError) {
+            console.error(`Error cleaning up partial invoice after ${reason}:`, cleanupError);
+          }
+        };
+
         const recipientRows = input.recipient_user_ids.map((recipientUserId) => ({
           invoice_id: invoice.id,
           user_id: recipientUserId,
@@ -239,9 +252,10 @@ export function useBilling() {
 
         if (recipientsError) {
           console.error('Error assigning invoice recipients:', recipientsError);
+          await cleanupPartialInvoice('recipient assignment failure');
           return {
             success: false,
-            error: 'Invoice created, but assigning recipients failed.',
+            error: 'Invoice setup failed before recipients could be assigned.',
           };
         }
 
@@ -264,9 +278,10 @@ export function useBilling() {
 
         if (installmentError || !installments || installments.length === 0) {
           console.error('Error creating installment schedule:', installmentError);
+          await cleanupPartialInvoice('installment schedule failure');
           return {
             success: false,
-            error: 'Invoice created, but installment schedule setup failed.',
+            error: 'Invoice setup failed before the installment schedule could be completed.',
           };
         }
 
@@ -304,9 +319,10 @@ export function useBilling() {
 
         if (recipientInstallmentError) {
           console.error('Error creating recipient installment rows:', recipientInstallmentError);
+          await cleanupPartialInvoice('recipient installment failure');
           return {
             success: false,
-            error: 'Invoice created, but recipient installment setup failed.',
+            error: 'Invoice setup failed before recipient installments could be completed.',
           };
         }
 
@@ -460,26 +476,35 @@ export function useBilling() {
 
   const markReminderRead = useCallback(
     async (reminderId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
+
       if (!reminderId) {
         return { success: false, error: 'Reminder ID is required' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('billing_reminders')
         .update({
           is_read: true,
           read_at: new Date().toISOString(),
-        })
-        .eq('id', reminderId);
+        }, { count: 'exact' })
+        .eq('id', reminderId)
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error marking reminder as read:', error);
         return { success: false, error: 'Failed to update reminder.' };
       }
 
+      if (count === 0) {
+        return { success: false, error: 'Reminder access changed. Refresh and try again.' };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, user]
   );
 
   return {

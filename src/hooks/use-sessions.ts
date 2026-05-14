@@ -22,13 +22,39 @@ function logSessionDebug(...args: unknown[]) {
   }
 }
 
-function isLegacySessionActivityColumnError(error: { message?: string | null } | null): boolean {
+function isLegacyLinkedPlayColumnError(error: { message?: string | null } | null): boolean {
   if (!error?.message) return false;
   const message = error.message.toLowerCase();
-  return (
-    (message.includes('additional_category_ids') && message.includes('column')) ||
-    (message.includes('linked_play_') && message.includes('column'))
-  );
+  return message.includes('linked_play_') && message.includes('column');
+}
+
+interface MaybeLinkedPlayData {
+  linked_play_id?: unknown;
+  linked_play_name_snapshot?: unknown;
+  linked_play_version_snapshot?: unknown;
+  linked_play_snapshot?: unknown;
+  linked_play_thumbnail_data_url?: unknown;
+}
+
+function hasLinkedPlayData(value: MaybeLinkedPlayData): boolean {
+  return [
+    value.linked_play_id,
+    value.linked_play_name_snapshot,
+    value.linked_play_version_snapshot,
+    value.linked_play_snapshot,
+    value.linked_play_thumbnail_data_url,
+  ].some((item) => item !== null && item !== undefined && item !== '');
+}
+
+const STALE_SESSION_ERROR = 'This plan could not be saved. It may have been deleted or your access may have changed.';
+const STALE_ACTIVITY_ERROR = 'This activity could not be saved. It may have been deleted or your access may have changed.';
+const SESSION_LIST_LOAD_ERROR = 'Practice plans could not load. Check your connection and try again.';
+const NO_TEAM_ERROR = 'Select a team before editing session plans.';
+const LINKED_PLAY_MIGRATION_ERROR =
+  'Linked play attachments require the latest database migrations. Apply migrations and try again.';
+
+interface GetSessionsOptions {
+  throwOnError?: boolean;
 }
 
 export function useSessions() {
@@ -36,10 +62,37 @@ export function useSessions() {
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
+  const ensureSessionInCurrentTeam = useCallback(
+    async (sessionId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('id', sessionId)
+        .eq('team_id', currentTeam.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error verifying session team:', error);
+        return { success: false, error: STALE_SESSION_ERROR };
+      }
+
+      if (!data) {
+        return { success: false, error: STALE_SESSION_ERROR };
+      }
+
+      return { success: true };
+    },
+    [currentTeam, supabase]
+  );
+
   /**
    * Get all sessions for the current team
    */
-  const getSessions = useCallback(async () => {
+  const getSessions = useCallback(async (options: GetSessionsOptions = {}) => {
     if (!currentTeam) return [];
 
     const { data, error } = await supabase
@@ -50,6 +103,9 @@ export function useSessions() {
 
     if (error) {
       console.error('Error fetching sessions:', error);
+      if (options.throwOnError) {
+        throw new Error(SESSION_LIST_LOAD_ERROR);
+      }
       return [];
     }
 
@@ -61,14 +117,23 @@ export function useSessions() {
    */
   const getSession = useCallback(
     async (sessionId: string): Promise<SessionWithActivities | null> => {
+      if (!currentTeam) {
+        return null;
+      }
+
       const { data: session, error } = await supabase
         .from('sessions')
         .select('*')
         .eq('id', sessionId)
-        .single();
+        .eq('team_id', currentTeam.id)
+        .maybeSingle();
 
-      if (error || !session) {
+      if (error) {
         console.error('Error fetching session:', error);
+        return null;
+      }
+
+      if (!session) {
         return null;
       }
 
@@ -94,7 +159,7 @@ export function useSessions() {
 
         if (fallbackError) {
           console.error('Error fetching activities (fallback):', fallbackError);
-          return { ...session, activities: [] } as SessionWithActivities;
+          return null;
         }
 
         return {
@@ -108,7 +173,7 @@ export function useSessions() {
         activities: activities || [],
       } as SessionWithActivities;
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -137,6 +202,7 @@ export function useSessions() {
           .select('role')
           .eq('team_id', targetTeamId)
           .eq('user_id', user.id)
+          .neq('status', 'inactive')
           .maybeSingle();
 
         if (membershipError) {
@@ -212,22 +278,40 @@ export function useSessions() {
       sessionId: string,
       updates: Partial<Session>
     ): Promise<{ success: boolean; error?: string }> => {
-      setIsLoading(true);
-      const { error } = await supabase
-        .from('sessions')
-        .update(updates)
-        .eq('id', sessionId);
-
-      setIsLoading(false);
-
-      if (error) {
-        console.error('Error updating session:', error);
-        return { success: false, error: 'Failed to update session' };
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
       }
 
-      return { success: true };
+      setIsLoading(true);
+
+      try {
+        const { error, count } = await supabase
+          .from('sessions')
+          .update(updates, { count: 'exact' })
+          .eq('id', sessionId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating session:', error);
+          return { success: false, error: error.message || 'Failed to update session' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_SESSION_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating session:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update session',
+        };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -235,16 +319,28 @@ export function useSessions() {
    */
   const deleteSession = useCallback(
     async (sessionId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
+      const { error, count } = await supabase
+        .from('sessions')
+        .delete({ count: 'exact' })
+        .eq('id', sessionId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error deleting session:', error);
         return { success: false, error: 'Failed to delete session' };
       }
 
+      if (count === 0) {
+        return { success: false, error: 'This plan was already deleted or you no longer have access.' };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -295,12 +391,20 @@ export function useSessions() {
           linked_play_thumbnail_data_url: activity.linked_play_thumbnail_data_url || null,
         }));
 
-        const { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
-        if (insertError && isLegacySessionActivityColumnError(insertError)) {
+        let { error: insertError } = await supabase.from('session_activities').insert(activitiesToInsert);
+        if (insertError && isLegacyLinkedPlayColumnError(insertError)) {
+          if (activitiesToInsert.some(hasLinkedPlayData)) {
+            console.error('Linked play columns missing while duplicating session activities:', insertError);
+            await supabase.from('sessions').delete().eq('id', result.session.id).eq('team_id', session.team_id);
+            return {
+              success: false,
+              error: LINKED_PLAY_MIGRATION_ERROR,
+            };
+          }
+
           const legacyActivitiesToInsert = activitiesToInsert.map((activity) => {
             // Remove columns unavailable in legacy schemas.
             const {
-              additional_category_ids: _ignoredAdditionalCategoryIds,
               linked_play_id: _ignoredLinkedPlayId,
               linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
               linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
@@ -310,7 +414,17 @@ export function useSessions() {
             } = activity;
             return legacyActivity;
           });
-          await supabase.from('session_activities').insert(legacyActivitiesToInsert);
+          const retryResult = await supabase.from('session_activities').insert(legacyActivitiesToInsert);
+          insertError = retryResult.error;
+        }
+
+        if (insertError) {
+          console.error('Error duplicating session activities:', insertError);
+          await supabase.from('sessions').delete().eq('id', result.session.id).eq('team_id', session.team_id);
+          return {
+            success: false,
+            error: insertError.message || 'Failed to duplicate session activities',
+          };
         }
       }
 
@@ -324,6 +438,11 @@ export function useSessions() {
    */
   const addActivity = useCallback(
     async (input: CreateActivityInput): Promise<{ success: boolean; activity?: SessionActivity; error?: string }> => {
+      const sessionCheck = await ensureSessionInCurrentTeam(input.session_id);
+      if (!sessionCheck.success) {
+        return { success: false, error: sessionCheck.error };
+      }
+
       const additionalCategoryIds = input.additional_category_ids || [];
       const payload = {
         session_id: input.session_id,
@@ -348,9 +467,13 @@ export function useSessions() {
         .select()
         .single();
 
-      if (error && isLegacySessionActivityColumnError(error)) {
+      if (error && isLegacyLinkedPlayColumnError(error)) {
+        if (hasLinkedPlayData(payload)) {
+          console.error('Linked play columns missing while adding session activity:', error);
+          return { success: false, error: LINKED_PLAY_MIGRATION_ERROR };
+        }
+
         const {
-          additional_category_ids: _ignoredAdditionalCategoryIds,
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
           linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
@@ -374,7 +497,7 @@ export function useSessions() {
 
       return { success: true, activity: data as SessionActivity };
     },
-    [supabase]
+    [supabase, ensureSessionInCurrentTeam]
   );
 
   /**
@@ -383,16 +506,27 @@ export function useSessions() {
   const updateActivity = useCallback(
     async (
       activityId: string,
-      updates: Partial<SessionActivity>
+      updates: Partial<SessionActivity>,
+      sessionId: string
     ): Promise<{ success: boolean; error?: string }> => {
-      let { error } = await supabase
-        .from('session_activities')
-        .update(updates)
-        .eq('id', activityId);
+      const sessionCheck = await ensureSessionInCurrentTeam(sessionId);
+      if (!sessionCheck.success) {
+        return { success: false, error: sessionCheck.error };
+      }
 
-      if (error && isLegacySessionActivityColumnError(error)) {
+      let { error, count } = await supabase
+        .from('session_activities')
+        .update(updates, { count: 'exact' })
+        .eq('id', activityId)
+        .eq('session_id', sessionId);
+
+      if (error && isLegacyLinkedPlayColumnError(error)) {
+        if (hasLinkedPlayData(updates)) {
+          console.error('Linked play columns missing while updating session activity:', error);
+          return { success: false, error: LINKED_PLAY_MIGRATION_ERROR };
+        }
+
         const {
-          additional_category_ids: _ignoredAdditionalCategoryIds,
           linked_play_id: _ignoredLinkedPlayId,
           linked_play_name_snapshot: _ignoredLinkedPlayNameSnapshot,
           linked_play_version_snapshot: _ignoredLinkedPlayVersionSnapshot,
@@ -402,9 +536,11 @@ export function useSessions() {
         } = updates;
         const retryResult = await supabase
           .from('session_activities')
-          .update(legacyUpdates)
-          .eq('id', activityId);
+          .update(legacyUpdates, { count: 'exact' })
+          .eq('id', activityId)
+          .eq('session_id', sessionId);
         error = retryResult.error;
+        count = retryResult.count;
       }
 
       if (error) {
@@ -412,26 +548,43 @@ export function useSessions() {
         return { success: false, error: 'Failed to update activity' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_ACTIVITY_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, ensureSessionInCurrentTeam]
   );
 
   /**
    * Delete an activity
    */
   const deleteActivity = useCallback(
-    async (activityId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('session_activities').delete().eq('id', activityId);
+    async (activityId: string, sessionId: string): Promise<{ success: boolean; error?: string }> => {
+      const sessionCheck = await ensureSessionInCurrentTeam(sessionId);
+      if (!sessionCheck.success) {
+        return { success: false, error: sessionCheck.error };
+      }
+
+      const { error, count } = await supabase
+        .from('session_activities')
+        .delete({ count: 'exact' })
+        .eq('id', activityId)
+        .eq('session_id', sessionId);
 
       if (error) {
         console.error('Error deleting activity:', error);
         return { success: false, error: 'Failed to delete activity' };
       }
 
+      if (count === 0) {
+        return { success: false, error: 'This activity was already deleted or you no longer have access.' };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, ensureSessionInCurrentTeam]
   );
 
   /**
@@ -442,32 +595,28 @@ export function useSessions() {
       sessionId: string,
       activityIds: string[]
     ): Promise<{ success: boolean; error?: string }> => {
-      // Update each activity with its new sort_order
-      const updates = activityIds.map((id, index) => ({
-        id,
-        sort_order: index,
-      }));
+      const sessionCheck = await ensureSessionInCurrentTeam(sessionId);
+      if (!sessionCheck.success) {
+        return { success: false, error: sessionCheck.error };
+      }
 
-      // Use a transaction-like approach by updating all in parallel
-      const promises = updates.map(({ id, sort_order }) =>
-        supabase
-          .from('session_activities')
-          .update({ sort_order })
-          .eq('id', id)
-          .eq('session_id', sessionId)
-      );
+      const { error } = await supabase.rpc('reorder_session_activities', {
+        session_uuid: sessionId,
+        activity_ids: activityIds,
+      });
 
-      const results = await Promise.all(promises);
-      const hasError = results.some((r) => r.error);
-
-      if (hasError) {
-        console.error('Error reordering activities');
+      if (error) {
+        console.error('Error reordering activities:', error);
+        const message = error.message || '';
+        if (message.toLowerCase().includes('activity list changed')) {
+          return { success: false, error: STALE_ACTIVITY_ERROR };
+        }
         return { success: false, error: 'Failed to reorder activities' };
       }
 
       return { success: true };
     },
-    [supabase]
+    [supabase, ensureSessionInCurrentTeam]
   );
 
   return {

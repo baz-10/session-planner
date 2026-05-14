@@ -26,6 +26,10 @@ interface SessionPrintOptions {
   appName?: string;
 }
 
+export type PrintSessionPlanResult =
+  | { success: true }
+  | { success: false; error: string };
+
 /**
  * Escape HTML to prevent XSS
  */
@@ -206,7 +210,12 @@ export function generateSessionPrintHTML(
 
   const formatDate = (date: string | null) => {
     if (!date) return '';
-    return new Date(date).toLocaleDateString('en-US', {
+
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? new Date(`${date}T00:00:00`)
+      : new Date(date);
+
+    return parsedDate.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -799,7 +808,7 @@ export function printSessionPlan(
   session: SessionWithActivities,
   teamName: string,
   options: SessionPrintOptions = {}
-): void {
+): PrintSessionPlanResult {
   const html = generateSessionPrintHTML(session, teamName, options);
 
   // Prefer a popup window when available.
@@ -826,7 +835,7 @@ export function printSessionPlan(
     }
     // Fallback in case load events are swallowed by the browser.
     setTimeout(triggerPrint, 900);
-    return;
+    return { success: true };
   }
 
   // Fallback: print through a hidden iframe (helps if popup windows are blocked).
@@ -843,8 +852,10 @@ export function printSessionPlan(
   const iframeDocument = iframe.contentDocument;
   if (!iframeWindow || !iframeDocument) {
     iframe.remove();
-    alert('Unable to open print preview. Please allow pop-ups and try again.');
-    return;
+    return {
+      success: false,
+      error: 'Unable to open print preview. Please allow pop-ups and try again.',
+    };
   }
 
   iframeDocument.open();
@@ -866,6 +877,8 @@ export function printSessionPlan(
     },
     { once: true }
   );
+
+  return { success: true };
 }
 
 /**

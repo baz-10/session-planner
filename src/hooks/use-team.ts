@@ -3,7 +3,36 @@
 import { useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { Team, TeamRole, CreateTeamInput } from '@/types/database';
+
+const PUBLIC_INVITE_ROLES = new Set<TeamRole>(['player', 'parent']);
+const STALE_TEAM_ERROR = 'Team access changed. Refresh and try again.';
+const STALE_TEAM_MEMBER_ERROR = 'Team member access changed. Refresh members and try again.';
+const TEAM_PUBLIC_SELECT =
+  'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
+
+function withTeamInviteCode(team: Partial<Team>, inviteCode: string | null): Team {
+  return {
+    ...(team as Team),
+    team_code: inviteCode,
+  };
+}
+
+function getCreateTeamErrorMessage(error: { message?: string; code?: string } | null) {
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('only organization admins can create teams')) {
+    return 'Only organization admins can create teams in this organization.';
+  }
+
+  if (lowerMessage.includes('row-level security') || error?.code === '42501') {
+    return 'You do not have permission to create a team in this context. Refresh your access and try again.';
+  }
+
+  return message || 'Failed to create team. Please try again.';
+}
 
 interface JoinTeamResult {
   success: boolean;
@@ -30,48 +59,44 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in to join a team' };
       }
 
-      // Find team by code
-      const { data: team, error: findError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('team_code', teamCode.toUpperCase())
-        .single();
-
-      if (findError || !team) {
-        return { success: false, error: 'Invalid team code. Please check and try again.' };
+      if (!PUBLIC_INVITE_ROLES.has(role)) {
+        return {
+          success: false,
+          error: 'Invite codes can only add players or parents. Ask a team admin to promote coaches.',
+        };
       }
 
-      // Check if already a member
-      const { data: existingMember } = await supabase
-        .from('team_members')
-        .select('id')
-        .eq('team_id', team.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existingMember) {
-        return { success: false, error: 'You are already a member of this team.' };
+      const normalizedCode = normalizeTeamCode(teamCode);
+      if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+        return { success: false, error: 'Please enter a valid 6-character team code.' };
       }
 
-      // Add user as team member
-      const { error: joinError } = await supabase.from('team_members').insert({
-        team_id: team.id,
-        user_id: user.id,
-        role,
-        status: 'active',
+      const { data: team, error: joinError } = await supabase.rpc('join_team_by_code', {
+        invite_code: normalizedCode,
+        requested_role: role,
       });
 
       if (joinError) {
         console.error('Error joining team:', joinError);
+        const message = joinError.message || '';
+        if (message.toLowerCase().includes('invalid team code')) {
+          return { success: false, error: 'Invalid team code. Please check and try again.' };
+        }
+        if (message.toLowerCase().includes('invite codes can only add')) {
+          return { success: false, error: message };
+        }
         return { success: false, error: 'Failed to join team. Please try again.' };
       }
 
+      const joinedTeam = withTeamInviteCode(team as Team, null);
+
       // Refresh team memberships
       await refreshTeamMemberships();
+      setCurrentTeam(joinedTeam);
 
-      return { success: true, team: team as Team };
+      return { success: true, team: joinedTeam };
     },
-    [user, supabase, refreshTeamMemberships]
+    [user, supabase, refreshTeamMemberships, setCurrentTeam]
   );
 
   /**
@@ -92,19 +117,31 @@ export function useTeam() {
           logo_url: input.logo_url || null,
           created_by: user.id,
         })
-        .select()
+        .select(TEAM_PUBLIC_SELECT)
         .single();
 
       if (error || !team) {
         console.error('Error creating team:', error);
-        return { success: false, error: 'Failed to create team. Please try again.' };
+        return { success: false, error: getCreateTeamErrorMessage(error) };
       }
+
+      let inviteCode: string | null = null;
+      const { data: fetchedInviteCode, error: inviteError } = await supabase.rpc('get_team_invite_code', {
+        team_uuid: team.id,
+      });
+      if (inviteError) {
+        console.error('Error fetching new team invite code:', inviteError);
+      } else {
+        inviteCode = fetchedInviteCode;
+      }
+
+      const createdTeam = withTeamInviteCode(team as Team, inviteCode);
 
       // Refresh team memberships (trigger will have added user as admin)
       await refreshTeamMemberships();
-      setCurrentTeam(team as Team);
+      setCurrentTeam(createdTeam);
 
-      return { success: true, team: team as Team };
+      return { success: true, team: createdTeam };
     },
     [user, supabase, refreshTeamMemberships, setCurrentTeam]
   );
@@ -118,14 +155,18 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('teams')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', teamId);
 
       if (error) {
         console.error('Error updating team:', error);
         return { success: false, error: 'Failed to update team.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_ERROR };
       }
 
       await refreshTeamMemberships();
@@ -143,15 +184,19 @@ export function useTeam() {
         return { success: false, error: 'You must be logged in' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('team_id', teamId)
         .eq('user_id', user.id);
 
       if (error) {
         console.error('Error leaving team:', error);
         return { success: false, error: 'Failed to leave team.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       await refreshTeamMemberships();
@@ -169,9 +214,10 @@ export function useTeam() {
         .from('team_members')
         .select(`
           *,
-          profile:profiles(*)
+          profile:profiles(id, email, full_name, avatar_url)
         `)
         .eq('team_id', teamId)
+        .neq('status', 'inactive')
         .order('role', { ascending: true });
 
       if (error) {
@@ -193,15 +239,19 @@ export function useTeam() {
       memberId: string,
       role: TeamRole
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .update({ role })
+        .update({ role }, { count: 'exact' })
         .eq('team_id', teamId)
         .eq('id', memberId);
 
       if (error) {
         console.error('Error updating member role:', error);
         return { success: false, error: 'Failed to update member role.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       return { success: true };
@@ -214,15 +264,19 @@ export function useTeam() {
    */
   const removeMember = useCallback(
     async (teamId: string, memberId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('team_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('team_id', teamId)
         .eq('id', memberId);
 
       if (error) {
         console.error('Error removing member:', error);
         return { success: false, error: 'Failed to remove member.' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_TEAM_MEMBER_ERROR };
       }
 
       return { success: true };

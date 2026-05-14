@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
 
 // Feature data
 const features = [
@@ -15,8 +15,8 @@ const features = [
     ),
     title: 'Practice Planning',
     description: 'Build structured sessions with timed drills. Drag, drop, and customize every minute of practice.',
-    stat: '10K+',
-    statLabel: 'Sessions created',
+    stat: 'Timed',
+    statLabel: 'Practice blocks',
   },
   {
     icon: (
@@ -26,8 +26,8 @@ const features = [
     ),
     title: 'Team Management',
     description: 'Organize rosters, track player info, and manage multiple teams under one organization.',
-    stat: '500+',
-    statLabel: 'Teams active',
+    stat: 'Roles',
+    statLabel: 'Coach, parent, player',
   },
   {
     icon: (
@@ -37,8 +37,8 @@ const features = [
     ),
     title: 'Event Scheduling',
     description: 'Schedule games, practices, and tournaments. Collect RSVPs and track attendance effortlessly.',
-    stat: '98%',
-    statLabel: 'RSVP rate',
+    stat: 'RSVP',
+    statLabel: 'Attendance tracking',
   },
   {
     icon: (
@@ -48,30 +48,8 @@ const features = [
     ),
     title: 'Team Communication',
     description: 'Keep everyone in sync with team feed, direct messages, and real-time chat.',
-    stat: '50K+',
-    statLabel: 'Messages sent',
-  },
-];
-
-// Testimonials
-const testimonials = [
-  {
-    quote: "Session Planner transformed how I run practices. My players are more engaged and parents always know what's happening.",
-    author: 'Coach Mike Reynolds',
-    role: 'U14 Basketball',
-    avatar: 'MR',
-  },
-  {
-    quote: "Finally, an app that understands what coaches actually need. The practice builder alone saves me hours every week.",
-    author: 'Sarah Chen',
-    role: 'Club Director, Elite Soccer Academy',
-    avatar: 'SC',
-  },
-  {
-    quote: "Our organization manages 12 teams now. The multi-team support and parent communication features are game-changers.",
-    author: 'David Thompson',
-    role: 'Youth Sports Administrator',
-    avatar: 'DT',
+    stat: 'Chat',
+    statLabel: 'Team messaging',
   },
 ];
 
@@ -83,7 +61,7 @@ export default function HomePage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const supabase = createBrowserSupabaseClient();
+        const supabase = getBrowserSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           router.push('/dashboard');
@@ -118,7 +96,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <span className={`text-xl font-display font-bold transition-colors ${
+              <span className={`whitespace-nowrap text-lg font-display font-bold transition-colors sm:text-xl ${
                 scrolled ? 'text-navy' : 'text-white'
               }`}>
                 Session Planner
@@ -129,18 +107,15 @@ export default function HomePage() {
               <a href="#features" className={`text-sm font-medium transition-colors ${
                 scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
               }`}>Features</a>
-              <a href="#testimonials" className={`text-sm font-medium transition-colors ${
-                scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
-              }`}>Testimonials</a>
               <a href="#pricing" className={`text-sm font-medium transition-colors ${
                 scrolled ? 'text-text-secondary hover:text-navy' : 'text-white/80 hover:text-white'
               }`}>Pricing</a>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Link
                 href="/login"
-                className={`text-sm font-semibold transition-colors ${
+                className={`whitespace-nowrap text-xs font-semibold transition-colors sm:text-sm ${
                   scrolled ? 'text-navy hover:text-teal' : 'text-white hover:text-teal-light'
                 }`}
               >
@@ -148,7 +123,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/signup"
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`whitespace-nowrap px-3 py-2 rounded-lg text-xs font-semibold transition-all sm:px-5 sm:py-2.5 sm:text-sm ${
                   scrolled
                     ? 'bg-teal text-white hover:bg-teal-dark'
                     : 'bg-white text-navy hover:bg-teal hover:text-white'
@@ -162,49 +137,49 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative min-h-screen bg-navy overflow-hidden">
+      <section className="relative min-h-[calc(100svh-5rem)] bg-navy overflow-hidden">
         {/* Background elements */}
         <div className="absolute inset-0 bg-grid-pattern opacity-30" />
         <div className="absolute top-1/4 -right-64 w-[800px] h-[800px] bg-teal/20 rounded-full blur-[150px]" />
         <div className="absolute bottom-0 -left-32 w-[600px] h-[600px] bg-navy-light/50 rounded-full blur-[120px]" />
 
         {/* Diagonal accent */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-white clip-diagonal-reverse" />
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-white clip-diagonal-reverse" />
 
-        <div className="relative max-w-7xl mx-auto px-6 pt-32 pb-48">
+        <div className="relative max-w-7xl mx-auto px-6 pt-24 pb-16 sm:pt-28 sm:pb-24 lg:pt-32">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             {/* Left content */}
             <div className="animate-slide-in-left" style={{ animationDelay: '0.2s', animationFillMode: 'backwards' }}>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur rounded-full mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur rounded-full mb-6 sm:mb-8">
                 <span className="w-2 h-2 bg-teal rounded-full animate-pulse" />
-                <span className="text-sm text-white/80">iOS App Coming Soon</span>
+                <span className="text-sm text-white/80">Mobile web beta</span>
               </div>
 
-              <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] mb-6">
+              <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] mb-5 sm:mb-6">
                 Run Better
                 <span className="block text-teal">Practices.</span>
                 <span className="block text-white/60">Build Better</span>
                 <span className="block">Teams.</span>
               </h1>
 
-              <p className="text-xl text-white/70 max-w-lg mb-10 leading-relaxed">
+              <p className="text-lg md:text-xl text-white/70 max-w-lg mb-8 sm:mb-10 leading-relaxed">
                 The all-in-one platform for youth sports coaches. Plan practices, manage rosters,
                 and keep everyone connected—from the field to their phones.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 mb-12">
+              <div className="flex flex-col sm:flex-row gap-4 mb-8 sm:mb-12">
                 <Link
                   href="/signup"
-                  className="group inline-flex items-center justify-center gap-3 px-8 py-4 bg-teal text-white rounded-xl text-lg font-semibold hover:bg-teal-dark transition-all animate-pulse-glow"
+                  className="group inline-flex items-center justify-center gap-3 px-6 py-3 bg-teal text-white rounded-xl text-base font-semibold hover:bg-teal-dark transition-all animate-pulse-glow sm:px-8 sm:py-4 sm:text-lg"
                 >
-                  Start Free Trial
+                  Start Free
                   <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
                 </Link>
                 <a
                   href="#features"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 border-2 border-white/30 text-white rounded-xl text-lg font-semibold hover:bg-white/10 transition-all"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-white/30 text-white rounded-xl text-base font-semibold hover:bg-white/10 transition-all sm:px-8 sm:py-4 sm:text-lg"
                 >
                   See How It Works
                 </a>
@@ -285,7 +260,7 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 bg-white relative">
+      <section id="features" className="pb-24 pt-16 bg-white relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-sm font-semibold text-teal uppercase tracking-wider mb-4">Features</p>
@@ -338,23 +313,23 @@ export default function HomePage() {
                     Access your team anywhere, anytime
                   </h3>
                   <p className="text-white/70 text-lg mb-8">
-                    Use Session Planner on the web, and soon on iOS. Your data syncs instantly
-                    across all devices so you&apos;re always prepared—at home or on the sidelines.
+                    Use Session Planner from desktop, tablet, or phone. Your data syncs instantly
+                    across devices so you&apos;re always prepared—at home or on the sidelines.
                   </p>
                   <div className="flex flex-wrap gap-4">
                     <div className="flex items-center gap-3 px-4 py-3 bg-white/10 rounded-xl">
                       <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
                       </svg>
-                      <span className="text-white font-medium">Web App</span>
+                      <span className="text-white font-medium">Desktop web</span>
                       <span className="text-xs px-2 py-0.5 bg-teal rounded text-white">Live</span>
                     </div>
                     <div className="flex items-center gap-3 px-4 py-3 bg-white/10 rounded-xl">
                       <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
                       </svg>
-                      <span className="text-white font-medium">iOS App</span>
-                      <span className="text-xs px-2 py-0.5 bg-white/20 rounded text-white">Coming Soon</span>
+                      <span className="text-white font-medium">Mobile web</span>
+                      <span className="text-xs px-2 py-0.5 bg-white/20 rounded text-white">Beta</span>
                     </div>
                   </div>
                 </div>
@@ -384,53 +359,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-24 bg-whisper relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-sm font-semibold text-teal uppercase tracking-wider mb-4">Testimonials</p>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-navy mb-6">
-              Loved by coaches<br />
-              <span className="text-text-secondary">across the country</span>
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-2xl p-8 shadow-sm border border-border hover:shadow-lg transition-shadow"
-              >
-                {/* Stars */}
-                <div className="flex gap-1 mb-6">
-                  {[...Array(5)].map((_, j) => (
-                    <svg key={j} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                  ))}
-                </div>
-
-                <p className="text-text-secondary mb-8 leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</p>
-
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-navy flex items-center justify-center">
-                    <span className="text-white font-semibold">{testimonial.avatar}</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-navy">{testimonial.author}</p>
-                    <p className="text-sm text-text-muted">{testimonial.role}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Pricing / CTA Section */}
-      <section id="pricing" className="py-24 bg-white relative">
+      <section id="pricing" className="py-24 bg-whisper relative">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-teal-glow rounded-full mb-8">
             <span className="text-sm font-semibold text-teal">Free Forever</span>
@@ -441,8 +371,8 @@ export default function HomePage() {
           </h2>
 
           <p className="text-xl text-text-secondary max-w-2xl mx-auto mb-12">
-            Join thousands of coaches who&apos;ve upgraded their game.
-            Create your free account in seconds—no credit card required.
+            Create a beta account in seconds and start planning your next practice.
+            No credit card required.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -465,7 +395,7 @@ export default function HomePage() {
 
           {/* Feature checklist */}
           <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-text-secondary">
-            {['Unlimited sessions', 'Up to 3 teams', 'Team chat', 'RSVP tracking', 'Mobile app access'].map((feature, i) => (
+            {['Unlimited sessions', 'Up to 3 teams', 'Team chat', 'RSVP tracking', 'Responsive web app'].map((feature, i) => (
               <div key={i} className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-teal" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -480,7 +410,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="bg-navy-dark py-16">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-12 mb-12">
+          <div className="grid gap-12 mb-12 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
@@ -500,24 +430,27 @@ export default function HomePage() {
               <ul className="space-y-3 text-white/60 text-sm">
                 <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
                 <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">iOS App</a></li>
+                <li><a href="/signup" className="hover:text-white transition-colors">Start free</a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-white mb-4">Company</h4>
+              <h4 className="font-semibold text-white mb-4">Beta Access</h4>
               <ul className="space-y-3 text-white/60 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
+                <li><a href="/login" className="hover:text-white transition-colors">Sign in</a></li>
+                <li><a href="/join" className="hover:text-white transition-colors">Join with invite</a></li>
+                <li><span className="text-white/60">Mobile-friendly web app</span></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-white mb-4">Legal</h4>
-              <ul className="space-y-3 text-white/60 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
+              <h4 className="font-semibold text-white mb-4">Support</h4>
+              <p className="text-white/60 text-sm leading-relaxed">
+                Beta access and support run through your coach or organization admin while public support channels are finalized.
+              </p>
+              <ul className="mt-4 space-y-3 text-white/60 text-sm">
+                <li><a href="/privacy" className="hover:text-white transition-colors">Privacy notice</a></li>
+                <li><a href="/terms" className="hover:text-white transition-colors">Terms of use</a></li>
               </ul>
             </div>
           </div>
@@ -526,17 +459,9 @@ export default function HomePage() {
             <p className="text-white/40 text-sm">
               © {new Date().getFullYear()} Session Planner. All rights reserved.
             </p>
-            <div className="flex items-center gap-6">
-              <a href="#" className="text-white/40 hover:text-white transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" />
-                </svg>
-              </a>
-              <a href="#" className="text-white/40 hover:text-white transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-              </a>
+            <div className="flex items-center gap-5 text-sm text-white/40">
+              <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+              <a href="/terms" className="hover:text-white transition-colors">Terms</a>
             </div>
           </div>
         </div>

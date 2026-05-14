@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAISettings } from '@/hooks/use-ai-settings';
+import { useConfirmDialog } from '@/components/ui';
 
 interface AISettingsProps {
   onClose?: () => void;
@@ -18,9 +19,15 @@ export function AISettings({ onClose }: AISettingsProps) {
   );
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const isValidating = validationStatus === 'validating';
+  const aiActionBusy = isSaving || isValidating;
 
   const handleValidateAndSave = async () => {
-    if (!apiKeyInput.trim()) {
+    if (aiActionBusy) return;
+
+    const nextApiKey = apiKeyInput.trim();
+    if (!nextApiKey) {
       setError('Please enter an API key');
       return;
     }
@@ -29,7 +36,7 @@ export function AISettings({ onClose }: AISettingsProps) {
     setSuccessMessage(null);
     setValidationStatus('validating');
 
-    const validation = await validateApiKey(apiKeyInput);
+    const validation = await validateApiKey(nextApiKey);
 
     if (!validation.valid) {
       setValidationStatus('invalid');
@@ -40,7 +47,7 @@ export function AISettings({ onClose }: AISettingsProps) {
     setValidationStatus('valid');
 
     const result = await saveSettings({
-      openaiApiKey: apiKeyInput,
+      openaiApiKey: nextApiKey,
       aiEnabled: true,
     });
 
@@ -53,7 +60,16 @@ export function AISettings({ onClose }: AISettingsProps) {
   };
 
   const handleClearApiKey = async () => {
-    if (!confirm('Are you sure you want to remove your API key?')) return;
+    if (aiActionBusy) return;
+
+    const confirmed = await confirmAction({
+      title: 'Remove API key?',
+      description: 'AI drill discovery will be disabled until another API key is saved.',
+      confirmLabel: 'Remove key',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
 
     setError(null);
     setSuccessMessage(null);
@@ -69,6 +85,8 @@ export function AISettings({ onClose }: AISettingsProps) {
   };
 
   const handleToggleAI = async () => {
+    if (aiActionBusy) return;
+
     if (!hasApiKey) {
       setError('Please add an API key first');
       return;
@@ -89,8 +107,8 @@ export function AISettings({ onClose }: AISettingsProps) {
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div role="status" aria-label="Loading AI settings" className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-hidden="true"></div>
         </div>
       </div>
     );
@@ -108,8 +126,11 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
           {onClose && (
             <button
+              type="button"
+              aria-label="Close AI settings"
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+              disabled={aiActionBusy}
+              className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -127,7 +148,7 @@ export function AISettings({ onClose }: AISettingsProps) {
       <div className="p-6 space-y-6">
         {/* Status Messages */}
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div role="alert" className="p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-700">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -143,7 +164,7 @@ export function AISettings({ onClose }: AISettingsProps) {
         )}
 
         {successMessage && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div role="status" className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-2 text-green-700">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -173,8 +194,13 @@ export function AISettings({ onClose }: AISettingsProps) {
               </div>
             </div>
             <button
+              type="button"
+              role="switch"
+              aria-checked={settings.aiEnabled}
+              aria-busy={aiActionBusy}
+              aria-label={settings.aiEnabled ? 'Disable AI features' : 'Enable AI features'}
               onClick={handleToggleAI}
-              disabled={isSaving}
+              disabled={aiActionBusy}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 settings.aiEnabled ? 'bg-primary' : 'bg-gray-300'
               }`}
@@ -203,7 +229,10 @@ export function AISettings({ onClose }: AISettingsProps) {
                     : maskApiKey(settings.openaiApiKey || '')}
                 </div>
                 <button
+                  type="button"
+                  aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
                   onClick={() => setShowApiKey(!showApiKey)}
+                  disabled={aiActionBusy}
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
                   title={showApiKey ? 'Hide API key' : 'Show API key'}
                 >
@@ -234,8 +263,11 @@ export function AISettings({ onClose }: AISettingsProps) {
                   )}
                 </button>
                 <button
+                  type="button"
+                  aria-label="Remove API key"
+                  aria-busy={aiActionBusy}
                   onClick={handleClearApiKey}
-                  disabled={isSaving}
+                  disabled={aiActionBusy}
                   className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg"
                   title="Remove API key"
                 >
@@ -253,6 +285,7 @@ export function AISettings({ onClose }: AISettingsProps) {
               <div className="space-y-3">
                 <div className="relative">
                   <input
+                    aria-label="OpenAI API key"
                     type={showApiKey ? 'text' : 'password'}
                     value={apiKeyInput}
                     onChange={(e) => {
@@ -261,6 +294,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                       setError(null);
                     }}
                     placeholder="sk-..."
+                    disabled={aiActionBusy}
                     className={`w-full p-3 pr-10 border rounded-lg font-mono text-sm focus:outline-none focus:ring-2 ${
                       validationStatus === 'invalid'
                         ? 'border-red-300 focus:ring-red-200'
@@ -270,8 +304,10 @@ export function AISettings({ onClose }: AISettingsProps) {
                     }`}
                   />
                   <button
+                    aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    disabled={aiActionBusy}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
                   >
                     {showApiKey ? (
@@ -303,18 +339,20 @@ export function AISettings({ onClose }: AISettingsProps) {
                 </div>
 
                 <button
+                  type="button"
+                  aria-busy={aiActionBusy}
                   onClick={handleValidateAndSave}
-                  disabled={!apiKeyInput.trim() || isSaving || validationStatus === 'validating'}
+                  disabled={!apiKeyInput.trim() || aiActionBusy}
                   className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {validationStatus === 'validating' ? (
+                  {isValidating ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" aria-hidden="true"></div>
                       Validating...
                     </>
                   ) : isSaving ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" aria-hidden="true"></div>
                       Saving...
                     </>
                   ) : (
@@ -326,7 +364,8 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
 
           <p className="text-sm text-gray-500">
-            Your API key is stored securely and only used to make requests to OpenAI on your behalf.
+            Your API key stays in this browser tab session. It is sent through Session Planner&apos;s
+            AI API and OpenAI only when you validate the key or use AI features.
             You can get an API key from{' '}
             <a
               href="https://platform.openai.com/api-keys"
@@ -367,6 +406,7 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

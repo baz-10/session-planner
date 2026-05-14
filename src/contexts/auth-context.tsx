@@ -10,14 +10,37 @@ import {
 } from 'react';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { Profile, TeamMember, Team, Player, ParentPlayerLink, Organization, OrganizationMember, OrgRole } from '@/types/database';
 
 const AUTH_INIT_TIMEOUT_MS = 30000;
+const TEAM_PUBLIC_SELECT =
+  'id, organization_id, name, sport, logo_url, settings, created_by, created_at, updated_at';
+const ORGANIZATION_PUBLIC_SELECT =
+  'id, name, logo_url, settings, created_by, created_at, updated_at';
+const MANAGER_TEAM_ROLES = new Set<TeamMember['role']>(['admin', 'coach']);
 
 function logAuth(...args: unknown[]) {
   if (process.env.NODE_ENV === 'development') {
     console.log(...args);
   }
+}
+
+function hideTeamInviteCode(team: Partial<Team>): Team {
+  return {
+    ...(team as Team),
+    team_code: null,
+  };
+}
+
+function withOrganizationInviteCode(
+  organization: Partial<Organization>,
+  inviteCode: string | null
+): Organization {
+  return {
+    ...(organization as Organization),
+    organization_code: inviteCode,
+  };
 }
 
 interface AuthState {
@@ -52,7 +75,7 @@ interface AuthContextValue extends AuthState {
   signInWithGoogle: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
   signInWithApple: (redirectTo?: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+  resetPassword: (email: string, redirectTo?: string) => Promise<{ error: AuthError | null }>;
   updatePassword: (password: string) => Promise<{ error: AuthError | null }>;
 
   // Profile actions
@@ -129,15 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     logAuth('[Auth] refreshTeamMemberships: Fetching for user', state.user.id);
 
-    // Debug: Check what auth.uid() returns from Supabase's perspective
-    const { data: debugAuth, error: debugError } = await supabase.rpc('debug_auth');
-    logAuth('[Auth] debug_auth result:', debugAuth, debugError);
-
     const { data, error } = await supabase
       .from('team_members')
       .select(`
         *,
-        team:teams(*)
+        team:teams(${TEAM_PUBLIC_SELECT})
       `)
       .eq('user_id', state.user.id);
 
@@ -148,28 +167,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const memberships = (data || []).map((item: TeamMember & { team: Team }) => ({
-      ...item,
-      team: item.team as Team,
-    })) as TeamMembership[];
+    const activeMembershipRows = (data || []).filter(
+      (item: TeamMember & { team: Partial<Team> }) => item.status !== 'inactive'
+    );
+
+    const memberships = await Promise.all(
+      activeMembershipRows.map(async (item: TeamMember & { team: Partial<Team> }) => {
+        const team = hideTeamInviteCode(item.team);
+
+        if (MANAGER_TEAM_ROLES.has(item.role)) {
+          const { data: inviteCode, error: inviteError } = await supabase.rpc('get_team_invite_code', {
+            team_uuid: team.id,
+          });
+
+          if (inviteError) {
+            console.error('[Auth] Error fetching team invite code:', inviteError);
+          } else {
+            team.team_code = inviteCode;
+          }
+        }
+
+        return {
+          ...item,
+          team,
+        } as TeamMembership;
+      })
+    );
 
     logAuth('[Auth] Setting teamMemberships:', memberships.length, 'teams');
     setTeamMemberships(memberships);
 
-    const hasCurrentTeamMembership = currentTeam
-      ? memberships.some((membership) => membership.team.id === currentTeam.id)
-      : false;
-
     const preferredMembership =
-      memberships.find((membership) => membership.role === 'admin' || membership.role === 'coach') ??
+      memberships.find((membership) => MANAGER_TEAM_ROLES.has(membership.role)) ??
       memberships[0];
 
     // Prefer a coach/admin team by default, and recover if currentTeam isn't one of the user's memberships.
-    if ((!currentTeam || !hasCurrentTeamMembership) && preferredMembership?.team) {
-      logAuth('[Auth] Setting currentTeam to:', preferredMembership.team.name);
-      setCurrentTeam(preferredMembership.team);
-    }
-  }, [supabase, state.user, currentTeam]);
+    setCurrentTeam((previousTeam) => {
+      const matchingMembership = previousTeam
+        ? memberships.find((membership) => membership.team.id === previousTeam.id)
+        : null;
+      const nextTeam = matchingMembership?.team ?? preferredMembership?.team ?? null;
+      if (nextTeam) {
+        logAuth('[Auth] Setting currentTeam to:', nextTeam.name);
+      }
+      return nextTeam;
+    });
+  }, [supabase, state.user]);
 
   // Fetch linked players (for parents) and set their team context
   const refreshLinkedPlayers = useCallback(async () => {
@@ -187,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         *,
         player:players(
           *,
-          team:teams(*)
+          team:teams(${TEAM_PUBLIC_SELECT})
         )
       `)
       .eq('parent_user_id', state.user.id);
@@ -220,7 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const firstPlayerWithTeam = data.find((item: { player: Player & { team?: Team } }) => item.player?.team);
       if (firstPlayerWithTeam?.player?.team) {
         logAuth('[Auth] Setting parent team from linked player:', firstPlayerWithTeam.player.team.name);
-        setCurrentTeam(firstPlayerWithTeam.player.team as Team);
+        setCurrentTeam(hideTeamInviteCode(firstPlayerWithTeam.player.team));
       }
     }
   }, [supabase, state.user, currentTeam, teamMemberships.length]);
@@ -237,7 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('organization_members')
       .select(`
         *,
-        organization:organizations(*)
+        organization:organizations(${ORGANIZATION_PUBLIC_SELECT})
       `)
       .eq('user_id', state.user.id);
 
@@ -246,10 +289,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const memberships = (data || []).map((item: OrganizationMember & { organization: Organization }) => ({
-      ...item,
-      organization: item.organization as Organization,
-    })) as OrganizationMembership[];
+    const memberships = await Promise.all(
+      (data || []).map(async (item: OrganizationMember & { organization: Partial<Organization> }) => {
+        const organization = withOrganizationInviteCode(item.organization, null);
+
+        if (item.role === 'admin') {
+          const { data: inviteCode, error: inviteError } = await supabase.rpc(
+            'get_organization_invite_code',
+            {
+              org_uuid: organization.id,
+            }
+          );
+
+          if (inviteError) {
+            console.error('[Auth] Error fetching organization invite code:', inviteError);
+          } else {
+            organization.organization_code = inviteCode;
+          }
+        }
+
+        return {
+          ...item,
+          organization,
+        } as OrganizationMembership;
+      })
+    );
 
     setOrganizationMemberships(memberships);
     setCurrentOrganization((previousOrganization) => {
@@ -406,11 +470,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Auth actions
   const buildCallbackUrl = (redirectTo?: string) => {
-    const callbackUrl = new URL('/callback', window.location.origin);
-    if (redirectTo && redirectTo.startsWith('/')) {
-      callbackUrl.searchParams.set('next', redirectTo);
+    const callbackUrl = new URL('/callback/', window.location.origin);
+    const nextPath = sanitizeLocalRedirect(redirectTo, '');
+    if (nextPath) {
+      callbackUrl.searchParams.set('next', nextPath);
     }
     return callbackUrl.toString();
+  };
+
+  const buildResetPasswordUrl = (redirectTo?: string) => {
+    const resetUrl = new URL('/reset-password/', window.location.origin);
+    const nextPath = sanitizeLocalRedirect(redirectTo, '');
+    if (nextPath) {
+      resetUrl.searchParams.set('redirect', nextPath);
+    }
+    return resetUrl.toString();
   };
 
   const signUp = async (
@@ -459,12 +533,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw error;
+    }
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string, redirectTo?: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: buildResetPasswordUrl(redirectTo),
     });
     return { error };
   };

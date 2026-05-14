@@ -1,26 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
 import { usePlayers } from '@/hooks/use-players';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole, RelationshipType } from '@/types/database';
 
 type OnboardingStep = 'profile' | 'team-choice' | 'create-team' | 'join-team' | 'add-players' | 'complete';
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
 
 interface PlayerToAdd {
   firstName: string;
   lastName: string;
 }
 
-export function OnboardingFlow() {
+interface OnboardingFlowProps {
+  initialParentTeamId?: string | null;
+  onParentSetupComplete?: () => void;
+}
+
+export function OnboardingFlow({
+  initialParentTeamId = null,
+  onParentSetupComplete,
+}: OnboardingFlowProps) {
   const router = useRouter();
-  const { user, profile, updateProfile, refreshTeamMemberships } = useAuth();
+  const { user, profile, updateProfile, refreshTeamMemberships, teamMemberships, currentTeam } = useAuth();
   const { createTeam, joinTeamByCode } = useTeam();
   const { createPlayerWithLink } = usePlayers();
 
-  const [step, setStep] = useState<OnboardingStep>('profile');
+  const [step, setStep] = useState<OnboardingStep>(
+    initialParentTeamId && profile?.onboarding_completed ? 'add-players' : 'profile'
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,92 +43,166 @@ export function OnboardingFlow() {
   // Team creation state
   const [teamName, setTeamName] = useState('');
   const [sport, setSport] = useState('basketball');
-
-  // Team join state
-  const [teamCode, setTeamCode] = useState('');
-  const [joinRole, setJoinRole] = useState<TeamRole>('player');
-
-  // Parent - add players state
-  const [playersToAdd, setPlayersToAdd] = useState<PlayerToAdd[]>([{ firstName: '', lastName: '' }]);
-  const [relationship, setRelationship] = useState<RelationshipType>('parent');
-  const [joinedTeamId, setJoinedTeamId] = useState<string | null>(null);
-
   const userType = user?.user_metadata?.user_type as string | undefined;
   const isParent = userType === 'parent';
   const isCoach = userType === 'coach';
 
+  // Team join state
+  const [teamCode, setTeamCode] = useState('');
+  const [joinRole, setJoinRole] = useState<InviteJoinRole>(isParent ? 'parent' : 'player');
+
+  // Parent - add players state
+  const [playersToAdd, setPlayersToAdd] = useState<PlayerToAdd[]>([{ firstName: '', lastName: '' }]);
+  const [relationship, setRelationship] = useState<RelationshipType>('parent');
+  const [joinedTeamId, setJoinedTeamId] = useState<string | null>(initialParentTeamId);
+
+  const getJoinedParentTeamId = () => {
+    if (initialParentTeamId && teamMemberships.some((membership) => (
+      membership.team.id === initialParentTeamId && membership.role === 'parent'
+    ))) {
+      return initialParentTeamId;
+    }
+
+    if (currentTeam?.id && teamMemberships.some((membership) => (
+      membership.team.id === currentTeam.id && membership.role === 'parent'
+    ))) {
+      return currentTeam.id;
+    }
+
+    return teamMemberships.find((membership) => membership.role === 'parent')?.team.id || null;
+  };
+
+  const hasParentTeamMembership = Boolean(getJoinedParentTeamId());
+  const hasTeamMembership = teamMemberships.length > 0;
+
+  useEffect(() => {
+    if (!initialParentTeamId) return;
+
+    setJoinedTeamId(initialParentTeamId);
+    if (profile?.onboarding_completed) {
+      setStep('add-players');
+    }
+  }, [initialParentTeamId, profile?.onboarding_completed]);
+
+  useEffect(() => {
+    if (isParent || hasParentTeamMembership) {
+      setJoinRole('parent');
+    }
+  }, [isParent, hasParentTeamMembership]);
+
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setIsSubmitting(true);
 
-    const { error } = await updateProfile({
-      full_name: fullName,
-      phone: phone || null,
-    });
+    try {
+      const { error } = await updateProfile({
+        full_name: fullName,
+        phone: phone || null,
+      });
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      const parentTeamId = getJoinedParentTeamId() || initialParentTeamId;
+
+      if (parentTeamId) {
+        setJoinedTeamId(parentTeamId);
+        setStep('add-players');
+        return;
+      }
+
+      if (hasTeamMembership) {
+        setStep('complete');
+        return;
+      }
+
+      setStep('team-choice');
+    } catch (error) {
+      console.error('Unexpected error saving onboarding profile:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save profile');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    setIsSubmitting(false);
-    setStep('team-choice');
   };
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setIsSubmitting(true);
 
-    const result = await createTeam({
-      name: teamName,
-      sport,
-    });
+    try {
+      const result = await createTeam({
+        name: teamName,
+        sport,
+      });
 
-    if (!result.success) {
-      setError(result.error || 'Failed to create team');
+      if (!result.success) {
+        setError(result.error || 'Failed to create team');
+        return;
+      }
+
+      setStep('complete');
+    } catch (error) {
+      console.error('Unexpected error creating onboarding team:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create team');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    setIsSubmitting(false);
-    setStep('complete');
   };
 
   const handleJoinTeam = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
-    setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, joinRole);
-
-    if (!result.success) {
-      setError(result.error || 'Failed to join team');
-      setIsSubmitting(false);
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
       return;
     }
 
-    setJoinedTeamId(result.team?.id || null);
-    setIsSubmitting(false);
+    setIsSubmitting(true);
 
-    // If parent, go to add players step
-    if (isParent && result.team) {
-      setStep('add-players');
-    } else {
-      setStep('complete');
+    try {
+      const result = await joinTeamByCode(normalizedCode, joinRole);
+
+      if (!result.success) {
+        setError(result.error || 'Failed to join team');
+        return;
+      }
+
+      setJoinedTeamId(result.team?.id || null);
+
+      // If parent, go to add players step
+      if (joinRole === 'parent' && result.team) {
+        setStep('add-players');
+      } else {
+        setStep('complete');
+      }
+    } catch (error) {
+      console.error('Unexpected error joining onboarding team:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join team');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleAddPlayers = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
-    setIsSubmitting(true);
 
     if (!joinedTeamId) {
       setError('No team selected');
-      setIsSubmitting(false);
       return;
     }
 
@@ -127,30 +213,36 @@ export function OnboardingFlow() {
 
     if (validPlayers.length === 0) {
       setError('Please add at least one player');
-      setIsSubmitting(false);
       return;
     }
 
-    // Create each player
-    for (const player of validPlayers) {
-      const result = await createPlayerWithLink(
-        {
-          team_id: joinedTeamId,
-          first_name: player.firstName.trim(),
-          last_name: player.lastName.trim(),
-        },
-        relationship
-      );
+    setIsSubmitting(true);
 
-      if (!result.success) {
-        setError(result.error || 'Failed to add player');
-        setIsSubmitting(false);
-        return;
+    try {
+      // Create each player
+      for (const player of validPlayers) {
+        const result = await createPlayerWithLink(
+          {
+            team_id: joinedTeamId,
+            first_name: player.firstName.trim(),
+            last_name: player.lastName.trim(),
+          },
+          relationship
+        );
+
+        if (!result.success) {
+          setError(result.error || 'Failed to add player');
+          return;
+        }
       }
-    }
 
-    setIsSubmitting(false);
-    setStep('complete');
+      setStep('complete');
+    } catch (error) {
+      console.error('Unexpected error adding onboarding players:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add player');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const addPlayerField = () => {
@@ -170,9 +262,31 @@ export function OnboardingFlow() {
   };
 
   const handleComplete = async () => {
-    await updateProfile({ onboarding_completed: true });
-    await refreshTeamMemberships();
-    router.push('/dashboard');
+    if (isSubmitting) return;
+
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await updateProfile({ onboarding_completed: true });
+      if (error) {
+        setError(error.message || 'Failed to finish onboarding. Please try again.');
+        return;
+      }
+
+      await refreshTeamMemberships();
+      onParentSetupComplete?.();
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Failed to finish onboarding:', error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Your profile was saved, but teams could not refresh. Please try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderStep = () => {
@@ -181,7 +295,7 @@ export function OnboardingFlow() {
         return (
           <div>
             <h2 className="text-xl font-semibold mb-4">Complete Your Profile</h2>
-            <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <form onSubmit={handleProfileSubmit} className="space-y-4" aria-busy={isSubmitting}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
@@ -191,6 +305,7 @@ export function OnboardingFlow() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
@@ -202,6 +317,7 @@ export function OnboardingFlow() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="+1 (555) 123-4567"
                 />
@@ -209,6 +325,7 @@ export function OnboardingFlow() {
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : 'Continue'}
@@ -224,8 +341,10 @@ export function OnboardingFlow() {
             <div className="space-y-3">
               {isCoach && (
                 <button
+                  type="button"
                   onClick={() => setStep('create-team')}
-                  className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
+                  disabled={isSubmitting}
+                  className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <div className="font-semibold">Create a New Team</div>
                   <div className="text-sm text-gray-600">
@@ -234,8 +353,10 @@ export function OnboardingFlow() {
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => setStep('join-team')}
-                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left"
+                disabled={isSubmitting}
+                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="font-semibold">Join an Existing Team</div>
                 <div className="text-sm text-gray-600">
@@ -243,10 +364,13 @@ export function OnboardingFlow() {
                 </div>
               </button>
               <button
+                type="button"
                 onClick={handleComplete}
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full p-4 text-gray-500 hover:text-gray-700 text-sm"
               >
-                Skip for now
+                {isSubmitting ? 'Finishing...' : 'Skip for now'}
               </button>
             </div>
           </div>
@@ -256,8 +380,10 @@ export function OnboardingFlow() {
         return (
           <div>
             <button
+              type="button"
               onClick={() => setStep('team-choice')}
-              className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
+              disabled={isSubmitting}
+              className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -265,7 +391,7 @@ export function OnboardingFlow() {
               Back
             </button>
             <h2 className="text-xl font-semibold mb-4">Create Your Team</h2>
-            <form onSubmit={handleCreateTeam} className="space-y-4">
+            <form onSubmit={handleCreateTeam} className="space-y-4" aria-busy={isSubmitting}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Team Name
@@ -275,6 +401,7 @@ export function OnboardingFlow() {
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   required
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="Tigers U12"
                 />
@@ -286,6 +413,7 @@ export function OnboardingFlow() {
                 <select
                   value={sport}
                   onChange={(e) => setSport(e.target.value)}
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="basketball">Basketball</option>
@@ -302,6 +430,7 @@ export function OnboardingFlow() {
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Creating...' : 'Create Team'}
@@ -314,8 +443,10 @@ export function OnboardingFlow() {
         return (
           <div>
             <button
+              type="button"
               onClick={() => setStep('team-choice')}
-              className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
+              disabled={isSubmitting}
+              className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -323,7 +454,7 @@ export function OnboardingFlow() {
               Back
             </button>
             <h2 className="text-xl font-semibold mb-4">Join a Team</h2>
-            <form onSubmit={handleJoinTeam} className="space-y-4">
+            <form onSubmit={handleJoinTeam} className="space-y-4" aria-busy={isSubmitting}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Team Code
@@ -331,9 +462,10 @@ export function OnboardingFlow() {
                 <input
                   type="text"
                   value={teamCode}
-                  onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
                   required
-                  maxLength={6}
+                  autoCapitalize="characters"
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-2xl tracking-widest font-mono"
                   placeholder="ABC123"
                 />
@@ -348,17 +480,22 @@ export function OnboardingFlow() {
                   </label>
                   <select
                     value={joinRole}
-                    onChange={(e) => setJoinRole(e.target.value as TeamRole)}
+                    onChange={(e) => setJoinRole(e.target.value as InviteJoinRole)}
+                    disabled={isSubmitting}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="player">Player</option>
-                    <option value="coach">Coach</option>
+                    <option value="parent">Parent / Guardian</option>
                   </select>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Coaches should join as a player or parent first and ask a team admin to promote them.
+                  </p>
                 </div>
               )}
               <button
                 type="submit"
-                disabled={isSubmitting || teamCode.length !== 6}
+                disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Joining...' : 'Join Team'}
@@ -374,7 +511,7 @@ export function OnboardingFlow() {
             <p className="text-gray-600 mb-4">
               Add the players you&apos;ll be managing on this team.
             </p>
-            <form onSubmit={handleAddPlayers} className="space-y-4">
+            <form onSubmit={handleAddPlayers} className="space-y-4" aria-busy={isSubmitting}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Your relationship
@@ -382,6 +519,7 @@ export function OnboardingFlow() {
                 <select
                   value={relationship}
                   onChange={(e) => setRelationship(e.target.value as RelationshipType)}
+                  disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="parent">Parent</option>
@@ -401,6 +539,7 @@ export function OnboardingFlow() {
                       value={player.firstName}
                       onChange={(e) => updatePlayer(index, 'firstName', e.target.value)}
                       placeholder="First name"
+                      disabled={isSubmitting}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                     <input
@@ -408,13 +547,15 @@ export function OnboardingFlow() {
                       value={player.lastName}
                       onChange={(e) => updatePlayer(index, 'lastName', e.target.value)}
                       placeholder="Last name"
+                      disabled={isSubmitting}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                     {playersToAdd.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removePlayerField(index)}
-                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md"
+                        disabled={isSubmitting}
+                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -426,7 +567,8 @@ export function OnboardingFlow() {
                 <button
                   type="button"
                   onClick={addPlayerField}
-                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-primary hover:text-primary"
+                  disabled={isSubmitting}
+                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   + Add another player
                 </button>
@@ -435,6 +577,7 @@ export function OnboardingFlow() {
               <button
                 type="submit"
                 disabled={isSubmitting}
+                aria-busy={isSubmitting}
                 className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
               >
                 {isSubmitting ? 'Adding players...' : 'Continue'}
@@ -456,10 +599,13 @@ export function OnboardingFlow() {
               Your account is ready. Let&apos;s get started.
             </p>
             <button
+              type="button"
               onClick={handleComplete}
-              className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+              className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
             >
-              Go to Dashboard
+              {isSubmitting ? 'Finishing...' : 'Go to Dashboard'}
             </button>
           </div>
         );
@@ -470,7 +616,10 @@ export function OnboardingFlow() {
     <div className="w-full max-w-md mx-auto">
       <div className="bg-white rounded-lg shadow-md p-8">
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+          <div
+            role="alert"
+            className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm"
+          >
             {error}
           </div>
         )}

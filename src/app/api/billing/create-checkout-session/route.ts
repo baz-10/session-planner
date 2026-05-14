@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 
 const STRIPE_BASE_URL = 'https://api.stripe.com/v1';
 
@@ -16,7 +17,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as { invoiceId?: string; recipientInstallmentId?: string };
+    const parsedBody = await parseJsonObjectBody<{ invoiceId?: string; recipientInstallmentId?: string }>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.body;
     const invoiceId = body.invoiceId;
     const recipientInstallmentId = body.recipientInstallmentId;
 
@@ -123,16 +127,24 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle();
 
-    const origin =
-      request.headers.get('origin') ||
-      request.nextUrl.origin ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      'http://localhost:3000';
+    const checkoutBaseUrl = getCheckoutBaseUrl(request);
+    if (!checkoutBaseUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Billing is not configured. Set NEXT_PUBLIC_APP_URL to enable payments.',
+        },
+        { status: 500 }
+      );
+    }
 
     const params = new URLSearchParams();
     params.append('mode', 'payment');
-    params.append('success_url', `${origin}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
-    params.append('cancel_url', `${origin}/dashboard/billing?checkout=cancel`);
+    params.append(
+      'success_url',
+      `${checkoutBaseUrl}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+    );
+    params.append('cancel_url', `${checkoutBaseUrl}/dashboard/billing?checkout=cancel`);
     params.append('line_items[0][price_data][currency]', (invoice.currency || 'usd').toLowerCase());
     params.append('line_items[0][price_data][unit_amount]', String(amountCents));
     params.append('line_items[0][price_data][product_data][name]', invoice.title || 'Team Invoice');
@@ -202,5 +214,36 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+function getCheckoutBaseUrl(request: NextRequest): string | null {
+  const configuredAppUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
+  if (configuredAppUrl) {
+    return configuredAppUrl;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return normalizeBaseUrl(request.nextUrl.origin) || 'http://localhost:3000';
+  }
+
+  return null;
+}
+
+function normalizeBaseUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+
+    return parsed.origin;
+  } catch {
+    return null;
   }
 }

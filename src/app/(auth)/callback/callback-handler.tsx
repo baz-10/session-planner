@@ -3,13 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
-
-function sanitizeNextPath(nextValue: string | null): string {
-  if (!nextValue || !nextValue.startsWith('/')) {
-    return '/onboarding';
-  }
-  return nextValue;
-}
+import { consumePendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 export function CallbackHandler() {
   const router = useRouter();
@@ -19,7 +14,7 @@ export function CallbackHandler() {
   useEffect(() => {
     const handleCallback = async () => {
       const code = searchParams.get('code');
-      const next = sanitizeNextPath(searchParams.get('next'));
+      const next = sanitizeLocalRedirect(searchParams.get('next'), '/onboarding');
 
       if (code) {
         const supabase = getBrowserSupabaseClient();
@@ -31,15 +26,30 @@ export function CallbackHandler() {
           const { data: { user } } = await supabase.auth.getUser();
 
           if (user) {
+            const pendingSignupRole = consumePendingOAuthSignupRole();
+            if (pendingSignupRole && !user.user_metadata?.user_type) {
+              const { error: metadataError } = await supabase.auth.updateUser({
+                data: {
+                  ...user.user_metadata,
+                  user_type: pendingSignupRole.userType,
+                  default_role: pendingSignupRole.defaultRole,
+                },
+              });
+
+              if (metadataError) {
+                console.error('Failed to preserve social sign-up role:', metadataError);
+              }
+            }
+
             const { data: profile } = await supabase
               .from('profiles')
               .select('onboarding_completed')
               .eq('id', user.id)
               .single();
 
-            // If onboarding is complete, go to dashboard
+            // If onboarding is complete, honor safe invite/deep-link redirects.
             if (profile?.onboarding_completed) {
-              router.push('/dashboard');
+              router.push(next === '/onboarding' ? '/dashboard' : next);
               return;
             }
           }

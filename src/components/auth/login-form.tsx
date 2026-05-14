@@ -4,22 +4,17 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
+import { clearPendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 
 const PASSWORD_SIGN_IN_TIMEOUT_MS = 60000;
 const OAUTH_TIMEOUT_MS = 20000;
 const SLOW_REQUEST_HINT_MS = 8000;
 
-function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/')) {
-    return fallback;
-  }
-  return value;
-}
-
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/dashboard');
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '/dashboard');
   const infoMessage = searchParams.get('message') || '';
 
   const { signIn, signInWithGoogle, signInWithApple, isLoading } = useAuth();
@@ -32,6 +27,8 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setStatusHint('');
 
@@ -70,7 +67,9 @@ export function LoginForm() {
       }
 
       const elapsedMs = Date.now() - startedAt;
-      console.info(`[Login] Password sign-in succeeded in ${elapsedMs}ms`);
+      if (process.env.NODE_ENV === 'development') {
+        console.info(`[Login] Password sign-in succeeded in ${elapsedMs}ms`);
+      }
       router.push(redirectTo);
     } catch (err: unknown) {
       const elapsedMs = Date.now() - startedAt;
@@ -92,8 +91,13 @@ export function LoginForm() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (isSubmitting) return;
+
     setError('');
     setStatusHint('');
+    setIsSubmitting(true);
+    clearPendingOAuthSignupRole();
+
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
@@ -104,12 +108,19 @@ export function LoginForm() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleAppleSignIn = async () => {
+    if (isSubmitting) return;
+
     setError('');
     setStatusHint('');
+    setIsSubmitting(true);
+    clearPendingOAuthSignupRole();
+
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timed out. Please try again.')), OAUTH_TIMEOUT_MS)
@@ -120,6 +131,8 @@ export function LoginForm() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -138,6 +151,10 @@ export function LoginForm() {
     redirectTo === '/dashboard'
       ? '/signup'
       : `/signup?redirect=${encodeURIComponent(redirectTo)}`;
+  const forgotPasswordHref =
+    redirectTo === '/dashboard'
+      ? '/forgot-password'
+      : `/forgot-password?redirect=${encodeURIComponent(redirectTo)}`;
 
   return (
     <div className="min-h-screen flex">
@@ -164,19 +181,18 @@ export function LoginForm() {
               <span className="text-teal-light">Win.</span>
             </h1>
             <p className="text-lg text-white/70 max-w-md">
-              Join thousands of coaches building better practice sessions with time-tracked activities and real-time collaboration.
+              Plan better practice sessions with time-tracked activities, team communication, and real-time collaboration.
             </p>
           </div>
 
-          {/* Stats */}
-          <div className="flex gap-12 mt-12">
-            <div>
-              <div className="stat-number-lg text-teal-light">10K+</div>
-              <div className="text-sm text-white/60 mt-1">Active Coaches</div>
+          <div className="grid gap-3 mt-12 text-white/75">
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-teal-light" />
+              <span>Session builder with timed activity blocks</span>
             </div>
-            <div>
-              <div className="stat-number-lg text-teal-light">50K+</div>
-              <div className="text-sm text-white/60 mt-1">Sessions Planned</div>
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-teal-light" />
+              <span>Team invites, roles, chat, and event RSVPs</span>
             </div>
           </div>
         </div>
@@ -202,22 +218,31 @@ export function LoginForm() {
           <p className="text-text-secondary mb-8">Sign in to your account to continue</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+            <div
+              role="alert"
+              className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+            >
               {error}
             </div>
           )}
           {!error && infoMessage && (
-            <div className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in">
+            <div
+              role="status"
+              className="mb-6 p-4 bg-teal-glow border border-teal/30 rounded-lg text-teal-dark text-sm animate-fade-in"
+            >
               {infoMessage}
             </div>
           )}
           {!error && statusHint && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-fade-in">
+            <div
+              role="status"
+              className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-fade-in"
+            >
               {statusHint}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
             <div className="form-group">
               <label htmlFor="email" className="label">Email</label>
               <input
@@ -226,8 +251,10 @@ export function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
+                disabled={isSubmitting}
                 className="input"
-                placeholder="coach@team.com"
+                placeholder="you@example.com"
               />
             </div>
 
@@ -235,7 +262,7 @@ export function LoginForm() {
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="password" className="label !mb-0">Password</label>
                 <Link
-                  href="/forgot-password"
+                  href={forgotPasswordHref}
                   className="text-sm text-teal hover:text-teal-dark transition-colors"
                 >
                   Forgot password?
@@ -247,6 +274,8 @@ export function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
+                disabled={isSubmitting}
                 className="input"
                 placeholder="••••••••"
               />
@@ -255,6 +284,7 @@ export function LoginForm() {
             <button
               type="submit"
               disabled={isSubmitting}
+              aria-busy={isSubmitting}
               className="btn-primary w-full py-3"
             >
               {isSubmitting ? (
@@ -281,7 +311,8 @@ export function LoginForm() {
             <button
               type="button"
               onClick={handleGoogleSignIn}
-              className="btn-secondary"
+              disabled={isSubmitting}
+              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -294,7 +325,8 @@ export function LoginForm() {
             <button
               type="button"
               onClick={handleAppleSignIn}
-              className="btn-secondary"
+              disabled={isSubmitting}
+              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>

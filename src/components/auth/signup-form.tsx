@@ -3,47 +3,60 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { ClipboardList, UserRound, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { clearPendingOAuthSignupRole, storePendingOAuthSignupRole } from '@/lib/utils/oauth-signup-role';
+import { sanitizeLocalRedirect } from '@/lib/utils/redirect';
 import type { TeamRole } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 type UserType = 'coach' | 'player' | 'parent';
 
-const userTypeInfo: Record<UserType, { label: string; description: string; icon: string; role: TeamRole }> = {
+const userTypeInfo: Record<UserType, { label: string; description: string; Icon: LucideIcon; role: TeamRole }> = {
   coach: {
     label: "I'm a Coach",
     description: 'Create and manage teams, plan practices, track attendance',
-    icon: '🏀',
+    Icon: ClipboardList,
     role: 'coach',
   },
   player: {
     label: "I'm a Player",
     description: 'Join your team, view schedules, RSVP to events',
-    icon: '👟',
+    Icon: UserRound,
     role: 'player',
   },
   parent: {
     label: "I'm a Parent",
     description: 'Manage your children, RSVP on their behalf, stay informed',
-    icon: '👨‍👩‍👧‍👦',
+    Icon: Users,
     role: 'parent',
   },
 };
 
-function sanitizeRedirectTarget(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith('/')) {
-    return fallback;
+function getInviteUserType(redirectTo: string): UserType | null {
+  try {
+    const redirectUrl = new URL(redirectTo, 'https://session-planner.local');
+    if (redirectUrl.pathname !== '/join') return null;
+
+    const inviteRole = redirectUrl.searchParams.get('role');
+    if (inviteRole === 'parent') return 'parent';
+    if (inviteRole === 'player') return 'player';
+  } catch {
+    return null;
   }
-  return value;
+
+  return null;
 }
 
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = sanitizeRedirectTarget(searchParams.get('redirect'), '/onboarding');
+  const redirectTo = sanitizeLocalRedirect(searchParams.get('redirect'), '/onboarding');
+  const inviteUserType = getInviteUserType(redirectTo);
   const { signUp, signInWithGoogle, signInWithApple, isLoading } = useAuth();
 
-  const [step, setStep] = useState<'type' | 'details'>('type');
-  const [userType, setUserType] = useState<UserType | null>(null);
+  const [step, setStep] = useState<'type' | 'details'>(inviteUserType ? 'details' : 'type');
+  const [userType, setUserType] = useState<UserType | null>(inviteUserType);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,12 +65,16 @@ export function SignupForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleTypeSelect = (type: UserType) => {
+    if (isSubmitting) return;
+
     setUserType(type);
     setStep('details');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
 
     if (password !== confirmPassword) {
@@ -72,46 +89,66 @@ export function SignupForm() {
 
     setIsSubmitting(true);
 
-    const { error, session } = await signUp(email, password, {
-      full_name: fullName,
-      user_type: userType,
-      default_role: userType ? userTypeInfo[userType].role : 'player',
-    }, redirectTo);
+    try {
+      const { error, session } = await signUp(email, password, {
+        full_name: fullName,
+        user_type: userType,
+        default_role: userType ? userTypeInfo[userType].role : 'player',
+      }, redirectTo);
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (!session) {
+        const message = encodeURIComponent(
+          'Account created. Please check your email to confirm your account, then sign in.'
+        );
+        const nextLoginHref =
+          redirectTo === '/onboarding'
+            ? `/login?message=${message}`
+            : `/login?message=${message}&redirect=${encodeURIComponent(redirectTo)}`;
+        router.push(nextLoginHref);
+        return;
+      }
+
+      router.push(redirectTo);
+    } catch (error) {
+      console.error('Unexpected error creating account:', error);
+      setError(error instanceof Error ? error.message : 'Failed to create account');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    if (!session) {
-      const message = encodeURIComponent(
-        'Account created. Please check your email to confirm your account, then sign in.'
-      );
-      const nextLoginHref =
-        redirectTo === '/onboarding'
-          ? `/login?message=${message}`
-          : `/login?message=${message}&redirect=${encodeURIComponent(redirectTo)}`;
-      router.push(nextLoginHref);
-      return;
-    }
-
-    router.push(redirectTo);
   };
 
   const handleSocialSignUp = async (provider: 'google' | 'apple') => {
+    if (isSubmitting) return;
+
     if (!userType) {
       setError('Please select your role first');
       return;
     }
 
     setError('');
-    const { error } =
-      provider === 'google'
-        ? await signInWithGoogle(redirectTo)
-        : await signInWithApple(redirectTo);
-    if (error) {
-      setError(error.message);
+    setIsSubmitting(true);
+    storePendingOAuthSignupRole(userType);
+
+    try {
+      const { error } =
+        provider === 'google'
+          ? await signInWithGoogle(redirectTo)
+          : await signInWithApple(redirectTo);
+      if (error) {
+        clearPendingOAuthSignupRole();
+        setError(error.message);
+      }
+    } catch (error) {
+      clearPendingOAuthSignupRole();
+      console.error(`Unexpected error starting ${provider} sign-up:`, error);
+      setError(error instanceof Error ? error.message : 'Failed to start sign-up');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,6 +167,8 @@ export function SignupForm() {
     redirectTo === '/onboarding'
       ? '/login'
       : `/login?redirect=${encodeURIComponent(redirectTo)}`;
+  const selectedUserTypeInfo = userType ? userTypeInfo[userType] : null;
+  const SelectedUserTypeIcon = selectedUserTypeInfo?.Icon;
 
   return (
     <div className="min-h-screen flex">
@@ -156,7 +195,7 @@ export function SignupForm() {
               <span className="text-teal-light">practices.</span>
             </h1>
             <p className="text-lg text-white/70 max-w-md">
-              The complete platform for coaches to plan sessions, manage teams, and track progress.
+              A complete workspace for coaches, players, and parents to plan sessions, share updates, and track progress.
             </p>
           </div>
 
@@ -213,23 +252,31 @@ export function SignupForm() {
 
               <div className="space-y-3">
                 {(Object.entries(userTypeInfo) as [UserType, typeof userTypeInfo.coach][]).map(
-                  ([type, info]) => (
-                    <button
-                      key={type}
-                      onClick={() => handleTypeSelect(type)}
-                      className="w-full p-5 bg-white border-2 border-border rounded-xl hover:border-teal hover:bg-teal-glow transition-all text-left group"
-                    >
-                      <div className="flex items-start gap-4">
-                        <span className="text-3xl">{info.icon}</span>
-                        <div>
-                          <div className="font-semibold text-navy group-hover:text-teal-dark">
-                            {info.label}
+                  ([type, info]) => {
+                    const RoleIcon = info.Icon;
+
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => handleTypeSelect(type)}
+                        disabled={isSubmitting}
+                        className="w-full p-5 bg-white border-2 border-border rounded-xl hover:border-teal hover:bg-teal-glow transition-all text-left group disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <div className="flex items-start gap-4">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-glow text-teal-dark">
+                            <RoleIcon className="h-6 w-6" aria-hidden="true" />
+                          </span>
+                          <div>
+                            <div className="font-semibold text-navy group-hover:text-teal-dark">
+                              {info.label}
+                            </div>
+                            <div className="text-sm text-text-secondary mt-1">{info.description}</div>
                           </div>
-                          <div className="text-sm text-text-secondary mt-1">{info.description}</div>
                         </div>
-                      </div>
-                    </button>
-                  )
+                      </button>
+                    );
+                  }
                 )}
               </div>
 
@@ -242,29 +289,43 @@ export function SignupForm() {
             </>
           ) : (
             <>
-              <button
-                onClick={() => setStep('type')}
-                className="mb-6 text-sm text-text-secondary hover:text-navy flex items-center transition-colors"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Back
-              </button>
+              {!inviteUserType && (
+                <button
+                  type="button"
+                  onClick={() => setStep('type')}
+                  disabled={isSubmitting}
+                  className="mb-6 text-sm text-text-secondary hover:text-navy flex items-center transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
+                </button>
+              )}
 
               <h2 className="text-3xl font-bold text-navy mb-2">Create account</h2>
               <p className="text-text-secondary mb-8 flex items-center gap-2">
-                <span className="text-xl">{userType && userTypeInfo[userType].icon}</span>
-                {userType && userTypeInfo[userType].label}
+                {SelectedUserTypeIcon && (
+                  <SelectedUserTypeIcon className="h-5 w-5 text-teal" aria-hidden="true" />
+                )}
+                {selectedUserTypeInfo?.label}
               </p>
+              {inviteUserType && (
+                <p className="-mt-5 mb-8 rounded-lg border border-teal/30 bg-teal-glow px-3 py-2 text-sm text-teal-dark">
+                  Role selected from your team invite.
+                </p>
+              )}
 
               {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+                <div
+                  role="alert"
+                  className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in"
+                >
                   {error}
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
                 <div className="form-group">
                   <label htmlFor="fullName" className="label">Full Name</label>
                   <input
@@ -273,6 +334,8 @@ export function SignupForm() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     required
+                    autoComplete="name"
+                    disabled={isSubmitting}
                     className="input"
                     placeholder="John Doe"
                   />
@@ -286,8 +349,10 @@ export function SignupForm() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
+                    disabled={isSubmitting}
                     className="input"
-                    placeholder="coach@team.com"
+                    placeholder="you@example.com"
                   />
                 </div>
 
@@ -300,6 +365,8 @@ export function SignupForm() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={8}
+                    autoComplete="new-password"
+                    disabled={isSubmitting}
                     className="input"
                     placeholder="••••••••"
                   />
@@ -314,6 +381,8 @@ export function SignupForm() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
+                    disabled={isSubmitting}
                     className="input"
                     placeholder="••••••••"
                   />
@@ -322,6 +391,7 @@ export function SignupForm() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
+                  aria-busy={isSubmitting}
                   className="btn-primary w-full py-3"
                 >
                   {isSubmitting ? (
@@ -336,6 +406,18 @@ export function SignupForm() {
                     'Create Account'
                   )}
                 </button>
+
+                <p className="text-center text-xs leading-5 text-text-muted">
+                  By creating an account, you agree to the{' '}
+                  <Link href="/terms" className="font-semibold text-teal hover:text-teal-dark">
+                    Beta Terms
+                  </Link>{' '}
+                  and acknowledge the{' '}
+                  <Link href="/privacy" className="font-semibold text-teal hover:text-teal-dark">
+                    Privacy Notice
+                  </Link>
+                  .
+                </p>
               </form>
 
               <div className="my-8 flex items-center gap-4">
@@ -348,7 +430,8 @@ export function SignupForm() {
                 <button
                   type="button"
                   onClick={() => handleSocialSignUp('google')}
-                  className="btn-secondary"
+                  disabled={isSubmitting}
+                  className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -361,7 +444,8 @@ export function SignupForm() {
                 <button
                   type="button"
                   onClick={() => handleSocialSignUp('apple')}
-                  className="btn-secondary"
+                  disabled={isSubmitting}
+                  className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>

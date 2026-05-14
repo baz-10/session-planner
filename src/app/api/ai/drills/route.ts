@@ -5,34 +5,53 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
 import { createDrillAIService } from '@/lib/ai/drill-ai-service';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 import type { DrillQueryContext } from '@/lib/ai/openai-config';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { apiKey, query, context } = body as {
-      apiKey: string;
-      query: string;
-      context?: DrillQueryContext;
-    };
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-    if (!apiKey) {
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const parsedBody = await parseJsonObjectBody<{
+      apiKey?: string;
+      query?: string;
+      context?: DrillQueryContext;
+    }>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { apiKey, query, context } = parsedBody.body;
+    const normalizedApiKey = apiKey?.trim();
+    const normalizedQuery = query?.trim();
+
+    if (!normalizedApiKey) {
       return NextResponse.json(
         { success: false, error: 'API key is required' },
         { status: 400 }
       );
     }
 
-    if (!query) {
+    if (!normalizedQuery) {
       return NextResponse.json(
         { success: false, error: 'Query is required' },
         { status: 400 }
       );
     }
 
-    const aiService = createDrillAIService(apiKey);
-    const result = await aiService.getSuggestions(query, context);
+    const aiService = createDrillAIService(normalizedApiKey);
+    const result = await aiService.getSuggestions(normalizedQuery, context);
 
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });

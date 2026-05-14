@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
+import { CalendarDays, ClipboardList, Target, Trophy } from 'lucide-react';
 import { useEvents } from '@/hooks/use-events';
 import { useSessions } from '@/hooks/use-sessions';
 import type { Event, Session, EventType, CreateEventInput } from '@/types/database';
+import type { LucideIcon } from 'lucide-react';
 
 interface EventFormProps {
   event?: Event | null;
@@ -12,12 +14,13 @@ interface EventFormProps {
   onSuccess: () => void;
 }
 
-const EVENT_TYPES: { value: EventType; label: string; icon: string }[] = [
-  { value: 'practice', label: 'Practice', icon: '🏀' },
-  { value: 'game', label: 'Game', icon: '🏆' },
-  { value: 'tournament', label: 'Tournament', icon: '🎯' },
-  { value: 'other', label: 'Other', icon: '📅' },
+const EVENT_TYPES: { value: EventType; label: string; Icon: LucideIcon }[] = [
+  { value: 'practice', label: 'Practice', Icon: ClipboardList },
+  { value: 'game', label: 'Game', Icon: Trophy },
+  { value: 'tournament', label: 'Tournament', Icon: Target },
+  { value: 'other', label: 'Other', Icon: CalendarDays },
 ];
+const EVENT_FORM_ID = 'event-form';
 
 export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
   const { createEvent, updateEvent, isLoading } = useEvents();
@@ -42,21 +45,35 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
   const [opponent, setOpponent] = useState(event?.opponent || '');
   const [sessionId, setSessionId] = useState(event?.session_id || '');
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionLoadError, setSessionLoadError] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isEditing = !!event;
+  const isSaving = isLoading || isSubmitting;
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setSessionLoadError('');
+      const data = await getSessions({ throwOnError: true });
+      setSessions(data);
+    } catch (loadError) {
+      console.error('Error loading practice plans for event form:', loadError);
+      setSessions([]);
+      setSessionLoadError(
+        'Practice plans could not load. You can still save this event without a linked plan.'
+      );
+    }
+  }, [getSessions]);
 
   useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
-    const data = await getSessions();
-    setSessions(data);
-  };
+    void loadSessions();
+  }, [loadSessions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+
     setError('');
 
     if (!title.trim()) {
@@ -86,17 +103,26 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
       session_id: type === 'practice' && sessionId ? sessionId : undefined,
     };
 
-    let result;
-    if (isEditing && event) {
-      result = await updateEvent(event.id, eventData);
-    } else {
-      result = await createEvent(eventData);
-    }
+    setIsSubmitting(true);
 
-    if (result.success) {
-      onSuccess();
-    } else {
-      setError(result.error || 'Failed to save event');
+    try {
+      let result;
+      if (isEditing && event) {
+        result = await updateEvent(event.id, eventData);
+      } else {
+        result = await createEvent(eventData);
+      }
+
+      if (result.success) {
+        onSuccess();
+      } else {
+        setError(result.error || 'Failed to save event');
+      }
+    } catch (submitError) {
+      console.error('Unexpected error saving event:', submitError);
+      setError('Failed to save event. Check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -109,8 +135,11 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
             {isEditing ? 'Edit Event' : 'Create New Event'}
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 rounded"
+            disabled={isSaving}
+            className="p-1 text-gray-500 hover:text-gray-700 rounded disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Close event form"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -119,9 +148,9 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+        <form id={EVENT_FORM_ID} onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4" aria-busy={isSaving}>
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
               {error}
             </div>
           )}
@@ -132,21 +161,27 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               Event Type
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {EVENT_TYPES.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setType(t.value)}
-                  className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-colors ${
-                    type === t.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="text-2xl">{t.icon}</span>
-                  <span className="text-xs font-medium">{t.label}</span>
-                </button>
-              ))}
+              {EVENT_TYPES.map((t) => {
+                const TypeIcon = t.Icon;
+                const isSelected = type === t.value;
+
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setType(t.value)}
+                    disabled={isSaving}
+                    className={`p-3 rounded-lg border-2 flex flex-col items-center gap-1 transition-colors ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <TypeIcon className="h-6 w-6" aria-hidden="true" />
+                    <span className="text-xs font-medium">{t.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -159,6 +194,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder={type === 'practice' ? 'Practice' : type === 'game' ? 'Game vs...' : 'Event name'}
               required
@@ -175,6 +211,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
@@ -187,6 +224,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
@@ -202,6 +240,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
@@ -213,6 +252,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="time"
                 value={meetTime}
                 onChange={(e) => setMeetTime(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Arrival time"
               />
@@ -228,6 +268,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Where is this event?"
             />
@@ -243,6 +284,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
                 type="text"
                 value={opponent}
                 onChange={(e) => setOpponent(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="vs..."
               />
@@ -258,6 +300,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               <select
                 value={sessionId}
                 onChange={(e) => setSessionId(e.target.value)}
+                disabled={isSaving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">No plan linked</option>
@@ -270,6 +313,9 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               <p className="text-xs text-gray-500 mt-1">
                 Players can preview the practice plan when linked
               </p>
+              {sessionLoadError && (
+                <p className="mt-1 text-xs font-medium text-red-600">{sessionLoadError}</p>
+              )}
             </div>
           )}
 
@@ -282,6 +328,7 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              disabled={isSaving}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Additional details..."
             />
@@ -293,16 +340,19 @@ export function EventForm({ event, onClose, onSuccess }: EventFormProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+            disabled={isSaving}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={isLoading}
+            type="submit"
+            form={EVENT_FORM_ID}
+            disabled={isSaving}
+            aria-busy={isSaving}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
           >
-            {isLoading ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
+            {isSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Event'}
           </button>
         </div>
       </div>

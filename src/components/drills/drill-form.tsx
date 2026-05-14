@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { FileText, ImageIcon, Paperclip, Plus, Video } from 'lucide-react';
 import { useDrills } from '@/hooks/use-drills';
+import { useConfirmDialog } from '@/components/ui';
 import type { Drill, DrillCategory, DrillMedia } from '@/types/database';
 
 interface DrillWithDetails extends Drill {
@@ -27,9 +29,12 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
   const [tagsInput, setTagsInput] = useState((drill?.tags || []).join(', '));
   const [media, setMedia] = useState<DrillMedia[]>(drill?.media || []);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
 
   const isEditing = !!drill;
+  const isBusy = isLoading || uploadingFiles || deletingMediaId !== null;
 
   useEffect(() => {
     setName(drill?.name || '');
@@ -42,8 +47,11 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
     setError('');
   }, [drill]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (isBusy) return;
+
     setError('');
 
     if (!name.trim()) {
@@ -75,51 +83,90 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
       tags,
     };
 
-    let result;
-    if (isEditing && drill) {
-      result = await updateDrill(drill.id, drillData);
-    } else {
-      result = await createDrill(drillData);
-    }
+    try {
+      const result =
+        isEditing && drill
+          ? await updateDrill(drill.id, drillData)
+          : await createDrill(drillData);
 
-    if (result.success) {
-      onSuccess();
-    } else {
-      setError(result.error || 'Failed to save drill');
+      if (result.success) {
+        onSuccess();
+      } else {
+        setError(result.error || 'Failed to save drill');
+      }
+    } catch (error) {
+      console.error('Unexpected error saving drill:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save drill');
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!drill || !e.target.files || e.target.files.length === 0) return;
+    const input = e.currentTarget;
+    if (!drill || !input.files || input.files.length === 0 || isBusy) return;
 
     setUploadingFiles(true);
-    const files = Array.from(e.target.files);
+    setError('');
+    const files = Array.from(input.files);
+    const uploadErrors: string[] = [];
 
-    for (const file of files) {
-      const result = await addDrillMedia(drill.id, file);
-      if (result.success && result.media) {
-        setMedia((prev) => [...prev, result.media!]);
+    try {
+      for (const file of files) {
+        try {
+          const result = await addDrillMedia(drill.id, file);
+          if (result.success && result.media) {
+            setMedia((prev) => [...prev, result.media!]);
+          } else {
+            uploadErrors.push(result.error || `${file.name} could not be uploaded.`);
+          }
+        } catch (error) {
+          console.error('Unexpected error uploading drill media:', error);
+          uploadErrors.push(
+            error instanceof Error ? error.message : `${file.name} could not be uploaded.`
+          );
+        }
       }
-    }
 
-    setUploadingFiles(false);
-    e.target.value = '';
+      if (uploadErrors.length > 0) {
+        setError(uploadErrors[0]);
+      }
+    } finally {
+      setUploadingFiles(false);
+      input.value = '';
+    }
   };
 
   const handleDeleteMedia = async (mediaId: string) => {
-    if (!confirm('Delete this media file?')) return;
+    const confirmed = await confirmAction({
+      title: 'Delete media file?',
+      description: 'This file will be removed from the drill.',
+      confirmLabel: 'Delete file',
+      confirmVariant: 'destructive',
+    });
 
-    const result = await deleteDrillMedia(mediaId);
-    if (result.success) {
-      setMedia((prev) => prev.filter((m) => m.id !== mediaId));
+    if (!confirmed) return;
+
+    setError('');
+    setDeletingMediaId(mediaId);
+    try {
+      const result = await deleteDrillMedia(mediaId);
+      if (result.success) {
+        setMedia((prev) => prev.filter((m) => m.id !== mediaId));
+      } else {
+        setError(result.error || 'Failed to delete media');
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting drill media:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete media');
+    } finally {
+      setDeletingMediaId(null);
     }
   };
 
   const getMediaIcon = (type: string) => {
-    if (type.startsWith('image/')) return '🖼️';
-    if (type.startsWith('video/')) return '🎬';
-    if (type === 'application/pdf') return '📄';
-    return '📎';
+    if (type.startsWith('image/')) return <ImageIcon className="h-4 w-4" aria-hidden="true" />;
+    if (type.startsWith('video/')) return <Video className="h-4 w-4" aria-hidden="true" />;
+    if (type === 'application/pdf') return <FileText className="h-4 w-4" aria-hidden="true" />;
+    return <Paperclip className="h-4 w-4" aria-hidden="true" />;
   };
 
   return (
@@ -131,8 +178,10 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
             {isEditing ? 'Edit Drill' : 'Create New Drill'}
           </h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 text-gray-500 hover:text-gray-700 rounded"
+            disabled={isBusy}
+            className="p-1 text-gray-500 hover:text-gray-700 rounded disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -141,9 +190,14 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+        <form
+          id="drill-form"
+          onSubmit={handleSubmit}
+          aria-busy={isBusy}
+          className="flex-1 overflow-y-auto p-6 space-y-4"
+        >
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+            <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
               {error}
             </div>
           )}
@@ -157,6 +211,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={isBusy}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="e.g., 3-Man Weave"
               required
@@ -172,6 +227,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
               <select
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
+                disabled={isBusy}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">No category</option>
@@ -190,6 +246,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                 type="number"
                 value={defaultDuration}
                 onChange={(e) => setDefaultDuration(e.target.value)}
+                disabled={isBusy}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 min="1"
                 required
@@ -205,6 +262,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              disabled={isBusy}
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Describe the drill..."
@@ -219,6 +277,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              disabled={isBusy}
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
               placeholder="Private notes for coaches..."
@@ -234,6 +293,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
+              disabled={isBusy}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="e.g., warmup, shooting, half-court"
             />
@@ -257,13 +317,13 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                       key={m.id}
                       className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
                     >
-                      <div className="flex items-center gap-2">
-                        <span>{getMediaIcon(m.type)}</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-gray-500">{getMediaIcon(m.type)}</span>
                         <a
                           href={m.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline truncate max-w-[200px]"
+                          className="min-w-0 max-w-[200px] truncate text-sm text-primary hover:underline"
                         >
                           {m.filename}
                         </a>
@@ -271,11 +331,16 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                       <button
                         type="button"
                         onClick={() => handleDeleteMedia(m.id)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                        disabled={isBusy}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        {deletingMediaId === m.id ? (
+                          <span className="block h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-b-red-600" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
                       </button>
                     </div>
                   ))}
@@ -283,14 +348,18 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
               )}
 
               {/* Upload button */}
-              <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 rounded-md cursor-pointer hover:border-primary hover:bg-gray-50">
+              <label
+                className={`flex items-center justify-center gap-2 rounded-md border-2 border-dashed border-gray-300 p-3 hover:border-primary hover:bg-gray-50 ${
+                  isBusy ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                }`}
+              >
                 <input
                   type="file"
                   onChange={handleFileUpload}
                   multiple
-                  accept="image/*,video/*,.pdf"
+                  accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.pdf"
                   className="hidden"
-                  disabled={uploadingFiles}
+                  disabled={isBusy}
                 />
                 {uploadingFiles ? (
                   <>
@@ -299,9 +368,7 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
+                    <Plus className="h-5 w-5 text-gray-400" aria-hidden="true" />
                     <span className="text-sm text-gray-600">Add images, videos, or PDFs</span>
                   </>
                 )}
@@ -315,19 +382,22 @@ export function DrillForm({ drill, categories, onClose, onSuccess }: DrillFormPr
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+            disabled={isBusy}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={isLoading}
+            type="submit"
+            form="drill-form"
+            disabled={isBusy}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50"
           >
             {isLoading ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Drill'}
           </button>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

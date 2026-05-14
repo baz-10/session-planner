@@ -11,10 +11,12 @@ dist/
 
 # Environment files
 .env
+.env.*
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+!.env.example
 
 # Debug logs
 npm-debug.log*
@@ -41,3 +43,6 @@ coverage/
 # Playwright
 .playwright-mcp/
 .vercel
+
+# Supabase CLI local state
+supabase/.temp/

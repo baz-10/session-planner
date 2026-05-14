@@ -14,6 +14,7 @@ import {
   TrendingUp,
   XCircle,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { EventCard } from './event-card';
 import { EventForm } from './event-form';
@@ -40,16 +41,23 @@ interface EventListProps {
 }
 
 export function EventList({ onSelectEvent }: EventListProps) {
+  const { currentTeam, teamMemberships } = useAuth();
   const { getEvents, getRsvpCounts, getUserRsvp } = useEvents();
   const [events, setEvents] = useState<EventWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [filterType, setFilterType] = useState<EventType | ''>('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [view, setView] = useState<'upcoming' | 'month'>('upcoming');
+  const currentMembership = currentTeam
+    ? teamMemberships.find((membership) => membership.team.id === currentTeam.id)
+    : undefined;
+  const canManageEvents = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
 
   const loadEvents = useCallback(async () => {
     setIsLoading(true);
+    setLoadError('');
 
     let options: any = {};
 
@@ -64,13 +72,20 @@ export function EventList({ onSelectEvent }: EventListProps) {
       options.endDate = endOfMonth(currentMonth).toISOString();
     }
 
-    const data = await getEvents(options);
-    setEvents(data);
-    setIsLoading(false);
+    try {
+      const data = await getEvents({ ...options, throwOnError: true });
+      setEvents(data);
+    } catch (error) {
+      console.error('Unexpected error loading events:', error);
+      setEvents([]);
+      setLoadError('Events could not load. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [getEvents, filterType, view, currentMonth]);
 
   useEffect(() => {
-    loadEvents();
+    void loadEvents();
   }, [loadEvents]);
 
   const handlePrevMonth = () => {
@@ -113,6 +128,7 @@ export function EventList({ onSelectEvent }: EventListProps) {
           {view === 'month' && (
             <div className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 px-2 py-1">
               <button
+                type="button"
                 onClick={handlePrevMonth}
                 className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100"
                 aria-label="Previous month"
@@ -123,6 +139,7 @@ export function EventList({ onSelectEvent }: EventListProps) {
                 {format(currentMonth, 'MMMM yyyy')}
               </span>
               <button
+                type="button"
                 onClick={handleNextMonth}
                 className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100"
                 aria-label="Next month"
@@ -146,22 +163,39 @@ export function EventList({ onSelectEvent }: EventListProps) {
               <option value="other">Other</option>
             </select>
 
-            {/* Create button */}
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
-            >
-              <Plus className="h-4 w-4" />
-              Create Event
-            </button>
+            {canManageEvents && (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
+              >
+                <Plus className="h-4 w-4" />
+                Create Event
+              </button>
+            )}
           </div>
         </div>
       </MobileListCard>
 
+      {loadError && (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void loadEvents()}
+            disabled={isLoading}
+            aria-busy={isLoading}
+            className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-bold text-red-700 shadow-sm transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
+      )}
+
       {/* Events */}
       {isLoading ? (
         <MobileLoadingState label="Loading events" className="min-h-[240px]" />
-      ) : events.length === 0 ? (
+      ) : events.length === 0 && !loadError ? (
         <MobileEmptyState
           icon={<CalendarDays className="h-8 w-8" />}
           title="No events"
@@ -171,12 +205,19 @@ export function EventList({ onSelectEvent }: EventListProps) {
               : 'No events for this month.'
           }
           action={
-            <button
-              onClick={() => setShowForm(true)}
-              className="btn-accent"
-            >
-              Create Your First Event
-            </button>
+            canManageEvents ? (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="btn-accent"
+              >
+                Create Your First Event
+              </button>
+            ) : (
+              <p className="text-sm font-semibold text-text-muted">
+                Coach/Admin role required to create events.
+              </p>
+            )
           }
         />
       ) : (
@@ -302,7 +343,7 @@ export function EventList({ onSelectEvent }: EventListProps) {
           onClose={() => setShowForm(false)}
           onSuccess={() => {
             setShowForm(false);
-            loadEvents();
+            void loadEvents();
           }}
         />
       )}

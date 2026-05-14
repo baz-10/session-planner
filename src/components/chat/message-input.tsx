@@ -1,27 +1,67 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { Paperclip, Send } from 'lucide-react';
+import {
+  CHAT_ATTACHMENT_EXTENSIONS,
+  CHAT_ATTACHMENT_MIME_TYPES,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
+
+type SendResult = void | { success: boolean; error?: string };
+const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_MESSAGE_CHARACTERS = 2000;
+
+function validateAttachment(file: File) {
+  if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+    return 'Attachments must be 10 MB or smaller.';
+  }
+
+  if (!isTrustedAttachmentFile(file, CHAT_ATTACHMENT_MIME_TYPES, CHAT_ATTACHMENT_EXTENSIONS)) {
+    return 'Choose an image, PDF, Word document, or document file.';
+  }
+
+  return '';
+}
 
 interface MessageInputProps {
-  onSendMessage: (content: string) => Promise<void>;
-  onSendFile: (file: File) => Promise<void>;
+  onSendMessage: (content: string) => Promise<SendResult>;
+  onSendFile: (file: File) => Promise<SendResult>;
   disabled?: boolean;
 }
 
 export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!message.trim() || isSending || disabled) return;
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage || isSending || disabled) return;
+    if (trimmedMessage.length > MAX_CHAT_MESSAGE_CHARACTERS) {
+      setError(`Messages must be ${MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()} characters or fewer.`);
+      return;
+    }
 
     setIsSending(true);
-    await onSendMessage(message.trim());
-    setMessage('');
-    setIsSending(false);
+    setError('');
+
+    try {
+      const result = await onSendMessage(trimmedMessage);
+      if (result && !result.success) {
+        setError(result.error || 'Message failed to send. Please try again.');
+        return;
+      }
+      setMessage('');
+    } catch (sendError) {
+      console.error('Message send failed:', sendError);
+      setError('Message failed to send. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
 
     // Focus back on textarea
     textareaRef.current?.focus();
@@ -38,9 +78,29 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const validationError = validateAttachment(file);
+    if (validationError) {
+      setError(validationError);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setIsSending(true);
-    await onSendFile(file);
-    setIsSending(false);
+    setError('');
+
+    try {
+      const result = await onSendFile(file);
+      if (result && !result.success) {
+        setError(result.error || 'File failed to send. Please try again.');
+      }
+    } catch (sendError) {
+      console.error('File send failed:', sendError);
+      setError('File failed to send. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
 
     // Clear file input
     if (fileInputRef.current) {
@@ -57,26 +117,33 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
   }, []);
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white">
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4" aria-busy={isSending}>
+      {error && (
+        <div role="alert" className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
       <div className="flex items-end gap-2">
         {/* File upload */}
         <input
           ref={fileInputRef}
           type="file"
           onChange={handleFileSelect}
-          accept="image/*,.pdf,.doc,.docx"
+          accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx"
           className="hidden"
           disabled={disabled || isSending}
+          aria-label="Attach file"
         />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isSending}
+          aria-busy={isSending}
           className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-full disabled:opacity-50"
+          aria-label="Attach file"
+          title="Attach file"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
+          <Paperclip className="h-6 w-6" aria-hidden="true" />
         </button>
 
         {/* Text input */}
@@ -90,25 +157,33 @@ export function MessageInput({ onSendMessage, onSendFile, disabled }: MessageInp
             }}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
+            aria-label="Message"
             rows={1}
+            maxLength={MAX_CHAT_MESSAGE_CHARACTERS}
             disabled={disabled || isSending}
             className="w-full px-4 py-2 bg-gray-100 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
             style={{ maxHeight: '120px' }}
           />
+          {message.length > MAX_CHAT_MESSAGE_CHARACTERS * 0.9 && (
+            <p className="mt-1 text-right text-xs font-medium text-gray-500">
+              {message.length.toLocaleString()} / {MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()}
+            </p>
+          )}
         </div>
 
         {/* Send button */}
         <button
           type="submit"
           disabled={!message.trim() || disabled || isSending}
+          aria-busy={isSending}
           className="p-2 bg-primary text-white rounded-full hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={isSending ? 'Sending message' : 'Send message'}
+          title="Send message"
         >
           {isSending ? (
-            <div className="w-6 h-6 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true" />
           ) : (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
+            <Send className="h-6 w-6" aria-hidden="true" />
           )}
         </button>
       </div>

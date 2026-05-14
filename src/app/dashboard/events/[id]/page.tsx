@@ -1,20 +1,18 @@
 import { EventDetailClient } from './event-detail-client';
 
-// Required for static export - allows dynamic routes to be generated at runtime
 export async function generateStaticParams() {
-  // Return at least one placeholder param for static generation
-  return [{ id: 'placeholder' }];
+  return [];
 }
 
-// Allow additional dynamic params at runtime
 export const dynamicParams = true;
 
 interface EventPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function EventPage({ params }: EventPageProps) {
-  return <EventDetailClient eventId={params.id} />;
+export default async function EventPage({ params }: EventPageProps) {
+  const { id } = await params;
+  return <EventDetailClient eventId={id} />;
 }

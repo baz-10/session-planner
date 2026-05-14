@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
-import { createAdminClient } from '@/lib/database/supabase';
+import { parseOptionalJsonObjectBody } from '@/lib/api/json-body';
 
 const DEFAULT_DAYS_AHEAD = 2;
 
@@ -17,12 +18,12 @@ async function runReminders(
   options: { allowBody: boolean }
 ) {
   try {
-    const payload = options.allowBody
-      ? ((await request.json().catch(() => ({}))) as {
-          teamId?: string;
-          daysAhead?: number;
-        })
-      : ({} as { teamId?: string; daysAhead?: number });
+    const parsedPayload = options.allowBody
+      ? await parseOptionalJsonObjectBody<{ teamId?: string; daysAhead?: number }>(request, {})
+      : { ok: true as const, body: {} as { teamId?: string; daysAhead?: number } };
+    if (!parsedPayload.ok) return parsedPayload.response;
+
+    const payload = parsedPayload.body;
 
     const teamId = payload.teamId;
     const daysAhead = clampInt(payload.daysAhead ?? DEFAULT_DAYS_AHEAD, 0, 14);
@@ -36,7 +37,7 @@ async function runReminders(
     let scopedTeamIds: string[] = [];
 
     if (isCronRequest) {
-      supabase = createAdminClient();
+      supabase = createBillingAdminClient();
       if (teamId) {
         scopedTeamIds = [teamId];
       } else {
@@ -82,6 +83,7 @@ async function runReminders(
         .select('role')
         .eq('team_id', teamId)
         .eq('user_id', user.id)
+        .neq('status', 'inactive')
         .maybeSingle();
 
       if (
@@ -304,6 +306,22 @@ function buildReminderMessage(params: {
   }
 
   return `${params.invoiceTitle} installment (${amountText}) is due on ${dueDateText}. Open Billing to complete payment.`;
+}
+
+function createBillingAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase admin environment variables are not configured');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 function formatCentsAsUsd(amountCents: number): string {

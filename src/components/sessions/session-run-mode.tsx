@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -22,7 +23,9 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '@/components/ui';
 import { MobileListCard, MobileStickyActionBar } from '@/components/mobile';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import {
   calculateActivityTimings,
   formatTime12Hour,
@@ -86,6 +89,40 @@ function storageKeyForSession(sessionId: string): string {
   return `session-planner:run-mode:${sessionId}`;
 }
 
+function readStoredRunState(sessionId: string): RunState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    return parseStoredRunState(window.localStorage.getItem(storageKeyForSession(sessionId)), sessionId);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredRunState(runState: RunState): boolean {
+  if (typeof window === 'undefined') return true;
+
+  try {
+    window.localStorage.setItem(storageKeyForSession(runState.sessionId), JSON.stringify(runState));
+    return true;
+  } catch {
+    // Private browsing or storage quota errors should not crash live run mode.
+    return false;
+  }
+}
+
+function removeStoredRunState(sessionId: string): boolean {
+  if (typeof window === 'undefined') return true;
+
+  try {
+    window.localStorage.removeItem(storageKeyForSession(sessionId));
+    return true;
+  } catch {
+    // Storage access can be unavailable in some browser privacy modes.
+    return false;
+  }
+}
+
 function secondsForActivity(activity?: SessionActivity | null): number {
   return Math.max(60, (Number(activity?.duration) || 0) * 60);
 }
@@ -138,7 +175,12 @@ function parseStoredRunState(value: string | null, sessionId: string): RunState 
           : 'ready',
       activityNotes:
         parsed.activityNotes && typeof parsed.activityNotes === 'object'
-          ? (parsed.activityNotes as Record<string, string>)
+          ? Object.fromEntries(
+              Object.entries(parsed.activityNotes).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === 'string' && typeof entry[1] === 'string'
+              )
+            )
           : {},
       sessionNotes: typeof parsed.sessionNotes === 'string' ? parsed.sessionNotes : '',
       updatedAt: Number.isFinite(parsed.updatedAt) ? Number(parsed.updatedAt) : Date.now(),
@@ -270,12 +312,14 @@ function buildRunSummary(session: SessionWithActivities, activities: RunActivity
 }
 
 export function SessionRunMode({ sessionId }: SessionRunModeProps) {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, teamMemberships } = useAuth();
   const { getSession } = useSessions();
   const [session, setSession] = useState<SessionWithActivities | null>(null);
   const [runState, setRunState] = useState<RunState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [storageWarning, setStorageWarning] = useState('');
+  const { confirmAction, confirmDialog } = useConfirmDialog();
   const lastTickRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -297,10 +341,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         (left, right) => left.sort_order - right.sort_order
       );
       const nextSession = { ...data, activities: sortedActivities } as SessionWithActivities;
-      const storedState =
-        typeof window === 'undefined'
-          ? null
-          : parseStoredRunState(window.localStorage.getItem(storageKeyForSession(sessionId)), sessionId);
+      const storedState = readStoredRunState(sessionId);
 
       setSession(nextSession);
       setRunState(
@@ -344,17 +385,46 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
       };
     });
   }, [session]);
+  const canManageSession = useMemo(
+    () =>
+      Boolean(
+        session?.team_id &&
+          teamMemberships.some(
+            (membership) =>
+              membership.team.id === session.team_id &&
+              (membership.role === 'admin' || membership.role === 'coach')
+          )
+      ),
+    [session?.team_id, teamMemberships]
+  );
+  const planBackHref = canManageSession && session?.id ? `/dashboard/sessions/${session.id}` : '/dashboard/sessions';
+  const planBackLabel = canManageSession ? 'Back to plan' : 'Back to sessions';
+  const readOnlyPlan = !canManageSession;
 
   const activeActivity = runState ? activities[runState.activeIndex] || null : null;
   const nextActivity = runState ? activities[runState.activeIndex + 1] || null : null;
+  const runStatus = runState?.status;
   const completedCount = runState?.completedActivityIds.length || 0;
   const totalPlannedSeconds = activities.reduce(
     (sum, activity) => sum + secondsForActivity(activity),
     0
   );
+  const plannedProgressSeconds = runState
+    ? activities.reduce((sum, activity, index) => {
+        if (runState.completedActivityIds.includes(activity.id)) {
+          return sum + secondsForActivity(activity);
+        }
+
+        if (index === runState.activeIndex && runState.status !== 'complete') {
+          return sum + Math.max(0, secondsForActivity(activity) - runState.remainingSeconds);
+        }
+
+        return sum;
+      }, 0)
+    : 0;
   const progressPercent =
     totalPlannedSeconds > 0 && runState
-      ? Math.min(100, Math.round((runState.elapsedSeconds / totalPlannedSeconds) * 100))
+      ? Math.min(100, Math.round((plannedProgressSeconds / totalPlannedSeconds) * 100))
       : 0;
   const activeProgressPercent =
     activeActivity && runState
@@ -370,12 +440,27 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const runSummary = session && runState ? buildRunSummary(session, activities, runState) : '';
 
   useEffect(() => {
-    if (!runState) return;
-    window.localStorage.setItem(storageKeyForSession(runState.sessionId), JSON.stringify(runState));
-  }, [runState]);
+    if (!readOnlyPlan || !session) return;
+    setRunState(createInitialRunState(sessionId, session.activities));
+  }, [readOnlyPlan, session, sessionId]);
 
   useEffect(() => {
-    if (!runState || runState.status !== 'running') {
+    if (!runState) return;
+    if (!canManageSession) {
+      setStorageWarning('');
+      return;
+    }
+
+    const didPersist = writeStoredRunState(runState);
+    setStorageWarning(
+      didPersist
+        ? ''
+        : 'Live progress is not being saved on this device. Keep this page open until you copy your summary.'
+    );
+  }, [canManageSession, runState]);
+
+  useEffect(() => {
+    if (runStatus !== 'running') {
       lastTickRef.current = null;
       return;
     }
@@ -394,7 +479,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [activities, runState?.status]);
+  }, [activities, runStatus]);
 
   useEffect(() => {
     if (copyStatus === 'idle') return;
@@ -420,13 +505,24 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
     });
   }, [updateRunState]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (!session) return;
-    if (!confirm('Reset live progress and notes for this session?')) return;
+    const confirmed = await confirmAction({
+      title: 'Reset live session?',
+      description: 'This clears the timer progress and all live notes saved on this device for this session.',
+      confirmLabel: 'Reset session',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
     const nextState = createInitialRunState(sessionId, session.activities);
-    window.localStorage.removeItem(storageKeyForSession(sessionId));
+    const didClearStoredState = removeStoredRunState(sessionId);
     setRunState(nextState);
-  }, [session, sessionId]);
+    if (!didClearStoredState) {
+      setStorageWarning('Saved live progress could not be cleared from this device.');
+    }
+  }, [confirmAction, session, sessionId]);
 
   const jumpToActivity = useCallback(
     (index: number) => {
@@ -527,12 +623,8 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   const handleCopySummary = useCallback(async () => {
     if (!runSummary) return;
 
-    try {
-      await navigator.clipboard.writeText(runSummary);
-      setCopyStatus('copied');
-    } catch {
-      setCopyStatus('failed');
-    }
+    const didCopy = await copyTextToClipboard(runSummary);
+    setCopyStatus(didCopy ? 'copied' : 'failed');
   }, [runSummary]);
 
   if (authLoading || isLoading) {
@@ -579,10 +671,14 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
         <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-slate-950">No activities to run yet</h1>
           <p className="mt-2 text-sm text-slate-500">
-            Add at least one activity to this practice plan before opening live mode.
+            {canManageSession
+              ? 'Add at least one activity to this practice plan before opening live mode.'
+              : 'This practice plan does not have activities yet. Ask a coach or admin to update it.'}
           </p>
           <Button asChild className="mt-5">
-            <Link href={`/dashboard/sessions/${session.id}`}>Edit session plan</Link>
+            <Link href={canManageSession ? `/dashboard/sessions/${session.id}` : '/dashboard/sessions'}>
+              {canManageSession ? 'Edit session plan' : 'Back to sessions'}
+            </Link>
           </Button>
         </div>
       </div>
@@ -590,13 +686,21 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
   }
 
   const statusLabel =
-    runState.status === 'complete'
+    readOnlyPlan
+      ? 'View only'
+      : runState.status === 'complete'
       ? 'Complete'
       : runState.status === 'running'
         ? 'Running'
         : runState.status === 'paused'
           ? 'Paused'
           : 'Ready';
+  const playPauseLabel =
+    runState.status === 'running'
+      ? 'Pause'
+      : runState.status === 'paused'
+        ? 'Resume'
+        : 'Start';
   const upcomingActivities = activities.slice(runState.activeIndex + 1, runState.activeIndex + 3);
   const activeCategoryLabel = activeActivity?.category?.name || 'Activity';
   const coachCueLines = activeActivity?.notes
@@ -610,27 +714,37 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
       <div className="min-h-full bg-[#f7f9fc] p-4 pb-40 md:hidden">
         <header className="mb-5 flex items-center gap-3">
           <Link
-            href={`/dashboard/sessions/${session.id}`}
+            href={planBackHref}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-navy shadow-sm"
-            aria-label="Back to plan"
+            aria-label={planBackLabel}
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
           <div className="min-w-0 flex-1 text-center">
             <h1 className="truncate text-[27px] font-extrabold leading-tight text-navy">
-              Run Live
+              {readOnlyPlan ? 'Practice Plan' : 'Run Live'}
             </h1>
             <p className="truncate text-[15px] font-medium text-slate-500">{session.name}</p>
           </div>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
-            aria-label="Reset run"
-          >
-            <RotateCcw className="h-5 w-5" />
-          </button>
+          {canManageSession ? (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+              aria-label="Reset run"
+            >
+              <RotateCcw className="h-5 w-5" />
+            </button>
+          ) : (
+            <div className="h-12 w-12 shrink-0" aria-hidden="true" />
+          )}
         </header>
+
+        {storageWarning && (
+          <div role="status" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-extrabold text-amber-800">
+            {storageWarning}
+          </div>
+        )}
 
         <MobileListCard className="mb-4 space-y-5">
           <div className="flex items-start gap-4">
@@ -663,33 +777,55 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
             </div>
           </div>
 
-          {activeActivity?.notes && (
+          {canManageSession && activeActivity?.notes && (
             <div className="flex gap-3 rounded-2xl border border-accent/20 bg-teal-glow px-4 py-4 text-[17px] font-medium leading-7 text-navy">
               <MessageSquareText className="mt-1 h-6 w-6 shrink-0 text-teal" />
               <p className="line-clamp-3">{activeActivity.notes}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={handlePlayPause}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
-            >
-              {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-              {runState.status === 'running' ? 'Pause' : runState.status === 'paused' ? 'Resume' : 'Start'}
-            </button>
-            <button
-              type="button"
-              onClick={markActiveComplete}
-              disabled={runState.status === 'complete'}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-teal text-base font-extrabold text-white disabled:opacity-50"
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              Complete
-            </button>
-          </div>
+          {canManageSession && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handlePlayPause}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-navy bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  {runState.status === 'running' ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  {playPauseLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={markActiveComplete}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-teal text-base font-extrabold text-white disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-5 w-5" />
+                  Complete
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => addTime(60)}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  +1 min
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addTime(-60)}
+                  disabled={runState.status === 'complete'}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-extrabold text-navy disabled:opacity-50"
+                >
+                  -1 min
+                </button>
+              </div>
+            </>
+          )}
         </MobileListCard>
 
         <MobileListCard className="mb-4">
@@ -725,26 +861,91 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           )}
         </MobileListCard>
 
-        <MobileListCard className="mb-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold text-navy">Coaching Notes</h2>
-            <Edit3 className="h-5 w-5 text-teal" />
-          </div>
-          {coachCueLines && coachCueLines.length > 0 ? (
-            <ul className="space-y-3">
-              {coachCueLines.map((line) => (
-                <li key={line} className="flex gap-3 text-[16px] font-medium leading-6 text-navy">
-                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal" />
-                  {line}
-                </li>
+        {canManageSession && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-navy">Coaching Notes</h2>
+              <Edit3 className="h-5 w-5 text-teal" />
+            </div>
+            {coachCueLines && coachCueLines.length > 0 ? (
+              <ul className="space-y-3">
+                {coachCueLines.map((line) => (
+                  <li key={line} className="flex gap-3 text-[16px] font-medium leading-6 text-navy">
+                    <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm font-semibold text-slate-500">
+                No saved coaching notes for this activity.
+              </p>
+            )}
+          </MobileListCard>
+        )}
+
+        {canManageSession && activeActivity && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-extrabold text-navy">Block Notes</h2>
+              <StickyNote className="h-5 w-5 text-teal" />
+            </div>
+            <textarea
+              value={runState.activityNotes[activeActivity.id] || ''}
+              onChange={(event) => updateActivityNote(activeActivity.id, event.target.value)}
+              rows={5}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
+              placeholder="What worked, what dragged, who needs follow-up..."
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {QUICK_NOTE_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => appendQuickNote(activeActivity.id, prompt)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-600"
+                >
+                  {prompt}
+                </button>
               ))}
-            </ul>
-          ) : (
-            <p className="text-sm font-semibold text-slate-500">
-              No saved coaching notes for this activity.
-            </p>
-          )}
-        </MobileListCard>
+            </div>
+          </MobileListCard>
+        )}
+
+        {canManageSession && (
+          <MobileListCard className="mb-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-extrabold text-navy">Session Notes</h2>
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-teal px-3 text-sm font-extrabold text-teal"
+              >
+                <ClipboardCopy className="h-4 w-4" />
+                Copy
+              </button>
+            </div>
+            <textarea
+              value={runState.sessionNotes}
+              onChange={(event) => updateSessionNotes(event.target.value)}
+              rows={5}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[16px] leading-6 text-navy outline-none focus:border-teal"
+              placeholder="Whole-practice observations, follow-ups, lineup notes..."
+            />
+            {copyStatus !== 'idle' && (
+              <p
+                role={copyStatus === 'failed' ? 'alert' : 'status'}
+                className={`mt-2 text-sm font-extrabold ${
+                  copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
+                }`}
+              >
+                {copyStatus === 'copied'
+                  ? 'Summary copied.'
+                  : 'Clipboard unavailable in this browser.'}
+              </p>
+            )}
+          </MobileListCard>
+        )}
 
         <MobileListCard className="mb-4 flex items-center gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-teal-glow text-teal">
@@ -771,35 +972,53 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           <ChevronLeft className="h-5 w-5" />
           Previous
         </button>
-        <button
-          type="button"
-          onClick={markActiveComplete}
-          disabled={runState.status === 'complete'}
-          className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
-        >
-          Next Activity
-          <ChevronRight className="h-5 w-5" />
-        </button>
+        {canManageSession ? (
+          <button
+            type="button"
+            onClick={markActiveComplete}
+            disabled={runState.status === 'complete'}
+            className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
+          >
+            Next Activity
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => jumpToActivity(runState.activeIndex + 1)}
+            disabled={runState.activeIndex >= activities.length - 1}
+            className="inline-flex min-h-14 flex-[1.2] items-center justify-center gap-2 rounded-2xl bg-teal px-3 text-sm font-extrabold text-white disabled:opacity-40 min-[390px]:text-base"
+          >
+            Next
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
         <Link
-          href={`/dashboard/sessions/${session.id}`}
+          href={planBackHref}
           className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-base font-extrabold text-navy"
         >
-          <Edit3 className="h-5 w-5" />
-          Edit
+          {canManageSession ? <Edit3 className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
+          {canManageSession ? 'Edit' : 'Sessions'}
         </Link>
       </MobileStickyActionBar>
 
       <div className="hidden min-h-full bg-slate-50 p-3 md:block md:p-6 xl:p-8">
       <div className="mx-auto max-w-7xl space-y-5">
+        {storageWarning && (
+          <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            {storageWarning}
+          </div>
+        )}
+
         <header className="rounded-[24px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-950/10 md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <Link
-                href={`/dashboard/sessions/${session.id}`}
+                href={planBackHref}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-teal-light hover:text-white"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to plan
+                {planBackLabel}
               </Link>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <h1 className="min-w-0 text-2xl font-bold text-white md:text-3xl">
@@ -848,7 +1067,11 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
           </div>
         </header>
 
-        <main className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]">
+        <main
+          className={`grid gap-5 ${
+            canManageSession ? 'xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]' : ''
+          }`}
+        >
           <section className="space-y-5">
             <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 bg-white p-5 md:p-6">
@@ -878,7 +1101,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   </div>
 
                   <div className="shrink-0 rounded-[24px] bg-slate-950 px-6 py-5 text-center text-white md:min-w-[260px]">
-                    <div className="font-mono text-[64px] font-bold leading-none tracking-[-0.04em]">
+                    <div className="font-mono text-[64px] font-bold leading-none tracking-normal">
                       {formatClock(runState.remainingSeconds)}
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
@@ -893,6 +1116,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   </div>
                 </div>
 
+                {canManageSession && (
                 <div className="mt-6 flex flex-wrap items-center gap-2">
                   <Button
                     onClick={handlePlayPause}
@@ -904,15 +1128,30 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                     ) : (
                       <Play className="h-5 w-5" />
                     )}
-                    {runState.status === 'running' ? 'Pause' : 'Start'}
+                    {playPauseLabel}
                   </Button>
-                  <Button variant="outline" onClick={() => addTime(60)} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={() => addTime(60)}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     +1 min
                   </Button>
-                  <Button variant="outline" onClick={() => addTime(-60)} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={() => addTime(-60)}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     -1 min
                   </Button>
-                  <Button variant="outline" onClick={markActiveComplete} className="h-12 rounded-xl">
+                  <Button
+                    variant="outline"
+                    onClick={markActiveComplete}
+                    disabled={runState.status === 'complete'}
+                    className="h-12 rounded-xl"
+                  >
                     <SkipForward className="h-4 w-4" />
                     Finish block
                   </Button>
@@ -921,36 +1160,50 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                     Reset
                   </Button>
                 </div>
+                )}
               </div>
 
               <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="p-5 md:p-6">
-                  <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                    <StickyNote className="h-4 w-4" />
-                    Block notes
+                {canManageSession ? (
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      <StickyNote className="h-4 w-4" />
+                      Block notes
+                    </div>
+                    <textarea
+                      value={activeActivity ? runState.activityNotes[activeActivity.id] || '' : ''}
+                      onChange={(event) => {
+                        if (activeActivity) updateActivityNote(activeActivity.id, event.target.value);
+                      }}
+                      rows={7}
+                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+                      placeholder="What worked, what dragged, who needs follow-up..."
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {activeActivity &&
+                        QUICK_NOTE_PROMPTS.map((prompt) => (
+                          <button
+                            key={prompt}
+                            type="button"
+                            onClick={() => appendQuickNote(activeActivity.id, prompt)}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                    </div>
                   </div>
-                  <textarea
-                    value={activeActivity ? runState.activityNotes[activeActivity.id] || '' : ''}
-                    onChange={(event) => {
-                      if (activeActivity) updateActivityNote(activeActivity.id, event.target.value);
-                    }}
-                    rows={7}
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
-                    placeholder="What worked, what dragged, who needs follow-up..."
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {activeActivity &&
-                      QUICK_NOTE_PROMPTS.map((prompt) => (
-                        <button
-                          key={prompt}
-                          onClick={() => appendQuickNote(activeActivity.id, prompt)}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-teal hover:text-teal"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
+                ) : (
+                  <div className="p-5 md:p-6">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      <ListChecks className="h-4 w-4" />
+                      Plan details
+                    </div>
+                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                      This is a read-only practice plan. Coaches control the live timer and post-session notes.
+                    </p>
                   </div>
-                </div>
+                )}
 
                 <aside className="border-t border-slate-200 bg-slate-50 p-5 lg:border-l lg:border-t-0 md:p-6">
                   <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -965,7 +1218,7 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                           ? ` · ${formatTime12Hour(nextActivity.plannedStartTime)}`
                           : ''}
                       </div>
-                      {nextActivity.notes && (
+                      {canManageSession && nextActivity.notes && (
                         <p className="mt-3 line-clamp-4 text-sm text-slate-600">
                           {nextActivity.notes}
                         </p>
@@ -986,10 +1239,13 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                         href={`/dashboard/plays/${activeActivity.linked_play_id}`}
                         className="block overflow-hidden rounded-2xl border border-slate-200 bg-white transition-colors hover:border-teal"
                       >
-                        <img
+                        <Image
                           src={activeActivity.linked_play_thumbnail_data_url}
                           alt={activeActivity.linked_play_name_snapshot || 'Linked play'}
+                          width={640}
+                          height={360}
                           className="h-40 w-full object-cover"
+                          unoptimized
                         />
                         <div className="p-3 text-sm font-semibold text-slate-800">
                           {activeActivity.linked_play_name_snapshot || 'View linked play'}
@@ -1033,7 +1289,9 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
                   return (
                     <button
                       key={activity.id}
+                      type="button"
                       onClick={() => jumpToActivity(index)}
+                      aria-current={isActive ? 'step' : undefined}
                       className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
                         isActive
                           ? 'border-teal bg-accent/5'
@@ -1076,85 +1334,100 @@ export function SessionRunMode({ sessionId }: SessionRunModeProps) {
             </div>
           </section>
 
+          {canManageSession && (
           <aside className="space-y-5">
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                Coach cues
-              </div>
-              {activeActivity?.notes ? (
-                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                  {activeActivity.notes}
-                </p>
-              ) : (
-                <p className="text-sm text-slate-500">No saved coaching notes for this block.</p>
-              )}
-
-              {activeActivity?.groups && activeActivity.groups.length > 0 && (
-                <div className="mt-5 space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                    Groups
-                  </div>
-                  {(activeActivity.groups as ActivityGroup[]).map((group, index) => (
-                    <div key={`${group.name}-${index}`} className="rounded-2xl bg-slate-50 p-3">
-                      <div className="font-semibold text-slate-900">
-                        {group.name || `Group ${index + 1}`}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {group.player_ids.length} assigned players
-                      </div>
-                    </div>
-                  ))}
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Coach cues
                 </div>
-              )}
-            </section>
-
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Session notes
-                </div>
-                <TimerReset className="h-4 w-4 text-slate-400" />
-              </div>
-              <textarea
-                value={runState.sessionNotes}
-                onChange={(event) => updateSessionNotes(event.target.value)}
-                rows={8}
-                className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
-                placeholder="Whole-practice observations, follow-ups, lineup notes..."
-              />
-            </section>
-
-            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-bold text-slate-950">Post-session summary</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Copies elapsed time, block status, and notes.
+                {activeActivity?.notes ? (
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                    {activeActivity.notes}
                   </p>
+                ) : (
+                  <p className="text-sm text-slate-500">No saved coaching notes for this block.</p>
+                )}
+
+                {activeActivity?.groups && activeActivity.groups.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      Groups
+                    </div>
+                    {(activeActivity.groups as ActivityGroup[]).map((group, index) => (
+                      <div key={`${group.name}-${index}`} className="rounded-2xl bg-slate-50 p-3">
+                        <div className="font-semibold text-slate-900">
+                          {group.name || `Group ${index + 1}`}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {group.player_ids.length} assigned players
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Session notes
+                  </div>
+                  <TimerReset className="h-4 w-4 text-slate-400" />
                 </div>
-                <Button variant="outline" size="icon-sm" onClick={handleCopySummary}>
-                  <ClipboardCopy className="h-4 w-4" />
-                </Button>
-              </div>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-                {runSummary}
-              </pre>
-              {copyStatus !== 'idle' && (
-                <p
-                  className={`mt-2 text-sm font-semibold ${
-                    copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
-                  }`}
-                >
-                  {copyStatus === 'copied'
-                    ? 'Summary copied.'
-                    : 'Clipboard unavailable in this browser.'}
-                </p>
-              )}
-            </section>
+                <textarea
+                  value={runState.sessionNotes}
+                  onChange={(event) => updateSessionNotes(event.target.value)}
+                  rows={8}
+                  className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal"
+                  placeholder="Whole-practice observations, follow-ups, lineup notes..."
+                />
+              </section>
+            )}
+
+            {canManageSession && (
+              <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold text-slate-950">Post-session summary</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Copies elapsed time, block status, and notes.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={handleCopySummary}
+                    aria-label="Copy post-session summary"
+                  >
+                    <ClipboardCopy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+                  {runSummary}
+                </pre>
+                {copyStatus !== 'idle' && (
+                  <p
+                    role={copyStatus === 'failed' ? 'alert' : 'status'}
+                    className={`mt-2 text-sm font-semibold ${
+                      copyStatus === 'copied' ? 'text-emerald-600' : 'text-red-600'
+                    }`}
+                  >
+                    {copyStatus === 'copied'
+                      ? 'Summary copied.'
+                      : 'Clipboard unavailable in this browser.'}
+                  </p>
+                )}
+              </section>
+            )}
           </aside>
+          )}
         </main>
       </div>
       </div>
+      {confirmDialog}
     </>
   );
 }

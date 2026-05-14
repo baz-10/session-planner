@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { useTeam } from '@/hooks/use-team';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole, Team } from '@/types/database';
+
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
 
 interface JoinTeamFormProps {
   onSuccess?: (team: Team) => void;
   showRoleSelect?: boolean;
-  defaultRole?: TeamRole;
+  defaultRole?: InviteJoinRole;
 }
 
 export function JoinTeamForm({
@@ -18,44 +21,64 @@ export function JoinTeamForm({
   const { joinTeamByCode } = useTeam();
 
   const [teamCode, setTeamCode] = useState('');
-  const [role, setRole] = useState<TeamRole>(defaultRole);
+  const [role, setRole] = useState<InviteJoinRole>(defaultRole);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setSuccess('');
-    setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, role);
-
-    if (!result.success) {
-      setError(result.error || 'Failed to join team');
-      setIsSubmitting(false);
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
       return;
     }
 
-    setSuccess(`Successfully joined ${result.team?.name}!`);
-    setTeamCode('');
-    setIsSubmitting(false);
+    setIsSubmitting(true);
 
-    if (result.team && onSuccess) {
-      onSuccess(result.team);
+    try {
+      const result = await joinTeamByCode(normalizedCode, role);
+
+      if (!result.success) {
+        setError(result.error || 'Failed to join team');
+        return;
+      }
+
+      setSuccess(`Successfully joined ${result.team?.name}!`);
+      setTeamCode('');
+
+      if (result.team && onSuccess) {
+        onSuccess(result.team);
+      }
+    } catch (error) {
+      console.error('Unexpected error joining team:', error);
+      setError(error instanceof Error ? error.message : 'Failed to join team');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" aria-busy={isSubmitting}>
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+        <div
+          role="alert"
+          className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm"
+        >
           {error}
         </div>
       )}
 
       {success && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
+        <div
+          role="status"
+          className="p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm"
+        >
           {success}
         </div>
       )}
@@ -67,9 +90,10 @@ export function JoinTeamForm({
         <input
           type="text"
           value={teamCode}
-          onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+          onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
           required
-          maxLength={6}
+          autoCapitalize="characters"
+          disabled={isSubmitting}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest font-mono"
           placeholder="ABC123"
         />
@@ -85,19 +109,23 @@ export function JoinTeamForm({
           </label>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as TeamRole)}
+            onChange={(e) => setRole(e.target.value as InviteJoinRole)}
+            disabled={isSubmitting}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="player">Player</option>
-            <option value="parent">Parent</option>
-            <option value="coach">Coach</option>
+            <option value="parent">Parent / Guardian</option>
           </select>
+          <p className="mt-1 text-sm text-gray-500">
+            Coaches should join as a player or parent first and ask a team admin to promote them.
+          </p>
         </div>
       )}
 
       <button
         type="submit"
-        disabled={isSubmitting || teamCode.length !== 6}
+        disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+        aria-busy={isSubmitting}
         className="w-full py-2 bg-primary text-white rounded-md hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? 'Joining...' : 'Join Team'}

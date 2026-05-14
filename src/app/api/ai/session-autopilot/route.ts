@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/auth/supabase-server';
+import { parseJsonObjectBody } from '@/lib/api/json-body';
 import { buildSessionAutopilotPlan } from '@/lib/ai/session-autopilot-service';
 import type {
   SessionAutopilotBuildInput,
@@ -12,7 +13,10 @@ const DEFAULT_ATTENDANCE_RATE = 82;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as SessionAutopilotRequest;
+    const parsedBody = await parseJsonObjectBody<SessionAutopilotRequest>(request);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.body;
 
     if (!body?.teamId) {
       return NextResponse.json(
@@ -39,6 +43,7 @@ export async function POST(request: NextRequest) {
       .select('role')
       .eq('team_id', body.teamId)
       .eq('user_id', user.id)
+      .neq('status', 'inactive')
       .maybeSingle();
 
     if (membershipError || !membership || !COACH_ROLES.has(membership.role)) {

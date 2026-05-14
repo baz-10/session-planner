@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Megaphone } from 'lucide-react';
 import { usePosts } from '@/hooks/use-posts';
 import { useAuth } from '@/contexts/auth-context';
 import { PostCard } from './post-card';
@@ -30,6 +31,7 @@ export function PostFeed() {
   const { getPosts } = usePosts();
   const [posts, setPosts] = useState<PostWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const LIMIT = 20;
@@ -40,37 +42,57 @@ export function PostFeed() {
     (teamMembership?.role === 'player' && currentTeam?.settings?.allow_player_posts) ||
     (teamMembership?.role === 'parent' && currentTeam?.settings?.allow_parent_posts);
 
-  const loadPosts = useCallback(async (reset = false) => {
-    if (!currentTeam) return;
-
-    const newOffset = reset ? 0 : offset;
-    setIsLoading(true);
-
-    const data = await getPosts(LIMIT, newOffset);
-
-    if (reset) {
-      setPosts(data);
-    } else {
-      setPosts((prev) => [...prev, ...data]);
+  const loadPosts = useCallback(async (nextOffset = 0, reset = false) => {
+    if (!currentTeam) {
+      setPosts([]);
+      setHasMore(false);
+      setOffset(0);
+      setIsLoading(false);
+      return;
     }
 
-    setHasMore(data.length === LIMIT);
-    setOffset(newOffset + data.length);
-    setIsLoading(false);
-  }, [currentTeam, getPosts, offset]);
+    setIsLoading(true);
+    setLoadError('');
+
+    try {
+      const result = await getPosts(LIMIT, nextOffset);
+      const data = result.posts;
+
+      if (reset) {
+        setPosts(data);
+      } else {
+        setPosts((prev) => [...prev, ...data]);
+      }
+
+      setHasMore(result.success && data.length === LIMIT);
+      setOffset(nextOffset + data.length);
+      if (!result.success) {
+        setLoadError(result.error || 'Team feed could not load. Check your connection and try again.');
+      }
+    } catch (error) {
+      console.error('Unexpected error loading team feed:', error);
+      if (reset) {
+        setPosts([]);
+        setOffset(0);
+      }
+      setHasMore(false);
+      setLoadError('Team feed could not load. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentTeam, getPosts]);
 
   useEffect(() => {
-    loadPosts(true);
-  }, [currentTeam?.id]);
+    void loadPosts(0, true);
+  }, [currentTeam?.id, loadPosts]);
 
   const handleRefresh = () => {
-    setOffset(0);
-    loadPosts(true);
+    void loadPosts(0, true);
   };
 
   const handleLoadMore = () => {
     if (!isLoading && hasMore) {
-      loadPosts(false);
+      void loadPosts(offset, false);
     }
   };
 
@@ -87,10 +109,25 @@ export function PostFeed() {
       {/* Create post form */}
       {canPost && <CreatePostForm onSuccess={handleRefresh} />}
 
+      {loadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="mt-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Posts list */}
-      {posts.length === 0 && !isLoading ? (
+      {posts.length === 0 && !isLoading && !loadError ? (
         <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-6xl mb-4">📢</div>
+          <div className="mb-4 flex justify-center text-primary">
+            <Megaphone className="h-12 w-12" aria-hidden="true" />
+          </div>
           <h2 className="text-xl font-semibold mb-2">No Posts Yet</h2>
           <p className="text-gray-600">
             {canPost
@@ -98,7 +135,7 @@ export function PostFeed() {
               : 'There are no posts to show yet.'}
           </p>
         </div>
-      ) : (
+      ) : posts.length > 0 ? (
         <div className="space-y-4">
           {posts.map((post) => (
             <PostCard key={post.id} post={post} onUpdate={handleRefresh} />
@@ -108,8 +145,10 @@ export function PostFeed() {
           {hasMore && (
             <div className="flex justify-center py-4">
               <button
+                type="button"
                 onClick={handleLoadMore}
                 disabled={isLoading}
+                aria-busy={isLoading}
                 className="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
               >
                 {isLoading ? 'Loading...' : 'Load More'}
@@ -117,7 +156,7 @@ export function PostFeed() {
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Loading state */}
       {isLoading && posts.length === 0 && (

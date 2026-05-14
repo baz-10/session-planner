@@ -1184,78 +1184,85 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
 
     setIsSaving(true);
 
-    let thumbnailDataUrl = play.thumbnailDataUrl;
     try {
-      if (play.courtTemplate === 'half_court') {
-        thumbnailDataUrl =
-          createPlayDiagramDataUrl({
-            diagram: play.diagram,
-            courtTemplate: play.courtTemplate,
-            theme: editorTheme,
-            phaseIndex: safeActivePhaseIndex,
-            idPrefix: `play-thumb-${play.id || 'new'}-${safeActivePhaseIndex}-${editorTheme}`,
-          }) || play.thumbnailDataUrl;
-      } else {
-        thumbnailDataUrl =
-          stageRef.current?.toDataURL({ pixelRatio: 0.5, mimeType: 'image/png' }) ||
-          play.thumbnailDataUrl;
+      let thumbnailDataUrl = play.thumbnailDataUrl;
+      try {
+        if (play.courtTemplate === 'half_court') {
+          thumbnailDataUrl =
+            createPlayDiagramDataUrl({
+              diagram: play.diagram,
+              courtTemplate: play.courtTemplate,
+              theme: editorTheme,
+              phaseIndex: safeActivePhaseIndex,
+              idPrefix: `play-thumb-${play.id || 'new'}-${safeActivePhaseIndex}-${editorTheme}`,
+            }) || play.thumbnailDataUrl;
+        } else {
+          thumbnailDataUrl =
+            stageRef.current?.toDataURL({ pixelRatio: 0.5, mimeType: 'image/png' }) ||
+            play.thumbnailDataUrl;
+        }
+      } catch (error) {
+        console.error('Unable to generate play thumbnail:', error);
+        showToast('Preview image unavailable', 'Saved play without refreshing thumbnail image.', 'warning');
       }
-    } catch (error) {
-      console.error('Unable to generate play thumbnail:', error);
-      showToast('Preview image unavailable', 'Saved play without refreshing thumbnail image.', 'warning');
-    }
 
-    if (play.id) {
-      const nextVersion = hasUnsavedChanges ? play.version + 1 : play.version;
-      const result = await updatePlay(play.id, {
+      if (play.id) {
+        const nextVersion = hasUnsavedChanges ? play.version + 1 : play.version;
+        const result = await updatePlay(play.id, {
+          name: play.name.trim(),
+          description: play.description.trim() || null,
+          play_type: play.playType,
+          court_template: play.courtTemplate,
+          tags: allTags,
+          diagram: play.diagram,
+          thumbnail_data_url: thumbnailDataUrl,
+          version: nextVersion,
+        });
+
+        if (!result.success) {
+          showToast('Save failed', result.error || 'Failed to save play', 'error');
+          return;
+        }
+
+        setPlay((prev) => ({
+          ...prev,
+          version: nextVersion,
+          thumbnailDataUrl,
+        }));
+        setHasUnsavedChanges(false);
+        showToast('Play saved', 'Your updates are now available in the play library.', 'success');
+        return;
+      }
+
+      const result = await createPlay({
         name: play.name.trim(),
-        description: play.description.trim() || null,
+        description: play.description.trim() || undefined,
         play_type: play.playType,
         court_template: play.courtTemplate,
         tags: allTags,
         diagram: play.diagram,
         thumbnail_data_url: thumbnailDataUrl,
-        version: nextVersion,
+        version: 1,
       });
 
-      setIsSaving(false);
-
-      if (!result.success) {
-        showToast('Save failed', result.error || 'Failed to save play', 'error');
+      if (!result.success || !result.play) {
+        showToast('Create failed', result.error || 'Failed to create play', 'error');
         return;
       }
 
-      setPlay((prev) => ({
-        ...prev,
-        version: nextVersion,
-        thumbnailDataUrl,
-      }));
       setHasUnsavedChanges(false);
-      showToast('Play saved', 'Your updates are now available in the play library.', 'success');
-      return;
+      showToast('Play created', 'Opening your new play.', 'success');
+      router.replace(`/dashboard/plays/${result.play.id}`);
+    } catch (error) {
+      console.error('Unexpected error saving play:', error);
+      showToast(
+        play.id ? 'Save failed' : 'Create failed',
+        error instanceof Error ? error.message : 'Unable to save this play.',
+        'error'
+      );
+    } finally {
+      setIsSaving(false);
     }
-
-    const result = await createPlay({
-      name: play.name.trim(),
-      description: play.description.trim() || undefined,
-      play_type: play.playType,
-      court_template: play.courtTemplate,
-      tags: allTags,
-      diagram: play.diagram,
-      thumbnail_data_url: thumbnailDataUrl,
-      version: 1,
-    });
-
-    setIsSaving(false);
-
-    if (!result.success || !result.play) {
-      showToast('Create failed', result.error || 'Failed to create play', 'error');
-      return;
-    }
-
-    setHasUnsavedChanges(false);
-    showToast('Play created', 'Opening your new play.', 'success');
-    router.replace(`/dashboard/plays/${result.play.id}`);
   }, [
     play,
     updatePlay,
@@ -1393,8 +1400,10 @@ export function PlayEditor({ playId, initialTemplateId }: PlayEditorProps) {
               Export
             </button>
             <button
+              type="button"
               onClick={save}
               disabled={isSaving || isLoading || !canEdit || isMobile || playbackState.isPlaying}
+              aria-busy={isSaving || isLoading}
               className="rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-navy-light disabled:opacity-50"
             >
               {isSaving ? 'Saving...' : play.id ? 'Save play' : 'Create play'}

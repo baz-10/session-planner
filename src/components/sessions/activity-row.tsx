@@ -130,19 +130,19 @@ export function ActivityRow({
     (playerId) => playerLabelsById[playerId] || `Player ${playerId.slice(0, 4)}`
   );
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onUpdate({
       name: editName.trim() || activity.name,
       duration: parseInt(editDuration, 10) || activity.duration,
     });
     setIsEditing(false);
-  };
+  }, [activity.duration, activity.name, editDuration, editName, onUpdate]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setEditName(activity.name);
     setEditDuration(activity.duration.toString());
     setIsEditing(false);
-  };
+  }, [activity.duration, activity.name]);
 
   const handleCategoryChange = (categoryId: string) => {
     const nextCategoryId = categoryId || null;

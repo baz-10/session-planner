@@ -1,69 +1,185 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
+  AlertCircle,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Copy,
   Edit3,
   MapPin,
   PlayCircle,
+  RefreshCw,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSessions } from '@/hooks/use-sessions';
 import { MobileEmptyState, MobileListCard, MobileLoadingState } from '@/components/mobile';
+import { useConfirmDialog, useTextPromptDialog } from '@/components/ui';
 import { formatDuration, formatTime12Hour } from '@/lib/utils/time';
 import type { Session } from '@/types/database';
+
+type SessionListActionMessage = {
+  type: 'success' | 'error';
+  text: string;
+};
+
+type PendingSessionAction = {
+  id: string;
+  type: 'delete' | 'duplicate';
+};
 
 export function SessionsList() {
   const { currentTeam, teamMemberships, isLoading: authLoading } = useAuth();
   const { getSessions, deleteSession, duplicateSession } = useSessions();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [actionMessage, setActionMessage] = useState<SessionListActionMessage | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingSessionAction | null>(null);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const { promptForText, textPromptDialog } = useTextPromptDialog();
   const currentMembership = teamMemberships.find((membership) => membership.team.id === currentTeam?.id);
-  const canCreateSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const canManageSessions = currentMembership?.role === 'coach' || currentMembership?.role === 'admin';
+  const hasPendingAction = pendingAction !== null;
+  const sessionPrimaryActionLabel = canManageSessions ? 'Run live' : 'View plan';
+
+  const loadSessions = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError('');
+    setActionMessage(null);
+
+    try {
+      const data = await getSessions({ throwOnError: true });
+      setSessions(data);
+    } catch (error) {
+      console.error('Error loading practice plans:', error);
+      setSessions([]);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Practice plans could not load. Check your connection and try again.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getSessions]);
 
   // Reload sessions when currentTeam changes
   useEffect(() => {
     if (currentTeam) {
-      loadSessions();
+      void loadSessions();
     } else if (!authLoading) {
       // No team and auth is done loading - show empty state
       setIsLoading(false);
     }
-  }, [currentTeam, authLoading]);
-
-  const loadSessions = async () => {
-    setIsLoading(true);
-    const data = await getSessions();
-    setSessions(data);
-    setIsLoading(false);
-  };
+  }, [currentTeam, authLoading, loadSessions]);
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    if (hasPendingAction) return;
 
-    const result = await deleteSession(id);
-    if (result.success) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (!canManageSessions) {
+      setActionMessage({
+        type: 'error',
+        text: 'Only coaches or admins can delete session plans for this team.',
+      });
+      return;
+    }
+
+    const confirmed = await confirmAction({
+      title: 'Delete practice plan?',
+      description: `"${name}" will be removed from this team. This cannot be undone.`,
+      confirmLabel: 'Delete plan',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    setPendingAction({ id, type: 'delete' });
+    try {
+      const result = await deleteSession(id);
+      if (result.success) {
+        setSessions((prev) => prev.filter((s) => s.id !== id));
+        setActionMessage({
+          type: 'success',
+          text: `"${name}" was deleted.`,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: `Failed to delete plan: ${result.error || 'Please try again.'}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting practice plan:', error);
+      setActionMessage({
+        type: 'error',
+        text: 'Failed to delete plan. Check your connection and try again.',
+      });
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleDuplicate = async (id: string, name: string) => {
-    const newName = prompt('Enter name for the copy:', `${name} (Copy)`);
+    if (hasPendingAction) return;
+
+    if (!canManageSessions) {
+      setActionMessage({
+        type: 'error',
+        text: 'Only coaches or admins can duplicate session plans for this team.',
+      });
+      return;
+    }
+
+    const newName = await promptForText({
+      title: 'Duplicate practice plan',
+      description: 'Name the copied plan before it is added to this team.',
+      label: 'Plan name',
+      defaultValue: `${name} (Copy)`,
+      confirmLabel: 'Create copy',
+      validate: (value) => (value ? null : 'Plan name is required.'),
+    });
+
     if (!newName) return;
 
-    const result = await duplicateSession(id, newName);
-    if (result.success) {
-      loadSessions();
+    setPendingAction({ id, type: 'duplicate' });
+    try {
+      const result = await duplicateSession(id, newName);
+      if (result.success) {
+        await loadSessions();
+        setActionMessage({
+          type: 'success',
+          text: `"${newName}" was created.`,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: `Failed to duplicate plan: ${result.error || 'Please try again.'}`,
+        });
+      }
+    } catch (error) {
+      console.error('Error duplicating practice plan:', error);
+      setActionMessage({
+        type: 'error',
+        text: 'Failed to duplicate plan. Check your connection and try again.',
+      });
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const formatDate = (date: string | null) => {
     if (!date) return '-';
-    return new Date(date).toLocaleDateString('en-US', {
+
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? new Date(`${date}T00:00:00`)
+      : new Date(date);
+
+    return parsedDate.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -90,6 +206,26 @@ export function SessionsList() {
     );
   }
 
+  if (loadError) {
+    return (
+      <MobileEmptyState
+        icon={<AlertCircle className="h-8 w-8" />}
+        title="Practice plans did not load"
+        description={loadError}
+        action={
+          <button
+            type="button"
+            onClick={() => void loadSessions()}
+            className="btn-accent inline-flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try again
+          </button>
+        }
+      />
+    );
+  }
+
   if (sessions.length === 0) {
     return (
       <MobileEmptyState
@@ -97,7 +233,7 @@ export function SessionsList() {
         title="No practice plans yet"
         description="Create your first practice plan to start organizing your sessions with timed activities."
         action={
-          canCreateSessions ? (
+          canManageSessions ? (
             <Link href="/dashboard/sessions/new" className="btn-accent">
               Create Your First Plan
             </Link>
@@ -113,20 +249,56 @@ export function SessionsList() {
 
   return (
     <>
+      {actionMessage && (
+        <div
+          role={actionMessage.type === 'error' ? 'alert' : 'status'}
+          className={`mb-4 flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-sm ${
+            actionMessage.type === 'error'
+              ? 'border-red-200 bg-red-50 text-red-950'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-950'
+          }`}
+        >
+          {actionMessage.type === 'error' ? (
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+          )}
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-6">
+            {actionMessage.text}
+          </p>
+          <button
+            type="button"
+            onClick={() => setActionMessage(null)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-current/70 transition hover:bg-black/5 hover:text-current focus:outline-none focus:ring-2 focus:ring-current/20"
+            aria-label="Dismiss session list message"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="space-y-3 md:hidden">
         {sessions.map((session) => (
           <MobileListCard key={session.id}>
             <div className="flex items-start gap-3">
               <Link
-                href={`/dashboard/sessions/${session.id}`}
+                href={
+                  canManageSessions
+                    ? `/dashboard/sessions/${session.id}`
+                    : `/dashboard/sessions/${session.id}/run`
+                }
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-navy text-teal-light"
-                aria-label={`Edit ${session.name}`}
+                aria-label={`${canManageSessions ? 'Edit' : 'View'} ${session.name}`}
               >
                 <ClipboardIcon />
               </Link>
               <div className="min-w-0 flex-1">
                 <Link
-                  href={`/dashboard/sessions/${session.id}`}
+                  href={
+                    canManageSessions
+                      ? `/dashboard/sessions/${session.id}`
+                      : `/dashboard/sessions/${session.id}/run`
+                  }
                   className="line-clamp-2 text-[17px] font-extrabold leading-5 text-navy"
                 >
                   {session.name}
@@ -156,37 +328,49 @@ export function SessionsList() {
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-[1fr_auto_auto_auto] gap-2">
+            <div
+              className={`mt-4 grid gap-2 ${
+                canManageSessions ? 'grid-cols-[1fr_auto_auto_auto]' : 'grid-cols-1'
+              }`}
+            >
               <Link
                 href={`/dashboard/sessions/${session.id}/run`}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-teal px-4 text-sm font-extrabold text-white"
               >
                 <PlayCircle className="h-4 w-4" />
-                Run live
+                {sessionPrimaryActionLabel}
               </Link>
-              <Link
-                href={`/dashboard/sessions/${session.id}`}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
-                aria-label={`Edit ${session.name}`}
-              >
-                <Edit3 className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => handleDuplicate(session.id, session.name)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
-                aria-label={`Duplicate ${session.name}`}
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(session.id, session.name)}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600"
-                aria-label={`Delete ${session.name}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canManageSessions && (
+                <>
+                  <Link
+                    href={`/dashboard/sessions/${session.id}`}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy"
+                    aria-label={`Edit ${session.name}`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleDuplicate(session.id, session.name)}
+                    disabled={hasPendingAction}
+                    aria-busy={pendingAction?.id === session.id && pendingAction.type === 'duplicate'}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-navy disabled:cursor-wait disabled:opacity-50"
+                    aria-label={`Duplicate ${session.name}`}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(session.id, session.name)}
+                    disabled={hasPendingAction}
+                    aria-busy={pendingAction?.id === session.id && pendingAction.type === 'delete'}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600 disabled:cursor-wait disabled:opacity-50"
+                    aria-label={`Delete ${session.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
             </div>
           </MobileListCard>
         ))}
@@ -221,7 +405,11 @@ export function SessionsList() {
             <tr key={session.id} className="hover:bg-whisper transition-colors">
               <td className="px-6 py-4 whitespace-nowrap">
                 <Link
-                  href={`/dashboard/sessions/${session.id}`}
+                  href={
+                    canManageSessions
+                      ? `/dashboard/sessions/${session.id}`
+                      : `/dashboard/sessions/${session.id}/run`
+                  }
                   className="text-navy hover:text-teal font-medium transition-colors"
                 >
                   {session.name}
@@ -251,37 +439,44 @@ export function SessionsList() {
                   <Link
                     href={`/dashboard/sessions/${session.id}/run`}
                     className="p-2 text-text-secondary hover:text-teal hover:bg-whisper rounded-md transition-colors"
-                    title="Run live"
+                    title={sessionPrimaryActionLabel}
+                    aria-label={`${sessionPrimaryActionLabel} ${session.name}`}
                   >
                     <PlayCircle className="h-5 w-5" />
                   </Link>
-                  <Link
-                    href={`/dashboard/sessions/${session.id}`}
-                    className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
-                    title="Edit"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </Link>
-                  <button
-                    onClick={() => handleDuplicate(session.id, session.name)}
-                    className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
-                    title="Duplicate"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(session.id, session.name)}
-                    className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                    title="Delete"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  {canManageSessions && (
+                    <>
+                      <Link
+                        href={`/dashboard/sessions/${session.id}`}
+                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors"
+                        title="Edit"
+                      >
+                        <Edit3 className="h-5 w-5" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicate(session.id, session.name)}
+                        disabled={hasPendingAction}
+                        aria-busy={pendingAction?.id === session.id && pendingAction.type === 'duplicate'}
+                        className="p-2 text-text-secondary hover:text-navy hover:bg-whisper rounded-md transition-colors disabled:cursor-wait disabled:opacity-50"
+                        title="Duplicate"
+                        aria-label={`Duplicate ${session.name}`}
+                      >
+                        <Copy className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(session.id, session.name)}
+                        disabled={hasPendingAction}
+                        aria-busy={pendingAction?.id === session.id && pendingAction.type === 'delete'}
+                        className="p-2 text-text-secondary hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:cursor-wait disabled:opacity-50"
+                        title="Delete"
+                        aria-label={`Delete ${session.name}`}
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </td>
             </tr>
@@ -289,6 +484,8 @@ export function SessionsList() {
         </tbody>
         </table>
       </div>
+      {confirmDialog}
+      {textPromptDialog}
     </>
   );
 }

@@ -5,19 +5,37 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { useTeam } from '@/hooks/use-team';
+import { storePendingParentTeamSetupId } from '@/lib/utils/parent-team-setup';
+import { normalizeTeamCode, TEAM_CODE_LENGTH } from '@/lib/utils/team-code';
 import type { TeamRole } from '@/types/database';
+
+type InviteJoinRole = Extract<TeamRole, 'player' | 'parent'>;
+const INVITE_JOIN_ROLES = new Set<string>(['player', 'parent']);
+
+function getRoleFromUrl(value: string | null): InviteJoinRole {
+  return INVITE_JOIN_ROLES.has(value || '') ? (value as InviteJoinRole) : 'player';
+}
 
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const codeFromUrl = searchParams.get('code');
-  const joinRedirectTarget = codeFromUrl ? `/join?code=${codeFromUrl}` : '/join';
+  const codeFromUrl = normalizeTeamCode(searchParams.get('code') || '');
+  const roleParam = searchParams.get('role');
+  const hasExplicitInviteRole = INVITE_JOIN_ROLES.has(roleParam || '');
+  const roleFromUrl = getRoleFromUrl(roleParam);
+  const joinRedirectTarget = (() => {
+    const params = new URLSearchParams();
+    if (codeFromUrl) params.set('code', codeFromUrl);
+    if (hasExplicitInviteRole) params.set('role', roleFromUrl);
+    const query = params.toString();
+    return query ? `/join?${query}` : '/join';
+  })();
 
   const { user, isLoading: authLoading } = useAuth();
   const { joinTeamByCode } = useTeam();
 
-  const [teamCode, setTeamCode] = useState(codeFromUrl || '');
-  const [role, setRole] = useState<TeamRole>('player');
+  const [teamCode, setTeamCode] = useState(codeFromUrl);
+  const [role, setRole] = useState<InviteJoinRole>(roleFromUrl);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,35 +43,67 @@ function JoinPageContent() {
   // Pre-fill code from URL
   useEffect(() => {
     if (codeFromUrl) {
-      setTeamCode(codeFromUrl.toUpperCase());
+      setTeamCode(codeFromUrl);
     }
   }, [codeFromUrl]);
 
+  useEffect(() => {
+    setRole(roleFromUrl);
+  }, [roleFromUrl]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setError('');
     setSuccess('');
-    setIsSubmitting(true);
 
-    const result = await joinTeamByCode(teamCode, role);
-
-    if (!result.success) {
-      setError(result.error || 'Failed to join team');
-      setIsSubmitting(false);
+    const normalizedCode = normalizeTeamCode(teamCode);
+    if (normalizedCode.length !== TEAM_CODE_LENGTH) {
+      setError('Please enter a valid 6-character team code.');
       return;
     }
 
-    setSuccess(`Successfully joined ${result.team?.name}! Redirecting...`);
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 1500);
+    setIsSubmitting(true);
+
+    try {
+      const result = await joinTeamByCode(normalizedCode, role);
+
+      if (!result.success) {
+        setError(result.error || 'Failed to join team');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const parentSetupTeamId = role === 'parent' ? result.team?.id : null;
+      if (parentSetupTeamId && user?.id) {
+        storePendingParentTeamSetupId(user.id, parentSetupTeamId);
+      }
+
+      setSuccess(
+        role === 'parent'
+          ? `Successfully joined ${result.team?.name}! Redirecting to add your players...`
+          : `Successfully joined ${result.team?.name}! Redirecting...`
+      );
+      setTimeout(() => {
+        router.push(
+          parentSetupTeamId
+            ? `/onboarding?parentTeamId=${encodeURIComponent(parentSetupTeamId)}`
+            : '/dashboard'
+        );
+      }, 1500);
+    } catch (submitError) {
+      console.error('Unexpected error joining team from invite:', submitError);
+      setError('Failed to join team. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col items-center gap-4" role="status" aria-label="Loading join page">
+          <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
           <p className="text-text-secondary">Loading...</p>
         </div>
       </div>
@@ -84,6 +134,11 @@ function JoinPageContent() {
               <div className="bg-teal-glow rounded-lg p-4 mb-6">
                 <p className="text-sm text-teal-dark">Team code ready:</p>
                 <p className="text-2xl font-mono font-bold text-navy tracking-widest">{codeFromUrl}</p>
+                {roleFromUrl === 'parent' && (
+                  <p className="mt-2 text-sm font-semibold text-teal-dark">
+                    Parent / Guardian invite
+                  </p>
+                )}
               </div>
             )}
 
@@ -126,30 +181,31 @@ function JoinPageContent() {
           </p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
+            <div role="alert" className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm animate-fade-in">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm animate-fade-in">
+            <div role="status" className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm animate-fade-in">
               {success}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isSubmitting}>
             <div className="form-group">
               <label htmlFor="teamCode" className="label">Team Code</label>
               <input
                 id="teamCode"
                 type="text"
                 value={teamCode}
-                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                onChange={(e) => setTeamCode(normalizeTeamCode(e.target.value))}
                 required
-                maxLength={6}
+                autoCapitalize="characters"
                 className="input text-center text-2xl tracking-widest font-mono"
                 placeholder="ABC123"
                 autoComplete="off"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -158,25 +214,29 @@ function JoinPageContent() {
               <select
                 id="role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as TeamRole)}
+                onChange={(e) => setRole(e.target.value as InviteJoinRole)}
                 className="input"
+                disabled={isSubmitting || hasExplicitInviteRole}
               >
                 <option value="player">Player</option>
                 <option value="parent">Parent / Guardian</option>
               </select>
               <p className="text-xs text-text-muted mt-1">
-                Coaches should contact the team admin directly
+                {hasExplicitInviteRole
+                  ? 'Role selected from your team invite.'
+                  : 'Coaches should contact the team admin directly.'}
               </p>
             </div>
 
             <button
               type="submit"
-              disabled={isSubmitting || teamCode.length !== 6}
+              disabled={isSubmitting || teamCode.length !== TEAM_CODE_LENGTH}
+              aria-busy={isSubmitting}
               className="btn-primary w-full py-3"
             >
               {isSubmitting ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -204,8 +264,8 @@ export default function JoinPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
+          <div className="flex flex-col items-center gap-4" role="status" aria-label="Loading join page">
+            <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" aria-hidden="true" />
             <p className="text-text-secondary">Loading...</p>
           </div>
         </div>

@@ -24,31 +24,49 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
   const [playType, setPlayType] = useState<string>('');
   const [courtTemplate, setCourtTemplate] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   const loadPlays = useCallback(async () => {
     setIsLoading(true);
-    const data = await getPlays({
-      playType: (playType || undefined) as PlayType | undefined,
-      courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
-      tag: selectedTag || undefined,
-    });
-    setPlays(data);
-    setIsLoading(false);
+    setLoadError('');
+    try {
+      const data = await getPlays(
+        {
+          playType: (playType || undefined) as PlayType | undefined,
+          courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
+          tag: selectedTag || undefined,
+        },
+        { throwOnError: true }
+      );
+      setPlays(data);
+    } catch (error) {
+      console.error('Error loading play selector library:', error);
+      setPlays([]);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load play library.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [getPlays, playType, courtTemplate, selectedTag]);
 
   const loadTagOptions = useCallback(async () => {
-    const data = await getPlays();
-    const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
-      a.localeCompare(b)
-    );
-    setTagOptions(tags);
+    try {
+      const data = await getPlays({}, { throwOnError: true });
+      const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
+        a.localeCompare(b)
+      );
+      setTagOptions(tags);
+    } catch (error) {
+      console.error('Error loading play selector tags:', error);
+      setTagOptions([]);
+    }
   }, [getPlays]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadPlays();
     void loadTagOptions();
-  }, [isOpen, loadPlays, loadTagOptions]);
+  }, [isOpen, loadPlays, loadTagOptions, reloadKey]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,15 +78,23 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
 
     const timeout = setTimeout(async () => {
       setIsLoading(true);
-      const result = await searchPlays(searchQuery);
-      const filtered = result.filter((play) => {
-        if (playType && play.play_type !== playType) return false;
-        if (courtTemplate && play.court_template !== courtTemplate) return false;
-        if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
-        return true;
-      });
-      setPlays(filtered);
-      setIsLoading(false);
+      setLoadError('');
+      try {
+        const result = await searchPlays(searchQuery, { throwOnError: true });
+        const filtered = result.filter((play) => {
+          if (playType && play.play_type !== playType) return false;
+          if (courtTemplate && play.court_template !== courtTemplate) return false;
+          if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
+          return true;
+        });
+        setPlays(filtered);
+      } catch (error) {
+        console.error('Error searching play selector library:', error);
+        setPlays([]);
+        setLoadError(error instanceof Error ? error.message : 'Failed to search play library.');
+      } finally {
+        setIsLoading(false);
+      }
     }, 250);
 
     return () => clearTimeout(timeout);
@@ -145,6 +171,17 @@ export function PlaySelectorModal({ isOpen, onClose, onSelect }: PlaySelectorMod
           {isLoading ? (
             <div className="flex items-center justify-center h-40">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : loadError ? (
+            <div className="text-center py-10 text-gray-500">
+              <p>{loadError}</p>
+              <button
+                type="button"
+                onClick={() => setReloadKey((value) => value + 1)}
+                className="mt-3 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-md"
+              >
+                Retry library
+              </button>
             </div>
           ) : plays.length === 0 ? (
             <div className="text-center py-10 text-gray-500">No plays found.</div>

@@ -3,12 +3,18 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  CHAT_ATTACHMENT_EXTENSIONS,
+  CHAT_ATTACHMENT_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import type {
   Conversation,
   ConversationParticipant,
   Message,
   Profile,
-  ChatType,
   MessageType,
   MessageMetadata,
   CreateMessageInput,
@@ -22,11 +28,97 @@ interface ConversationWithDetails extends Conversation {
 }
 
 interface ParticipantWithProfile extends ConversationParticipant {
-  user: Profile;
+  user: Profile | null;
 }
 
 interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
+}
+
+interface TeamChatResult {
+  success: boolean;
+  conversation?: Conversation;
+  error?: string;
+}
+
+interface DirectChatResult {
+  success: boolean;
+  conversation?: Conversation;
+  error?: string;
+}
+
+interface ChatActionResult {
+  success: boolean;
+  error?: string;
+}
+
+interface ChatLoadOptions {
+  throwOnError?: boolean;
+}
+
+const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_MESSAGE_CHARACTERS = 2000;
+const CHAT_ATTACHMENT_BUCKET = 'chat-attachments';
+const SIGNED_CHAT_ATTACHMENT_URL_SECONDS = 60 * 60;
+const CHAT_LIST_LOAD_ERROR = 'Conversations could not load. Check your connection and try again.';
+const CHAT_MESSAGES_LOAD_ERROR = 'Messages could not load. Check your connection and try again.';
+const TEAM_CHAT_CREATE_ERROR = 'Team chat could not be opened. Refresh and try again.';
+const CHAT_READ_STATUS_ERROR = 'Messages loaded, but read status could not update. Refresh and try again.';
+const DIRECT_CHAT_CREATE_ERROR =
+  'Direct message could not be opened. Make sure this person is still on the selected team.';
+const CHAT_ATTACHMENT_SCOPE_ERROR =
+  'Chat attachment access could not be verified. Refresh conversations and try again.';
+const CHAT_MUTE_STATUS_ERROR =
+  'Conversation notification setting could not be updated. Refresh and try again.';
+const CHAT_LEAVE_ERROR = 'Conversation could not be left. Refresh conversations and try again.';
+const CHAT_PARTICIPATION_STALE_ERROR =
+  'This conversation membership is no longer available. Refresh conversations and try again.';
+
+function getSafeAttachmentExtension(file: File) {
+  return getSafeFileExtension(file, CHAT_ATTACHMENT_EXTENSIONS);
+}
+
+function createAttachmentObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
+}
+
+function validateChatAttachment(file: File): string | null {
+  if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+    return 'Attachments must be 10 MB or smaller.';
+  }
+
+  if (!isTrustedAttachmentFile(file, CHAT_ATTACHMENT_MIME_TYPES, CHAT_ATTACHMENT_EXTENSIONS)) {
+    return 'Attachments must be an image, PDF, Word document, or document file.';
+  }
+
+  return null;
+}
+
+function getChatAttachmentUploadError(error: { message?: string; statusCode?: string | number } | null) {
+  const message = error?.message?.toLowerCase() || '';
+  const statusCode = String(error?.statusCode || '');
+
+  if (statusCode === '404' || message.includes('bucket not found')) {
+    return 'Chat attachments are not configured yet. Apply the latest Supabase storage migrations and try again.';
+  }
+
+  if (
+    statusCode === '401' ||
+    statusCode === '403' ||
+    message.includes('row-level security') ||
+    message.includes('not authorized') ||
+    message.includes('unauthorized') ||
+    message.includes('permission')
+  ) {
+    return 'You do not have permission to upload chat attachments for this team. Refresh your team access and try again.';
+  }
+
+  return 'File failed to upload. Check your connection and try again.';
 }
 
 export function useChat() {
@@ -35,10 +127,45 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
+  const attachSignedAttachmentUrls = useCallback(
+    async (messages: MessageWithSender[]): Promise<MessageWithSender[]> => {
+      return Promise.all(
+        messages.map(async (message) => {
+          if (message.type !== 'image' && message.type !== 'file') {
+            return message;
+          }
+
+          const metadata = message.metadata || {};
+          if (!metadata.file_path) {
+            return message;
+          }
+
+          const { data, error } = await supabase.storage
+            .from(metadata.file_bucket || CHAT_ATTACHMENT_BUCKET)
+            .createSignedUrl(metadata.file_path, SIGNED_CHAT_ATTACHMENT_URL_SECONDS);
+
+          if (error || !data?.signedUrl) {
+            console.error('Error creating signed chat attachment URL:', error);
+            return message;
+          }
+
+          return {
+            ...message,
+            metadata: {
+              ...metadata,
+              file_url: data.signedUrl,
+            },
+          };
+        })
+      );
+    },
+    [supabase]
+  );
+
   /**
    * Get all conversations for the current user
    */
-  const getConversations = useCallback(async (): Promise<ConversationWithDetails[]> => {
+  const getConversations = useCallback(async (options: ChatLoadOptions = {}): Promise<ConversationWithDetails[]> => {
     if (!user) return [];
 
     // Get conversations where user is a participant
@@ -47,7 +174,15 @@ export function useChat() {
       .select('conversation_id')
       .eq('user_id', user.id);
 
-    if (partError || !participations?.length) {
+    if (partError) {
+      console.error('Error fetching conversation participation:', partError);
+      if (options.throwOnError) {
+        throw new Error(CHAT_LIST_LOAD_ERROR);
+      }
+      return [];
+    }
+
+    if (!participations?.length) {
       return [];
     }
 
@@ -57,19 +192,60 @@ export function useChat() {
       .from('conversations')
       .select(`
         *,
-        participants:conversation_participants(*, user:profiles!user_id(*))
+        participants:conversation_participants(*, user:profiles!user_id(id, email, full_name, avatar_url))
       `)
       .in('id', conversationIds)
       .order('updated_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching conversations:', error);
+      if (options.throwOnError) {
+        throw new Error(CHAT_LIST_LOAD_ERROR);
+      }
       return [];
     }
 
+    let currentTeamMemberIds: Set<string> | null = null;
+    if (currentTeam) {
+      const { data: teamMembers, error: teamMembersError } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', currentTeam.id)
+        .neq('status', 'inactive');
+
+      if (teamMembersError) {
+        console.error('Error fetching current team members for chat scoping:', teamMembersError);
+        if (options.throwOnError) {
+          throw new Error(CHAT_LIST_LOAD_ERROR);
+        }
+        return [];
+      }
+
+      currentTeamMemberIds = new Set(
+        (teamMembers || []).map((member: { user_id: string }) => member.user_id)
+      );
+    }
+
+    const scopedConversations = (conversations || []).filter((conversation) => {
+      if (conversation.type === 'direct') {
+        if (conversation.team_id) {
+          return currentTeam ? conversation.team_id === currentTeam.id : false;
+        }
+
+        if (!currentTeamMemberIds) return true;
+
+        const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
+        return participants.some(
+          (participant: ConversationParticipant) =>
+            participant.user_id !== user.id && currentTeamMemberIds?.has(participant.user_id)
+        );
+      }
+      return currentTeam ? conversation.team_id === currentTeam.id : false;
+    });
+
     // Get last message and unread count for each conversation
     const result = await Promise.all(
-      conversations.map(async (conv) => {
+      scopedConversations.map(async (conv) => {
         // Get last message
         const { data: lastMsg } = await supabase
           .from('messages')
@@ -77,7 +253,7 @@ export function useChat() {
           .eq('conversation_id', conv.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         // Get user's last read timestamp
         const { data: participant } = await supabase
@@ -115,49 +291,28 @@ export function useChat() {
     );
 
     return result as ConversationWithDetails[];
-  }, [user, supabase]);
+  }, [user, currentTeam, supabase]);
 
   /**
    * Get or create a team chat conversation
    */
   const getTeamChat = useCallback(
-    async (type: 'team' | 'coaches' = 'team'): Promise<Conversation | null> => {
-      if (!currentTeam || !user) return null;
-
-      // Check if team chat exists
-      const { data: existing, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('team_id', currentTeam.id)
-        .eq('type', type)
-        .single();
-
-      if (existing) return existing as Conversation;
-
-      // Create team chat
-      const { data: conv, error: createError } = await supabase
-        .from('conversations')
-        .insert({
-          team_id: currentTeam.id,
-          type,
-          name: type === 'coaches' ? 'Coaches Chat' : currentTeam.name,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        console.error('Error creating team chat:', createError);
-        return null;
+    async (type: 'team' | 'coaches' = 'team'): Promise<TeamChatResult> => {
+      if (!currentTeam || !user) {
+        return { success: false, error: 'Not authenticated' };
       }
 
-      // Add current user as participant
-      await supabase.from('conversation_participants').insert({
-        conversation_id: conv.id,
-        user_id: user.id,
+      const { data: conversation, error } = await supabase.rpc('get_or_create_team_chat', {
+        team_uuid: currentTeam.id,
+        requested_type: type,
       });
 
-      return conv as Conversation;
+      if (error || !conversation) {
+        console.error('Error opening team chat:', error);
+        return { success: false, error: TEAM_CHAT_CREATE_ERROR };
+      }
+
+      return { success: true, conversation: conversation as Conversation };
     },
     [user, currentTeam, supabase]
   );
@@ -166,29 +321,39 @@ export function useChat() {
    * Get or create a direct message conversation
    */
   const getOrCreateDM = useCallback(
-    async (otherUserId: string): Promise<Conversation | null> => {
-      if (!user) return null;
+    async (otherUserId: string): Promise<DirectChatResult> => {
+      if (!user || !currentTeam) {
+        return { success: false, error: 'Select a team before starting a direct message.' };
+      }
 
-      // Try using the database function
       const { data: convId, error } = await supabase.rpc('get_or_create_dm', {
         other_user_id: otherUserId,
+        team_uuid: currentTeam.id,
       });
 
       if (error) {
         console.error('Error getting/creating DM:', error);
-        return null;
+        return { success: false, error: DIRECT_CHAT_CREATE_ERROR };
       }
 
       // Fetch the conversation
-      const { data: conv } = await supabase
+      const { data: conv, error: fetchError } = await supabase
         .from('conversations')
         .select('*')
         .eq('id', convId)
         .single();
 
-      return conv as Conversation | null;
+      if (fetchError || !conv) {
+        console.error('Error loading direct message after create:', fetchError);
+        return {
+          success: false,
+          error: 'Direct message was created, but could not be loaded. Refresh and try again.',
+        };
+      }
+
+      return { success: true, conversation: conv as Conversation };
     },
-    [user, supabase]
+    [user, currentTeam, supabase]
   );
 
   /**
@@ -203,31 +368,22 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const { data: conv, error } = await supabase
-        .from('conversations')
-        .insert({
-          team_id: currentTeam.id,
-          type: 'group' as ChatType,
-          name,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+      if (participantIds.length < 2) {
+        return { success: false, error: 'Select at least two team members for a group chat.' };
+      }
 
-      if (error || !conv) {
+      const { data: conversation, error } = await supabase.rpc('create_group_chat', {
+        team_uuid: currentTeam.id,
+        group_name: name,
+        participant_user_ids: participantIds,
+      });
+
+      if (error || !conversation) {
         console.error('Error creating group chat:', error);
         return { success: false, error: 'Failed to create group chat' };
       }
 
-      // Add participants including creator
-      const participants = [...new Set([user.id, ...participantIds])].map((id) => ({
-        conversation_id: conv.id,
-        user_id: id,
-      }));
-
-      await supabase.from('conversation_participants').insert(participants);
-
-      return { success: true, conversation: conv as Conversation };
+      return { success: true, conversation: conversation as Conversation };
     },
     [user, currentTeam, supabase]
   );
@@ -236,12 +392,17 @@ export function useChat() {
    * Get messages for a conversation
    */
   const getMessages = useCallback(
-    async (conversationId: string, limit = 50, before?: string): Promise<MessageWithSender[]> => {
+    async (
+      conversationId: string,
+      limit = 50,
+      before?: string,
+      options: ChatLoadOptions = {}
+    ): Promise<MessageWithSender[]> => {
       let query = supabase
         .from('messages')
         .select(`
           *,
-          sender:profiles!sender_id(*)
+          sender:profiles!sender_id(id, email, full_name, avatar_url)
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
@@ -255,12 +416,16 @@ export function useChat() {
 
       if (error) {
         console.error('Error fetching messages:', error);
+        if (options.throwOnError) {
+          throw new Error(CHAT_MESSAGES_LOAD_ERROR);
+        }
         return [];
       }
 
-      return (data || []).reverse() as MessageWithSender[];
+      const messages = (data || []).reverse() as MessageWithSender[];
+      return attachSignedAttachmentUrls(messages);
     },
-    [supabase]
+    [supabase, attachSignedAttachmentUrls]
   );
 
   /**
@@ -272,13 +437,25 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
+      const messageType = input.type || 'text';
+      const normalizedContent = input.content?.trim() || '';
+      if (messageType === 'text' && !normalizedContent) {
+        return { success: false, error: 'Message cannot be empty.' };
+      }
+      if (messageType === 'text' && normalizedContent.length > MAX_CHAT_MESSAGE_CHARACTERS) {
+        return {
+          success: false,
+          error: `Messages must be ${MAX_CHAT_MESSAGE_CHARACTERS.toLocaleString()} characters or fewer.`,
+        };
+      }
+
       const { data: message, error } = await supabase
         .from('messages')
         .insert({
           conversation_id: input.conversation_id,
           sender_id: user.id,
-          content: input.content || null,
-          type: input.type || 'text',
+          content: normalizedContent || null,
+          type: messageType,
           metadata: input.metadata || {},
         })
         .select()
@@ -288,12 +465,6 @@ export function useChat() {
         console.error('Error sending message:', error);
         return { success: false, error: 'Failed to send message' };
       }
-
-      // Update conversation updated_at
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', input.conversation_id);
 
       return { success: true, message: message as Message };
     },
@@ -312,37 +483,88 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${currentTeam.id}/chat/${conversationId}/${Date.now()}.${fileExt}`;
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id, team_id, type, participants:conversation_participants(user_id)')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conversationError || !conversation) {
+        console.error('Error verifying chat attachment conversation:', conversationError);
+        return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+      }
+
+      if (conversation.team_id && conversation.team_id !== currentTeam.id) {
+        return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+      }
+
+      if (!conversation.team_id) {
+        if (conversation.type !== 'direct') {
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
+
+        const participants = Array.isArray(conversation.participants)
+          ? conversation.participants
+          : [];
+        const otherParticipant = participants.find((participant) => participant.user_id !== user.id);
+
+        if (!otherParticipant?.user_id) {
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
+
+        const { data: scopedConversationId, error: scopeError } = await supabase.rpc(
+          'get_or_create_dm',
+          {
+            other_user_id: otherParticipant.user_id,
+            team_uuid: currentTeam.id,
+          }
+        );
+
+        if (scopeError || scopedConversationId !== conversationId) {
+          console.error('Error scoping direct message before chat attachment upload:', scopeError);
+          return { success: false, error: CHAT_ATTACHMENT_SCOPE_ERROR };
+        }
+      }
+
+      const validationError = validateChatAttachment(file);
+      if (validationError) {
+        return { success: false, error: validationError };
+      }
+
+      const fileExt = getSafeAttachmentExtension(file);
+      const filePath = `${currentTeam.id}/chat/${conversationId}/${createAttachmentObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('attachments')
+        .from(CHAT_ATTACHMENT_BUCKET)
         .upload(filePath, file);
 
       if (uploadError) {
         console.error('Error uploading file:', uploadError);
-        return { success: false, error: 'Failed to upload file' };
+        return { success: false, error: getChatAttachmentUploadError(uploadError) };
       }
-
-      const { data: publicUrl } = supabase.storage
-        .from('attachments')
-        .getPublicUrl(filePath);
 
       // Determine message type
       let messageType: MessageType = 'file';
-      if (file.type.startsWith('image/')) messageType = 'image';
+      if (isSafeImageFile(file)) messageType = 'image';
 
       const metadata: MessageMetadata = {
-        file_url: publicUrl.publicUrl,
+        file_bucket: CHAT_ATTACHMENT_BUCKET,
+        file_path: filePath,
         file_name: file.name,
         file_size: file.size,
       };
 
-      return sendMessage({
+      const result = await sendMessage({
         conversation_id: conversationId,
         type: messageType,
         metadata,
       });
+
+      if (!result.success) {
+        await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).remove([filePath]);
+      }
+
+      return result;
     },
     [user, currentTeam, supabase, sendMessage]
   );
@@ -351,14 +573,27 @@ export function useChat() {
    * Mark conversation as read
    */
   const markAsRead = useCallback(
-    async (conversationId: string): Promise<void> => {
-      if (!user) return;
+    async (conversationId: string): Promise<{ success: boolean; error?: string }> => {
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
 
-      await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .update({ last_read_at: new Date().toISOString() })
+        .update({ last_read_at: new Date().toISOString() }, { count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error marking conversation as read:', error);
+        return { success: false, error: CHAT_READ_STATUS_ERROR };
+      }
+
+      if (count === 0) {
+        return { success: false, error: CHAT_READ_STATUS_ERROR };
+      }
+
+      return { success: true };
     },
     [user, supabase]
   );
@@ -389,13 +624,14 @@ export function useChat() {
               .from('messages')
               .select(`
                 *,
-                sender:profiles!sender_id(*)
+                sender:profiles!sender_id(id, email, full_name, avatar_url)
               `)
               .eq('id', payload.new.id)
               .single();
 
             if (data) {
-              onMessage(data as MessageWithSender);
+              const [message] = await attachSignedAttachmentUrls([data as MessageWithSender]);
+              onMessage(message);
             }
           }
         )
@@ -407,30 +643,61 @@ export function useChat() {
         supabase.removeChannel(channel);
       };
     },
-    [supabase]
+    [supabase, attachSignedAttachmentUrls]
   );
 
   /**
    * Subscribe to conversation updates (new messages, etc.)
    */
   const subscribeToConversations = useCallback(
-    (onUpdate: () => void) => {
+    (onUpdate: () => void, conversationIds: string[] = []) => {
       if (!user) return () => {};
 
-      const channel = supabase
-        .channel('conversations-updates')
+      const uniqueConversationIds = [...new Set(conversationIds.filter(Boolean))];
+      let channel = supabase
+        .channel(`conversations-updates:${user.id}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'messages',
+            table: 'conversation_participants',
+            filter: `user_id=eq.${user.id}`,
           },
           () => {
             onUpdate();
           }
-        )
-        .subscribe();
+        );
+
+      for (const conversationId of uniqueConversationIds) {
+        channel = channel
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'messages',
+              filter: `conversation_id=eq.${conversationId}`,
+            },
+            () => {
+              onUpdate();
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'conversation_participants',
+              filter: `conversation_id=eq.${conversationId}`,
+            },
+            () => {
+              onUpdate();
+            }
+          );
+      }
+
+      channel.subscribe();
 
       return () => {
         supabase.removeChannel(channel);
@@ -451,14 +718,27 @@ export function useChat() {
    * Toggle mute for a conversation
    */
   const toggleMute = useCallback(
-    async (conversationId: string, muted: boolean): Promise<void> => {
-      if (!user) return;
+    async (conversationId: string, muted: boolean): Promise<ChatActionResult> => {
+      if (!user) {
+        return { success: false, error: 'Not authenticated' };
+      }
 
-      await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .update({ is_muted: muted })
+        .update({ is_muted: muted }, { count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error updating conversation mute status:', error);
+        return { success: false, error: CHAT_MUTE_STATUS_ERROR };
+      }
+
+      if (count !== 1) {
+        return { success: false, error: CHAT_PARTICIPATION_STALE_ERROR };
+      }
+
+      return { success: true };
     },
     [user, supabase]
   );
@@ -472,15 +752,19 @@ export function useChat() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('conversation_participants')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
 
       if (error) {
         console.error('Error leaving conversation:', error);
-        return { success: false, error: 'Failed to leave conversation' };
+        return { success: false, error: CHAT_LEAVE_ERROR };
+      }
+
+      if (count !== 1) {
+        return { success: false, error: CHAT_PARTICIPATION_STALE_ERROR };
       }
 
       return { success: true };

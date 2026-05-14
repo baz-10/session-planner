@@ -3,6 +3,14 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
+import {
+  DRILL_MEDIA_EXTENSIONS,
+  DRILL_MEDIA_MIME_TYPES,
+  getSafeFileExtension,
+  isSafeImageFile,
+  isSafeVideoFile,
+  isTrustedAttachmentFile,
+} from '@/lib/utils/attachments';
 import { getVisibleLabelTags, toCategoryTag } from '@/lib/utils/drill-tags';
 import type {
   Drill,
@@ -17,16 +25,114 @@ interface DrillWithDetails extends Drill {
   media?: DrillMedia[];
 }
 
+interface DrillReadOptions {
+  throwOnError?: boolean;
+}
+
+const STALE_DRILL_ERROR = 'Drill access changed. Refresh the library and try again.';
+const STALE_CATEGORY_ERROR = 'Category access changed. Refresh categories and try again.';
+const STALE_MEDIA_ERROR = 'Media access changed. Refresh the drill and try again.';
+const MAX_DRILL_MEDIA_BYTES = 50 * 1024 * 1024;
+const DRILL_MEDIA_BUCKET = 'drill-media';
+const SIGNED_DRILL_MEDIA_URL_SECONDS = 60 * 60;
+
+function validateDrillMedia(file: File) {
+  if (file.size > MAX_DRILL_MEDIA_BYTES) {
+    return `${file.name} is larger than 50 MB.`;
+  }
+
+  if (!isTrustedAttachmentFile(file, DRILL_MEDIA_MIME_TYPES, DRILL_MEDIA_EXTENSIONS)) {
+    return `${file.name} is not a supported drill media type.`;
+  }
+
+  return null;
+}
+
+function createDrillMediaObjectName(fileExtension: string) {
+  const uniqueId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${uniqueId}.${fileExtension}`;
+}
+
+function getDrillMediaStoragePath(urlOrPath: string) {
+  const urlWithoutQuery = urlOrPath.split(/[?#]/)[0];
+  const marker = `/${DRILL_MEDIA_BUCKET}/`;
+
+  try {
+    const pathname = new URL(urlOrPath).pathname;
+    const markerIndex = pathname.indexOf(marker);
+
+    if (markerIndex >= 0) {
+      return decodeURIComponent(pathname.slice(markerIndex + marker.length));
+    }
+  } catch {
+    // Fall through to the legacy path extraction below.
+  }
+
+  const markerIndex = urlWithoutQuery.indexOf(marker);
+  if (markerIndex >= 0) {
+    const storagePath = decodeURIComponent(urlWithoutQuery.slice(markerIndex + marker.length));
+    return storagePath || null;
+  }
+
+  const fallbackPath = urlWithoutQuery.split('/').filter(Boolean).slice(-2).join('/');
+  return fallbackPath || null;
+}
+
+function getUniqueDrillMediaStoragePaths(media: Array<{ url: string | null }>) {
+  const paths = media
+    .map((item) => (item.url ? getDrillMediaStoragePath(item.url) : null))
+    .filter((path): path is string => Boolean(path));
+
+  return Array.from(new Set(paths));
+}
+
 export function useDrills() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
   const [isLoading, setIsLoading] = useState(false);
 
+  const signDrillMediaUrl = useCallback(
+    async (media: DrillMedia): Promise<DrillMedia> => {
+      const storagePath = media.url ? getDrillMediaStoragePath(media.url) : null;
+      if (!storagePath) {
+        return media;
+      }
+
+      const { data, error } = await supabase.storage
+        .from(DRILL_MEDIA_BUCKET)
+        .createSignedUrl(storagePath, SIGNED_DRILL_MEDIA_URL_SECONDS);
+
+      if (error || !data?.signedUrl) {
+        console.error('Error creating signed drill media URL:', error);
+        return media;
+      }
+
+      return { ...media, url: data.signedUrl };
+    },
+    [supabase]
+  );
+
+  const attachSignedMediaUrls = useCallback(
+    async (drills: DrillWithDetails[]): Promise<DrillWithDetails[]> => {
+      return Promise.all(
+        drills.map(async (drill) => ({
+          ...drill,
+          media: await Promise.all((drill.media || []).map(signDrillMediaUrl)),
+        }))
+      );
+    },
+    [signDrillMediaUrl]
+  );
+
   const toDrillErrorMessage = (error: { code?: string; message?: string } | null, fallback: string) => {
     if (!error) return fallback;
 
     if (error.code === '42501' || error.message?.toLowerCase().includes('row-level security')) {
-      return 'You do not have permission to manage categories for the selected team. Try switching to the correct team.';
+      return 'You do not have permission to manage drills or categories for the selected team. Try switching to the correct team.';
     }
 
     return error.message || fallback;
@@ -36,7 +142,7 @@ export function useDrills() {
    * Get all drills for the current team
    */
   const getDrills = useCallback(
-    async (categoryId?: string): Promise<DrillWithDetails[]> => {
+    async (categoryId?: string, options: DrillReadOptions = {}): Promise<DrillWithDetails[]> => {
       if (!currentTeam) return [];
 
       let query = supabase
@@ -74,6 +180,9 @@ export function useDrills() {
 
         if (fallbackError) {
           console.error('Error fetching drills (fallback):', fallbackError);
+          if (options.throwOnError) {
+            throw new Error('Failed to load drill library.');
+          }
           return [];
         }
 
@@ -84,9 +193,9 @@ export function useDrills() {
         })) as DrillWithDetails[];
       }
 
-      return data as DrillWithDetails[];
+      return attachSignedMediaUrls(data as DrillWithDetails[]);
     },
-    [supabase, currentTeam]
+    [supabase, currentTeam, attachSignedMediaUrls]
   );
 
   /**
@@ -109,9 +218,10 @@ export function useDrills() {
         return null;
       }
 
-      return data as DrillWithDetails;
+      const [signedDrill] = await attachSignedMediaUrls([data as DrillWithDetails]);
+      return signedDrill || (data as DrillWithDetails);
     },
-    [supabase]
+    [supabase, attachSignedMediaUrls]
   );
 
   /**
@@ -124,30 +234,42 @@ export function useDrills() {
       }
 
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('drills')
-        .insert({
-          team_id: currentTeam.id,
-          organization_id: input.organization_id || null,
-          category_id: input.category_id || null,
-          name: input.name,
-          description: input.description || null,
-          default_duration: input.default_duration || 10,
-          notes: input.notes || null,
-          tags: input.tags || [],
-          created_by: user.id,
-        })
-        .select()
-        .single();
 
-      setIsLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from('drills')
+          .insert({
+            team_id: currentTeam.id,
+            organization_id: input.organization_id || null,
+            category_id: input.category_id || null,
+            name: input.name,
+            description: input.description || null,
+            default_duration: input.default_duration || 10,
+            notes: input.notes || null,
+            tags: input.tags || [],
+            created_by: user.id,
+          })
+          .select()
+          .single();
 
-      if (error || !data) {
-        console.error('Error creating drill:', error);
-        return { success: false, error: 'Failed to create drill' };
+        if (error || !data) {
+          console.error('Error creating drill:', error);
+          return {
+            success: false,
+            error: toDrillErrorMessage(error, 'Failed to create drill'),
+          };
+        }
+
+        return { success: true, drill: data as Drill };
+      } catch (error) {
+        console.error('Unexpected error creating drill:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to create drill',
+        };
+      } finally {
+        setIsLoading(false);
       }
-
-      return { success: true, drill: data as Drill };
     },
     [user, currentTeam, supabase]
   );
@@ -157,18 +279,43 @@ export function useDrills() {
    */
   const updateDrill = useCallback(
     async (drillId: string, updates: Partial<Drill>): Promise<{ success: boolean; error?: string }> => {
-      setIsLoading(true);
-      const { error } = await supabase.from('drills').update(updates).eq('id', drillId);
-      setIsLoading(false);
-
-      if (error) {
-        console.error('Error updating drill:', error);
-        return { success: false, error: 'Failed to update drill' };
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before updating this drill.' };
       }
 
-      return { success: true };
+      setIsLoading(true);
+
+      try {
+        const { error, count } = await supabase
+          .from('drills')
+          .update(updates, { count: 'exact' })
+          .eq('id', drillId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating drill:', error);
+          return {
+            success: false,
+            error: toDrillErrorMessage(error, 'Failed to update drill'),
+          };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_DRILL_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating drill:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to update drill',
+        };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -176,16 +323,48 @@ export function useDrills() {
    */
   const deleteDrill = useCallback(
     async (drillId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('drills').delete().eq('id', drillId);
+      if (!currentTeam) {
+        return { success: false, error: 'Select a team before deleting this drill.' };
+      }
+
+      const { data: media, error: mediaLookupError } = await supabase
+        .from('drill_media')
+        .select('url')
+        .eq('drill_id', drillId);
+
+      if (mediaLookupError) {
+        console.error('Error loading drill media before delete:', mediaLookupError);
+        return { success: false, error: 'Failed to load drill media before deleting.' };
+      }
+
+      const mediaPaths = getUniqueDrillMediaStoragePaths(media || []);
+      if (mediaPaths.length > 0) {
+        const { error: storageError } = await supabase.storage.from(DRILL_MEDIA_BUCKET).remove(mediaPaths);
+
+        if (storageError) {
+          console.error('Error cleaning up drill media files before delete:', storageError);
+          return { success: false, error: 'Failed to clean up drill media before deleting.' };
+        }
+      }
+
+      const { error, count } = await supabase
+        .from('drills')
+        .delete({ count: 'exact' })
+        .eq('id', drillId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error deleting drill:', error);
         return { success: false, error: 'Failed to delete drill' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_DRILL_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -196,12 +375,17 @@ export function useDrills() {
       drillId: string,
       file: File
     ): Promise<{ success: boolean; media?: DrillMedia; error?: string }> => {
+      const validationError = validateDrillMedia(file);
+      if (validationError) {
+        return { success: false, error: validationError };
+      }
+
       // Upload file to storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${drillId}/${Date.now()}.${fileExt}`;
+      const fileExt = getSafeFileExtension(file, DRILL_MEDIA_EXTENSIONS);
+      const fileName = `${drillId}/${createDrillMediaObjectName(fileExt)}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('drill-media')
+        .from(DRILL_MEDIA_BUCKET)
         .upload(fileName, file);
 
       if (uploadError) {
@@ -209,16 +393,11 @@ export function useDrills() {
         return { success: false, error: 'Failed to upload file' };
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage.from('drill-media').getPublicUrl(fileName);
-
       // Determine type
-      const type: AttachmentType = file.type.startsWith('image/')
+      const type: AttachmentType = isSafeImageFile(file)
         ? 'image'
-        : file.type.startsWith('video/')
+        : isSafeVideoFile(file)
         ? 'video'
-        : file.type.startsWith('audio/')
-        ? 'audio'
         : 'document';
 
       // Create media record
@@ -227,7 +406,7 @@ export function useDrills() {
         .insert({
           drill_id: drillId,
           type,
-          url: urlData.publicUrl,
+          url: fileName,
           filename: file.name,
           size_bytes: file.size,
         })
@@ -236,12 +415,20 @@ export function useDrills() {
 
       if (error || !data) {
         console.error('Error creating media record:', error);
+        const { error: cleanupError } = await supabase.storage
+          .from(DRILL_MEDIA_BUCKET)
+          .remove([fileName]);
+
+        if (cleanupError) {
+          console.error('Error cleaning up failed drill media upload:', cleanupError);
+        }
+
         return { success: false, error: 'Failed to save media record' };
       }
 
-      return { success: true, media: data as DrillMedia };
+      return { success: true, media: await signDrillMediaUrl(data as DrillMedia) };
     },
-    [supabase]
+    [supabase, signDrillMediaUrl]
   );
 
   /**
@@ -256,19 +443,30 @@ export function useDrills() {
         .eq('id', mediaId)
         .single();
 
-      if (media?.url) {
-        // Extract file path from URL and delete from storage
-        const urlParts = media.url.split('/');
-        const filePath = urlParts.slice(-2).join('/');
-        await supabase.storage.from('drill-media').remove([filePath]);
-      }
-
       // Delete the record
-      const { error } = await supabase.from('drill_media').delete().eq('id', mediaId);
+      const { error, count } = await supabase
+        .from('drill_media')
+        .delete({ count: 'exact' })
+        .eq('id', mediaId);
 
       if (error) {
         console.error('Error deleting media:', error);
         return { success: false, error: 'Failed to delete media' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_MEDIA_ERROR };
+      }
+
+      if (media?.url) {
+        const filePath = getDrillMediaStoragePath(media.url);
+        const { error: storageError } = filePath
+          ? await supabase.storage.from(DRILL_MEDIA_BUCKET).remove([filePath])
+          : { error: null };
+
+        if (storageError) {
+          console.error('Error cleaning up deleted drill media file:', storageError);
+        }
       }
 
       return { success: true };
@@ -357,14 +555,18 @@ export function useDrills() {
       categoryId: string,
       updates: Partial<DrillCategory>
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('drill_categories')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq('id', categoryId);
 
       if (error) {
         console.error('Error updating category:', error);
         return { success: false, error: 'Failed to update category' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_CATEGORY_ERROR };
       }
 
       return { success: true };
@@ -377,11 +579,18 @@ export function useDrills() {
    */
   const deleteCategory = useCallback(
     async (categoryId: string): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase.from('drill_categories').delete().eq('id', categoryId);
+      const { error, count } = await supabase
+        .from('drill_categories')
+        .delete({ count: 'exact' })
+        .eq('id', categoryId);
 
       if (error) {
         console.error('Error deleting category:', error);
         return { success: false, error: 'Failed to delete category' };
+      }
+
+      if (count === 0) {
+        return { success: false, error: STALE_CATEGORY_ERROR };
       }
 
       return { success: true };
@@ -393,7 +602,7 @@ export function useDrills() {
    * Search drills
    */
   const searchDrills = useCallback(
-    async (query: string): Promise<DrillWithDetails[]> => {
+    async (query: string, options: DrillReadOptions = {}): Promise<DrillWithDetails[]> => {
       const normalizedQuery = query.trim().toLowerCase();
       if (!currentTeam || !normalizedQuery) return [];
 
@@ -420,6 +629,9 @@ export function useDrills() {
 
         if (fallbackError) {
           console.error('Error searching drills (fallback):', fallbackError);
+          if (options.throwOnError) {
+            throw new Error('Failed to search drill library.');
+          }
           return [];
         }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useEvents } from '@/hooks/use-events';
 import { getBrowserSupabaseClient } from '@/lib/auth/supabase-browser';
@@ -17,7 +17,7 @@ interface EventWithDetails extends Event {
 
 interface RsvpPanelProps {
   event: EventWithDetails;
-  onUpdate: () => void;
+  onUpdate: () => void | Promise<void>;
 }
 
 interface LinkedPlayer {
@@ -34,37 +34,74 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
   const [linkedPlayers, setLinkedPlayers] = useState<LinkedPlayer[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filter, setFilter] = useState<RsvpStatus | 'all'>('all');
+  const [rsvpError, setRsvpError] = useState('');
+  const [linkedPlayersError, setLinkedPlayersError] = useState('');
 
   const isParent = teamMembership?.role === 'parent';
 
+  const loadLinkedPlayers = useCallback(async () => {
+    if (!user || !currentTeam?.id) {
+      setLinkedPlayers([]);
+      return;
+    }
+
+    setLinkedPlayersError('');
+    try {
+      const { data, error } = await supabase
+        .from('parent_player_links')
+        .select(`
+          player_id,
+          player:players!inner(*)
+        `)
+        .eq('parent_user_id', user.id)
+        .eq('can_rsvp', true)
+        .eq('player.team_id', currentTeam.id);
+
+      if (error) {
+        console.error('Error loading linked players for RSVP:', error);
+        setLinkedPlayers([]);
+        setLinkedPlayersError('Your linked players could not load. Refresh and try again.');
+        return;
+      }
+
+      if (data) {
+        setLinkedPlayers(data as LinkedPlayer[]);
+      }
+    } catch (error) {
+      console.error('Unexpected error loading linked players for RSVP:', error);
+      setLinkedPlayers([]);
+      setLinkedPlayersError('Your linked players could not load. Refresh and try again.');
+    }
+  }, [currentTeam?.id, supabase, user]);
+
   useEffect(() => {
     if (isParent) {
-      loadLinkedPlayers();
+      void loadLinkedPlayers();
+    } else {
+      setLinkedPlayers([]);
     }
-  }, [isParent]);
-
-  const loadLinkedPlayers = async () => {
-    if (!user) return;
-
-    const { data } = await supabase
-      .from('parent_player_links')
-      .select(`
-        player_id,
-        player:players!player_id(*)
-      `)
-      .eq('parent_user_id', user.id)
-      .eq('can_rsvp', true);
-
-    if (data) {
-      setLinkedPlayers(data as LinkedPlayer[]);
-    }
-  };
+  }, [isParent, loadLinkedPlayers]);
 
   const handleRsvp = async (status: RsvpStatus, playerId?: string) => {
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
-    await submitRsvp(event.id, status, { playerId });
-    onUpdate();
-    setIsSubmitting(false);
+    setRsvpError('');
+    try {
+      const result = await submitRsvp(event.id, status, { playerId });
+
+      if (!result.success) {
+        setRsvpError(result.error || 'Failed to submit RSVP.');
+        return;
+      }
+
+      await onUpdate();
+    } catch (error) {
+      console.error('Error submitting RSVP:', error);
+      setRsvpError('Failed to submit RSVP. Refresh and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const userRsvp = getUserRsvp(event.rsvps);
@@ -82,6 +119,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
 
   return (
     <div className="space-y-6">
+      {rsvpError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {rsvpError}
+        </div>
+      )}
+
       {/* User's own RSVP (if not parent) */}
       {!isParent && (
         <div className="p-4 bg-gray-50 rounded-lg">
@@ -90,9 +133,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
             {(['going', 'maybe', 'not_going'] as RsvpStatus[]).map((status) => (
               <button
                 key={status}
+                type="button"
                 onClick={() => handleRsvp(status)}
                 disabled={isSubmitting}
-                className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
+                aria-busy={isSubmitting}
+                aria-pressed={userRsvp?.status === status}
+                className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   userRsvp?.status === status
                     ? status === 'going'
                       ? 'bg-green-500 text-white'
@@ -114,6 +160,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
       )}
 
       {/* Parent RSVP for linked players */}
+      {isParent && linkedPlayersError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {linkedPlayersError}
+        </div>
+      )}
+
       {isParent && linkedPlayers.length > 0 && (
         <div className="space-y-4">
           <h4 className="font-medium">RSVP for Your Players</h4>
@@ -133,9 +185,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
                   {(['going', 'maybe', 'not_going'] as RsvpStatus[]).map((status) => (
                     <button
                       key={status}
+                      type="button"
                       onClick={() => handleRsvp(status, player_id)}
                       disabled={isSubmitting}
-                      className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      aria-busy={isSubmitting}
+                      aria-pressed={playerRsvp?.status === status}
+                      className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                         playerRsvp?.status === status
                           ? status === 'going'
                             ? 'bg-green-500 text-white'
@@ -159,6 +214,12 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
         </div>
       )}
 
+      {isParent && !linkedPlayersError && linkedPlayers.length === 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          No linked players are available for this team.
+        </div>
+      )}
+
       {/* RSVP List */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -166,6 +227,7 @@ export function RsvpPanel({ event, onUpdate }: RsvpPanelProps) {
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as RsvpStatus | 'all')}
+            disabled={isSubmitting}
             className="px-3 py-1 border border-gray-300 rounded-md text-sm"
           >
             <option value="all">All ({event.rsvps.length})</option>

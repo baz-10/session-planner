@@ -7,12 +7,14 @@ import { useAuth } from '@/contexts/auth-context';
 import { usePlays } from '@/hooks/use-plays';
 import { usePlayEditorTheme } from '@/hooks/use-play-editor-theme';
 import { PlayDiagramPreview } from '@/components/plays/play-diagram-preview';
+import { useConfirmDialog, useTextPromptDialog } from '@/components/ui';
 import type { CourtTemplate, PlayType } from '@/lib/plays/diagram-types';
 import type { Play } from '@/types/database';
 
 export function PlayLibrary() {
   const router = useRouter();
   const { currentTeam, teamMemberships } = useAuth();
+  const currentTeamId = currentTeam?.id;
   const { getPlays, duplicatePlay, deletePlay, searchPlays } = usePlays();
   const { theme } = usePlayEditorTheme();
 
@@ -23,36 +25,60 @@ export function PlayLibrary() {
   const [courtTemplate, setCourtTemplate] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState('');
   const [tagOptions, setTagOptions] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [activeAction, setActiveAction] = useState<{ playId: string; type: 'duplicate' | 'delete' } | null>(
+    null
+  );
+  const [reloadKey, setReloadKey] = useState(0);
+  const { confirmAction, confirmDialog } = useConfirmDialog();
+  const { promptForText, textPromptDialog } = useTextPromptDialog();
 
-  const membership = teamMemberships.find((item) => item.team.id === currentTeam?.id);
+  const membership = teamMemberships.find((item) => item.team.id === currentTeamId);
   const canEdit = membership?.role === 'coach' || membership?.role === 'admin';
 
   const loadPlays = useCallback(async () => {
     setIsLoading(true);
-    const data = await getPlays({
-      playType: (playType || undefined) as PlayType | undefined,
-      courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
-      tag: selectedTag || undefined,
-    });
-    setPlays(data);
-    setIsLoading(false);
+    setLoadError('');
+    try {
+      const data = await getPlays(
+        {
+          playType: (playType || undefined) as PlayType | undefined,
+          courtTemplate: (courtTemplate || undefined) as CourtTemplate | undefined,
+          tag: selectedTag || undefined,
+        },
+        { throwOnError: true }
+      );
+      setPlays(data);
+    } catch (error) {
+      console.error('Error loading play library:', error);
+      setPlays([]);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load play library.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [courtTemplate, getPlays, playType, selectedTag]);
 
   const loadTagOptions = useCallback(async () => {
-    if (!currentTeam) {
+    if (!currentTeamId) {
       setTagOptions([]);
       return;
     }
 
-    const data = await getPlays();
-    const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
-      a.localeCompare(b)
-    );
-    setTagOptions(tags);
-  }, [currentTeam, getPlays]);
+    try {
+      const data = await getPlays({}, { throwOnError: true });
+      const tags = Array.from(new Set(data.flatMap((play) => play.tags || []))).sort((a, b) =>
+        a.localeCompare(b)
+      );
+      setTagOptions(tags);
+    } catch (error) {
+      console.error('Error loading play tag options:', error);
+      setTagOptions([]);
+    }
+  }, [currentTeamId, getPlays]);
 
   useEffect(() => {
-    if (!currentTeam) {
+    if (!currentTeamId) {
       setIsLoading(false);
       setPlays([]);
       setTagOptions([]);
@@ -60,7 +86,7 @@ export function PlayLibrary() {
     }
     void loadPlays();
     void loadTagOptions();
-  }, [currentTeam?.id, loadPlays, loadTagOptions]);
+  }, [currentTeamId, loadPlays, loadTagOptions, reloadKey]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -70,39 +96,81 @@ export function PlayLibrary() {
 
     const timeout = setTimeout(async () => {
       setIsLoading(true);
-      const result = await searchPlays(searchQuery);
-      const filtered = result.filter((play) => {
-        if (playType && play.play_type !== playType) return false;
-        if (courtTemplate && play.court_template !== courtTemplate) return false;
-        if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
-        return true;
-      });
-      setPlays(filtered);
-      setIsLoading(false);
+      setLoadError('');
+      try {
+        const result = await searchPlays(searchQuery, { throwOnError: true });
+        const filtered = result.filter((play) => {
+          if (playType && play.play_type !== playType) return false;
+          if (courtTemplate && play.court_template !== courtTemplate) return false;
+          if (selectedTag && !(play.tags || []).includes(selectedTag)) return false;
+          return true;
+        });
+        setPlays(filtered);
+      } catch (error) {
+        console.error('Error searching play library:', error);
+        setPlays([]);
+        setLoadError(error instanceof Error ? error.message : 'Failed to search play library.');
+      } finally {
+        setIsLoading(false);
+      }
     }, 250);
 
     return () => clearTimeout(timeout);
   }, [courtTemplate, loadPlays, playType, searchPlays, searchQuery, selectedTag]);
 
   const handleDuplicate = async (play: Play) => {
-    const newName = prompt('Name for duplicate play:', `${play.name} (Copy)`);
+    const newName = await promptForText({
+      title: 'Duplicate play',
+      description: 'Name the copied play before it is added to your library.',
+      label: 'Play name',
+      defaultValue: `${play.name} (Copy)`,
+      confirmLabel: 'Create copy',
+      validate: (value) => (value ? null : 'Play name is required.'),
+    });
+
     if (!newName) return;
 
-    const result = await duplicatePlay(play.id, newName);
-    if (result.success) {
-      await loadPlays();
-    } else {
-      alert(result.error || 'Failed to duplicate play');
+    setActionError('');
+    setActiveAction({ playId: play.id, type: 'duplicate' });
+    try {
+      const result = await duplicatePlay(play.id, newName);
+      if (result.success) {
+        await loadPlays();
+      } else {
+        setActionError(result.error || 'Failed to duplicate play');
+      }
+    } catch (error) {
+      console.error('Unexpected error duplicating play:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to duplicate play');
+    } finally {
+      setActiveAction(null);
     }
   };
 
   const handleDelete = async (play: Play) => {
-    if (!confirm(`Delete "${play.name}"?`)) return;
-    const result = await deletePlay(play.id);
-    if (result.success) {
-      setPlays((prev) => prev.filter((item) => item.id !== play.id));
-    } else {
-      alert(result.error || 'Failed to delete play');
+    const confirmed = await confirmAction({
+      title: 'Delete play?',
+      description: `"${play.name}" will be removed from your play library.`,
+      confirmLabel: 'Delete play',
+      confirmVariant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    setActionError('');
+    setActiveAction({ playId: play.id, type: 'delete' });
+    try {
+      const result = await deletePlay(play.id);
+      if (result.success) {
+        setPlays((prev) => prev.filter((item) => item.id !== play.id));
+      } else {
+        setActionError(result.error || 'Failed to delete play');
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting play:', error);
+      setActionError(error instanceof Error ? error.message : 'Failed to delete play');
+    } finally {
+      setActiveAction(null);
     }
   };
 
@@ -120,7 +188,7 @@ export function PlayLibrary() {
     );
   }
 
-  if (!currentTeam) {
+  if (!currentTeamId) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-600">
         Select a team to access plays.
@@ -131,6 +199,11 @@ export function PlayLibrary() {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        {actionError && (
+          <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Play Library</h2>
@@ -190,7 +263,19 @@ export function PlayLibrary() {
         </div>
       </div>
 
-      {plays.length === 0 ? (
+      {loadError ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Could not load plays</h3>
+          <p className="text-gray-600 mb-5">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((value) => value + 1)}
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light"
+          >
+            Retry
+          </button>
+        </div>
+      ) : plays.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
           <h3 className="text-xl font-semibold text-gray-900 mb-2">No plays found</h3>
           <p className="text-gray-600 mb-5">Create a play or adjust filters to see results.</p>
@@ -205,11 +290,14 @@ export function PlayLibrary() {
           {plays.map((play) => (
             <article
               key={play.id}
+              aria-busy={activeAction?.playId === play.id}
               className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal/30 hover:shadow-lg"
             >
               <button
+                type="button"
                 onClick={() => router.push(`/dashboard/plays/${play.id}`)}
-                className="w-full text-left"
+                disabled={activeAction !== null}
+                className="w-full text-left disabled:cursor-not-allowed"
               >
                 <div className="aspect-[4/3] overflow-hidden bg-slate-100">
                   <PlayDiagramPreview
@@ -260,24 +348,34 @@ export function PlayLibrary() {
 
               <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-3">
                 <button
+                  type="button"
                   onClick={() => router.push(`/dashboard/plays/${play.id}`)}
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={activeAction !== null}
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {canEdit ? 'Edit' : 'View'}
                 </button>
                 {canEdit && (
                   <>
                     <button
+                      type="button"
                       onClick={() => handleDuplicate(play)}
-                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      disabled={activeAction !== null}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Duplicate
+                      {activeAction?.playId === play.id && activeAction.type === 'duplicate'
+                        ? 'Duplicating...'
+                        : 'Duplicate'}
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(play)}
-                      className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                      disabled={activeAction !== null}
+                      className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Delete
+                      {activeAction?.playId === play.id && activeAction.type === 'delete'
+                        ? 'Deleting...'
+                        : 'Delete'}
                     </button>
                   </>
                 )}
@@ -286,6 +384,8 @@ export function PlayLibrary() {
           ))}
         </div>
       )}
+      {confirmDialog}
+      {textPromptDialog}
     </div>
   );
 }

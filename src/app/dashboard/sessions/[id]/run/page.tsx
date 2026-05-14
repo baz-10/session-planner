@@ -1,11 +1,12 @@
 import { SessionRunMode } from '@/components/sessions/session-run-mode';
 
 interface SessionRunPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function SessionRunPage({ params }: SessionRunPageProps) {
-  return <SessionRunMode sessionId={params.id} />;
+export default async function SessionRunPage({ params }: SessionRunPageProps) {
+  const { id } = await params;
+  return <SessionRunMode sessionId={id} />;
 }

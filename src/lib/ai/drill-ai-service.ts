@@ -2,7 +2,7 @@
  * AI Drill Discovery Service
  *
  * Uses OpenAI to provide intelligent drill suggestions based on natural language queries.
- * Users provide their own API key which is stored securely in their profile.
+ * Users provide their own API key, which is passed in from local client settings.
  */
 
 import {

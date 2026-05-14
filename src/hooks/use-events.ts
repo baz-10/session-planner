@@ -40,6 +40,10 @@ interface RsvpCounts {
   total: number;
 }
 
+const STALE_EVENT_ERROR = 'This event could not be updated. It may have been removed or your access may have changed.';
+const STALE_RSVP_ERROR = 'This RSVP could not be updated. Refresh and try again.';
+const NO_TEAM_ERROR = 'Select a team before managing events.';
+
 export function useEvents() {
   const { user, currentTeam } = useAuth();
   const supabase = getBrowserSupabaseClient();
@@ -54,6 +58,7 @@ export function useEvents() {
       startDate?: string;
       endDate?: string;
       upcoming?: boolean;
+      throwOnError?: boolean;
     }): Promise<EventWithDetails[]> => {
       if (!currentTeam) return [];
 
@@ -62,7 +67,7 @@ export function useEvents() {
         .select(`
           *,
           session:sessions(*),
-          rsvps(*, user:profiles!user_id(*), player:players!player_id(*))
+          rsvps(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*))
         `)
         .eq('team_id', currentTeam.id)
         .order('start_time', { ascending: true });
@@ -87,6 +92,9 @@ export function useEvents() {
 
       if (error) {
         console.error('Error fetching events:', error);
+        if (options?.throwOnError) {
+          throw new Error('Failed to load events');
+        }
         return [];
       }
 
@@ -99,26 +107,32 @@ export function useEvents() {
    * Get a single event by ID
    */
   const getEvent = useCallback(
-    async (eventId: string): Promise<EventWithDetails | null> => {
+    async (eventId: string, options?: { throwOnError?: boolean }): Promise<EventWithDetails | null> => {
+      if (!currentTeam) return null;
+
       const { data, error } = await supabase
         .from('events')
         .select(`
           *,
           session:sessions(*),
-          rsvps(*, user:profiles!user_id(*), player:players!player_id(*)),
-          attendance_records(*, user:profiles!user_id(*), player:players!player_id(*))
+          rsvps(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*)),
+          attendance_records(*, user:profiles!user_id(id, email, full_name, avatar_url), player:players!player_id(*))
         `)
         .eq('id', eventId)
+        .eq('team_id', currentTeam.id)
         .single();
 
       if (error) {
         console.error('Error fetching event:', error);
+        if (options?.throwOnError) {
+          throw new Error('Failed to load event');
+        }
         return null;
       }
 
       return data as EventWithDetails;
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -131,36 +145,40 @@ export function useEvents() {
       }
 
       setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .insert({
+            team_id: currentTeam.id,
+            type: input.type,
+            title: input.title,
+            description: input.description || null,
+            location: input.location || null,
+            start_time: input.start_time,
+            meet_time: input.meet_time || null,
+            end_time: input.end_time || null,
+            duration: input.duration || null,
+            session_id: input.session_id || null,
+            rsvp_limit: input.rsvp_limit || null,
+            rsvp_deadline: input.rsvp_deadline || null,
+            opponent: input.opponent || null,
+            created_by: user.id,
+          })
+          .select()
+          .single();
 
-      const { data, error } = await supabase
-        .from('events')
-        .insert({
-          team_id: currentTeam.id,
-          type: input.type,
-          title: input.title,
-          description: input.description || null,
-          location: input.location || null,
-          start_time: input.start_time,
-          meet_time: input.meet_time || null,
-          end_time: input.end_time || null,
-          duration: input.duration || null,
-          session_id: input.session_id || null,
-          rsvp_limit: input.rsvp_limit || null,
-          rsvp_deadline: input.rsvp_deadline || null,
-          opponent: input.opponent || null,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+        if (error || !data) {
+          console.error('Error creating event:', error);
+          return { success: false, error: 'Failed to create event' };
+        }
 
-      setIsLoading(false);
-
-      if (error || !data) {
-        console.error('Error creating event:', error);
+        return { success: true, event: data as Event };
+      } catch (error) {
+        console.error('Unexpected error creating event:', error);
         return { success: false, error: 'Failed to create event' };
+      } finally {
+        setIsLoading(false);
       }
-
-      return { success: true, event: data as Event };
     },
     [user, currentTeam, supabase]
   );
@@ -173,23 +191,36 @@ export function useEvents() {
       eventId: string,
       updates: Partial<Event>
     ): Promise<{ success: boolean; error?: string }> => {
-      setIsLoading(true);
-
-      const { error } = await supabase
-        .from('events')
-        .update(updates)
-        .eq('id', eventId);
-
-      setIsLoading(false);
-
-      if (error) {
-        console.error('Error updating event:', error);
-        return { success: false, error: 'Failed to update event' };
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
       }
 
-      return { success: true };
+      setIsLoading(true);
+      try {
+        const { error, count } = await supabase
+          .from('events')
+          .update(updates, { count: 'exact' })
+          .eq('id', eventId)
+          .eq('team_id', currentTeam.id);
+
+        if (error) {
+          console.error('Error updating event:', error);
+          return { success: false, error: 'Failed to update event' };
+        }
+
+        if (count === 0) {
+          return { success: false, error: STALE_EVENT_ERROR };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Unexpected error updating event:', error);
+        return { success: false, error: 'Failed to update event' };
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -200,13 +231,19 @@ export function useEvents() {
       eventId: string,
       options?: { deleteSeries?: boolean }
     ): Promise<{ success: boolean; error?: string }> => {
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
       let deleteError: { message?: string } | null = null;
+      let deletedCount: number | null = null;
 
       if (options?.deleteSeries) {
         const { data: sourceEvent, error: lookupError } = await supabase
           .from('events')
           .select('recurrence_series_id')
           .eq('id', eventId)
+          .eq('team_id', currentTeam.id)
           .single();
 
         if (lookupError) {
@@ -215,18 +252,30 @@ export function useEvents() {
         }
 
         if (sourceEvent?.recurrence_series_id) {
-          const { error } = await supabase
+          const { error, count } = await supabase
             .from('events')
-            .delete()
-            .eq('recurrence_series_id', sourceEvent.recurrence_series_id);
+            .delete({ count: 'exact' })
+            .eq('recurrence_series_id', sourceEvent.recurrence_series_id)
+            .eq('team_id', currentTeam.id);
           deleteError = error;
+          deletedCount = count;
         } else {
-          const { error } = await supabase.from('events').delete().eq('id', eventId);
+          const { error, count } = await supabase
+            .from('events')
+            .delete({ count: 'exact' })
+            .eq('id', eventId)
+            .eq('team_id', currentTeam.id);
           deleteError = error;
+          deletedCount = count;
         }
       } else {
-        const { error } = await supabase.from('events').delete().eq('id', eventId);
+        const { error, count } = await supabase
+          .from('events')
+          .delete({ count: 'exact' })
+          .eq('id', eventId)
+          .eq('team_id', currentTeam.id);
         deleteError = error;
+        deletedCount = count;
       }
 
       if (deleteError) {
@@ -234,9 +283,13 @@ export function useEvents() {
         return { success: false, error: 'Failed to delete event' };
       }
 
+      if (deletedCount === 0) {
+        return { success: false, error: STALE_EVENT_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   /**
@@ -267,37 +320,50 @@ export function useEvents() {
         query = query.eq('user_id', user.id).is('player_id', null);
       }
 
-      const { data: existing } = await query.single();
+      const { data: existing, error: lookupError } = await query.maybeSingle();
+
+      if (lookupError) {
+        console.error('Error loading existing RSVP:', lookupError);
+        return { success: false, error: 'Failed to load your current RSVP. Refresh and try again.' };
+      }
 
       if (existing) {
         // Update existing RSVP
-        const { error } = await supabase
+        const { error, count } = await supabase
           .from('rsvps')
           .update({
             status,
             response_note: options?.note || null,
             responded_by: user.id,
             responded_at: new Date().toISOString(),
-          })
+          }, { count: 'exact' })
           .eq('id', existing.id);
 
         if (error) {
           console.error('Error updating RSVP:', error);
           return { success: false, error: 'Failed to update RSVP' };
         }
+
+        if (count === 0) {
+          return { success: false, error: STALE_RSVP_ERROR };
+        }
       } else {
         // Create new RSVP
-        const { error } = await supabase.from('rsvps').insert({
-          event_id: eventId,
-          user_id: options?.playerId ? null : user.id,
-          player_id: options?.playerId || null,
-          status,
-          response_note: options?.note || null,
-          responded_by: user.id,
-          responded_at: new Date().toISOString(),
-        });
+        const { data, error } = await supabase
+          .from('rsvps')
+          .insert({
+            event_id: eventId,
+            user_id: options?.playerId ? null : user.id,
+            player_id: options?.playerId || null,
+            status,
+            response_note: options?.note || null,
+            responded_by: user.id,
+            responded_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
 
-        if (error) {
+        if (error || !data) {
           console.error('Error creating RSVP:', error);
           return { success: false, error: 'Failed to submit RSVP' };
         }
@@ -354,28 +420,11 @@ export function useEvents() {
         return { success: false, error: 'Not authenticated' };
       }
 
-      // Delete existing records for this event
-      const userIds = records.filter((r) => r.userId).map((r) => r.userId);
-      const playerIds = records.filter((r) => r.playerId).map((r) => r.playerId);
-
-      if (userIds.length > 0) {
-        await supabase
-          .from('attendance_records')
-          .delete()
-          .eq('event_id', eventId)
-          .in('user_id', userIds);
+      if (records.length === 0) {
+        return { success: false, error: 'No attendance records to save' };
       }
 
-      if (playerIds.length > 0) {
-        await supabase
-          .from('attendance_records')
-          .delete()
-          .eq('event_id', eventId)
-          .in('player_id', playerIds);
-      }
-
-      // Insert new records
-      const insertRecords = records.map((r) => ({
+      const attendanceRows = records.map((r) => ({
         event_id: eventId,
         user_id: r.userId || null,
         player_id: r.playerId || null,
@@ -384,11 +433,33 @@ export function useEvents() {
         recorded_by: user.id,
       }));
 
-      const { error } = await supabase.from('attendance_records').insert(insertRecords);
+      const userAttendanceRows = attendanceRows.filter((row) => row.user_id);
+      const playerAttendanceRows = attendanceRows.filter((row) => row.player_id);
 
-      if (error) {
-        console.error('Error recording attendance:', error);
-        return { success: false, error: 'Failed to record attendance' };
+      if (userAttendanceRows.length === 0 && playerAttendanceRows.length === 0) {
+        return { success: false, error: 'No valid attendance records to save' };
+      }
+
+      if (userAttendanceRows.length > 0) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .upsert(userAttendanceRows, { onConflict: 'event_id,user_id' });
+
+        if (error) {
+          console.error('Error recording user attendance:', error);
+          return { success: false, error: 'Failed to record attendance' };
+        }
+      }
+
+      if (playerAttendanceRows.length > 0) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .upsert(playerAttendanceRows, { onConflict: 'event_id,player_id' });
+
+        if (error) {
+          console.error('Error recording player attendance:', error);
+          return { success: false, error: 'Failed to record attendance' };
+        }
       }
 
       return { success: true };
@@ -571,19 +642,28 @@ export function useEvents() {
       eventId: string,
       sessionId: string | null
     ): Promise<{ success: boolean; error?: string }> => {
-      const { error } = await supabase
+      if (!currentTeam) {
+        return { success: false, error: NO_TEAM_ERROR };
+      }
+
+      const { error, count } = await supabase
         .from('events')
-        .update({ session_id: sessionId })
-        .eq('id', eventId);
+        .update({ session_id: sessionId }, { count: 'exact' })
+        .eq('id', eventId)
+        .eq('team_id', currentTeam.id);
 
       if (error) {
         console.error('Error linking session:', error);
         return { success: false, error: 'Failed to link session' };
       }
 
+      if (count === 0) {
+        return { success: false, error: STALE_EVENT_ERROR };
+      }
+
       return { success: true };
     },
-    [supabase]
+    [supabase, currentTeam]
   );
 
   return {

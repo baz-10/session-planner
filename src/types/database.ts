@@ -45,6 +45,7 @@ export interface Profile {
 export interface Organization {
   id: string;
   name: string;
+  organization_code: string | null;
   logo_url: string | null;
   settings: Record<string, unknown>;
   created_by: string | null;
@@ -91,7 +92,7 @@ export interface Team {
   id: string;
   organization_id: string | null;
   name: string;
-  team_code: string;
+  team_code: string | null;
   sport: string;
   logo_url: string | null;
   settings: TeamSettings;
@@ -508,6 +509,8 @@ export interface Message {
 
 export interface MessageMetadata {
   file_url?: string;
+  file_bucket?: string;
+  file_path?: string;
   file_name?: string;
   file_size?: number;
   image_width?: number;
@@ -520,7 +523,7 @@ export interface MessageMetadata {
 // ============================================================================
 
 export interface TeamMemberWithProfile extends TeamMember {
-  profile: Profile;
+  profile: Profile | null;
 }
 
 export interface TeamWithMembers extends Team {
@@ -558,13 +561,13 @@ export interface PostWithDetails extends Post {
 }
 
 export interface ConversationWithParticipants extends Conversation {
-  participants: (ConversationParticipant & { user: Profile })[];
+  participants: (ConversationParticipant & { user: Profile | null })[];
   last_message: Message | null;
   unread_count: number;
 }
 
 export interface MessageWithSender extends Message {
-  sender: Profile;
+  sender: Profile | null;
 }
 
 // ============================================================================
@@ -728,7 +731,9 @@ export interface Database {
       };
       organizations: {
         Row: Organization;
-        Insert: Omit<Organization, 'id' | 'created_at' | 'updated_at'>;
+        Insert: Omit<Organization, 'id' | 'organization_code' | 'created_at' | 'updated_at'> & {
+          organization_code?: string;
+        };
         Update: Partial<Omit<Organization, 'id' | 'created_at'>>;
       };
       organization_subscriptions: {
@@ -908,8 +913,45 @@ export interface Database {
         Returns: boolean;
       };
       get_or_create_dm: {
-        Args: { other_user_id: string };
+        Args: { other_user_id: string; team_uuid: string };
         Returns: string;
+      };
+      get_or_create_team_chat: {
+        Args: { team_uuid: string; requested_type?: Extract<ChatType, 'team' | 'coaches'> };
+        Returns: Conversation;
+      };
+      create_group_chat: {
+        Args: { team_uuid: string; group_name: string; participant_user_ids: string[] };
+        Returns: Conversation;
+      };
+      create_player_with_parent_link: {
+        Args: {
+          team_uuid: string;
+          player_first_name: string;
+          player_last_name: string;
+          player_relationship?: RelationshipType;
+          player_jersey_number?: string | null;
+          player_position?: string | null;
+          player_grade?: string | null;
+          player_birth_date?: string | null;
+        };
+        Returns: { player: Player; link: ParentPlayerLink };
+      };
+      join_team_by_code: {
+        Args: { invite_code: string; requested_role?: TeamRole };
+        Returns: Omit<Team, 'team_code'>;
+      };
+      get_team_invite_code: {
+        Args: { team_uuid: string };
+        Returns: string;
+      };
+      get_organization_invite_code: {
+        Args: { org_uuid: string };
+        Returns: string;
+      };
+      join_organization_by_code: {
+        Args: { invite_code: string };
+        Returns: Omit<Organization, 'organization_code'>;
       };
       refresh_invoice_status: {
         Args: { invoice_uuid: string };

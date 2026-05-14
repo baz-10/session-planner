@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { useEvents } from '@/hooks/use-events';
 import type { EventType } from '@/types/database';
@@ -42,11 +42,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
   const [dateRange, setDateRange] = useState<'month' | '3months' | 'season'>('month');
   const [view, setView] = useState<'players' | 'events'>('players');
 
-  useEffect(() => {
-    loadStats();
-  }, [filterType, dateRange]);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     setIsLoading(true);
 
     let startDate: string | undefined;
@@ -69,7 +65,11 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
 
     setStats(data);
     setIsLoading(false);
-  };
+  }, [dateRange, filterType, getAttendanceStats]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   const getAttendanceColor = (rate: number) => {
     if (rate >= 90) return 'text-green-600';
@@ -105,16 +105,16 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
   return (
     <div className={`bg-white rounded-lg shadow-md overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="border-b border-gray-200 px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">Attendance Statistics</h2>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             {/* View toggle */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="grid w-full grid-cols-2 rounded-lg bg-gray-100 p-1 sm:flex sm:w-auto">
               <button
                 onClick={() => setView('players')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                className={`rounded-md px-3 py-2 text-sm font-medium transition-colors sm:py-1 ${
                   view === 'players' ? 'bg-white shadow' : 'text-gray-500'
                 }`}
               >
@@ -122,7 +122,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
               </button>
               <button
                 onClick={() => setView('events')}
-                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                className={`rounded-md px-3 py-2 text-sm font-medium transition-colors sm:py-1 ${
                   view === 'events' ? 'bg-white shadow' : 'text-gray-500'
                 }`}
               >
@@ -134,7 +134,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value as 'month' | '3months' | 'season')}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm sm:w-auto sm:py-1"
             >
               <option value="month">This Month</option>
               <option value="3months">Last 3 Months</option>
@@ -145,7 +145,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value as EventType | '')}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm sm:w-auto sm:py-1"
             >
               <option value="">All Events</option>
               <option value="practice">Practices</option>
@@ -156,7 +156,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
       </div>
 
       {/* Overall stats */}
-      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+      <div className="border-b border-gray-200 bg-gray-50 px-4 py-4 sm:px-6">
         <div className="grid grid-cols-2 gap-4 text-center">
           <div>
             <div className="text-3xl font-bold text-primary">{stats.overall.totalEvents}</div>
@@ -172,7 +172,7 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
       </div>
 
       {/* Content */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {view === 'players' ? (
           stats.byPlayer.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
@@ -181,9 +181,14 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
           ) : (
             <div className="space-y-3">
               {stats.byPlayer.map((player) => (
-                <div key={player.playerId} className="flex items-center gap-4">
-                  <div className="w-40 font-medium truncate">{player.playerName}</div>
-                  <div className="flex-1">
+                <div
+                  key={player.playerId}
+                  className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 sm:flex sm:items-center sm:gap-4"
+                >
+                  <div className="col-span-2 min-w-0 truncate font-medium sm:col-span-1 sm:w-40">
+                    {player.playerName}
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 sm:flex-1">
                     <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
@@ -199,10 +204,10 @@ export function AttendanceStats({ className = '' }: AttendanceStatsProps) {
                       />
                     </div>
                   </div>
-                  <div className={`w-16 text-right font-bold ${getAttendanceColor(player.rate)}`}>
+                  <div className={`text-right font-bold sm:w-16 ${getAttendanceColor(player.rate)}`}>
                     {player.rate}%
                   </div>
-                  <div className="w-24 text-right text-sm text-gray-500">
+                  <div className="text-right text-sm text-gray-500 sm:w-24">
                     {player.present + player.late}/{player.total}
                   </div>
                 </div>

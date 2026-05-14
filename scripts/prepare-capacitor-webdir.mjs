@@ -1,8 +1,16 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const capacitorServerUrl = process.env.CAPACITOR_SERVER_URL;
+const allowPlaceholderWebDir = process.env.CAPACITOR_ALLOW_PLACEHOLDER_WEBDIR === '1';
 const outDir = resolve(process.cwd(), 'out');
 const indexPath = resolve(outDir, 'index.html');
+
+if (!capacitorServerUrl && !allowPlaceholderWebDir) {
+  throw new Error(
+    'CAPACITOR_SERVER_URL is required before syncing the native app. Set CAPACITOR_ALLOW_PLACEHOLDER_WEBDIR=1 only for local native shell validation.'
+  );
+}
 
 mkdirSync(outDir, { recursive: true });
 
