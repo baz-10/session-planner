@@ -43,6 +43,24 @@ function withOrganizationInviteCode(
   };
 }
 
+function areTeamSelectionsEqual(previousTeam: Team | null, nextTeam: Team | null): boolean {
+  if (previousTeam === nextTeam) return true;
+  if (!previousTeam || !nextTeam) return false;
+
+  return (
+    previousTeam.id === nextTeam.id &&
+    previousTeam.organization_id === nextTeam.organization_id &&
+    previousTeam.name === nextTeam.name &&
+    previousTeam.team_code === nextTeam.team_code &&
+    previousTeam.sport === nextTeam.sport &&
+    previousTeam.logo_url === nextTeam.logo_url &&
+    previousTeam.created_by === nextTeam.created_by &&
+    previousTeam.created_at === nextTeam.created_at &&
+    previousTeam.updated_at === nextTeam.updated_at &&
+    JSON.stringify(previousTeam.settings) === JSON.stringify(nextTeam.settings)
+  );
+}
+
 interface AuthState {
   user: User | null;
   session: Session | null;
@@ -207,6 +225,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ? memberships.find((membership) => membership.team.id === previousTeam.id)
         : null;
       const nextTeam = matchingMembership?.team ?? preferredMembership?.team ?? null;
+      if (areTeamSelectionsEqual(previousTeam, nextTeam)) {
+        return previousTeam;
+      }
       if (nextTeam) {
         logAuth('[Auth] Setting currentTeam to:', nextTeam.name);
       }
@@ -262,8 +283,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!currentTeam && teamMemberships.length === 0 && data && data.length > 0) {
       const firstPlayerWithTeam = data.find((item: { player: Player & { team?: Team } }) => item.player?.team);
       if (firstPlayerWithTeam?.player?.team) {
-        logAuth('[Auth] Setting parent team from linked player:', firstPlayerWithTeam.player.team.name);
-        setCurrentTeam(hideTeamInviteCode(firstPlayerWithTeam.player.team));
+        const parentTeam = hideTeamInviteCode(firstPlayerWithTeam.player.team);
+        logAuth('[Auth] Setting parent team from linked player:', parentTeam.name);
+        setCurrentTeam((previousTeam) =>
+          areTeamSelectionsEqual(previousTeam, parentTeam) ? previousTeam : parentTeam
+        );
       }
     }
   }, [supabase, state.user, currentTeam, teamMemberships.length]);
