@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,7 +16,8 @@ if (typeof window !== 'undefined') {
 
 /**
  * Create a Supabase client for Client Components.
- * Uses localStorage for session persistence (works with static exports).
+ * Uses Supabase SSR cookie storage so middleware and Server Components can
+ * read the same session created by client-side sign-in.
  * Note: Using `any` type to avoid strict type inference issues with Supabase queries.
  */
 export function createBrowserSupabaseClient(): any {
@@ -34,15 +35,7 @@ export function createBrowserSupabaseClient(): any {
   if (process.env.NODE_ENV === 'development') {
     console.log('[Supabase] Creating client for:', supabaseUrl);
   }
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      storageKey: 'session-planner-auth',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
 // Singleton instance for client-side usage
