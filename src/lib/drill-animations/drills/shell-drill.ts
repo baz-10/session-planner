@@ -127,6 +127,13 @@ export const shellDrill: DrillAnimation = {
       freeze: true,
       title: 'See ball and player',
       body: 'X4 is two-plus passes away. Point one hand at the ball and one at your player: the ball-you-player triangle.',
+      callout: { player: 'X4', text: 'See ball and player' },
+      quiz: {
+        prompt: 'The ball is on the right wing. Which defender is one pass away and should be denying?',
+        answer: 'X2',
+        choices: ['X1', 'X2', 'X4'],
+        explain: 'X2 guards the right guard, one pass from the ball, so X2 denies. X1 and X4 are two or more passes away, so they help.',
+      },
     },
     { at: RESUME_AT, title: 'Jump to the ball', body: 'On a skip or a swing, the help defenders sprint back out to deny or close out.' },
     { at: tAt(passStart(4)), title: 'Talk every pass', body: '"Ball!" from the on-ball defender, "Deny!" and "Help!" from the others.' },

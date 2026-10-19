@@ -11,6 +11,8 @@ import type {
 
 export const COURT = { length: 94, width: 50 } as const;
 export const HOOP = { x: 88.75, y: 25 } as const;
+export const HOOPS = { right: HOOP, left: { x: 5.25, y: 25 } } as const;
+const nearestHoop = (p: { x: number }) => (p.x < 47 ? HOOPS.left : HOOPS.right);
 const RIM_HEIGHT = 10;
 
 export interface Vec {
@@ -139,8 +141,12 @@ export interface CompiledDrill {
   /** Unit vector the player faces. */
   facing: (id: string, tau: number) => Vec;
   ball: (tau: number) => BallState;
-  /** Drill time of the last made shot at or before tau, if one is still celebrating. */
-  scoreAt: (tau: number) => number | null;
+  /** The last made shot at or before tau, while it is still celebrating. */
+  scoreAt: (tau: number) => { at: number; hoop: Vec } | null;
+  /** Whether a player is attacking or defending at tau (kit drills swap roles on every change of possession). */
+  roleAt: (id: string, tau: number) => 'offense' | 'defense';
+  /** The camera's centre and width in feet at presentation time t. */
+  cameraAt: (t: number) => { x: number; y: number; w: number } | null;
   arrows: (t: number, tau: number) => ArrowPath[];
   stepAt: (t: number) => { step: DrillStep; index: number } | null;
 }
@@ -148,6 +154,7 @@ export interface CompiledDrill {
 export function compileDrill(drill: DrillAnimation): CompiledDrill {
   const tracks = new Map(Object.entries(drill.tracks).map(([id, keys]) => [id, buildTrack(keys)]));
   const teams = new Map(drill.players.map((p) => [p.id, p.team]));
+  const kits = new Map(drill.players.map((p) => [p.id, p.kit]));
   const segments = [...drill.ball].sort((a, b) => a.start - b.start);
 
   const tauAt = (t: number) => {
@@ -195,8 +202,26 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     if (!found) return segments[0]?.type === 'hold' ? segments[0].player : null;
     const { seg } = found;
     if (seg.type === 'hold' && tau <= seg.end + 0.05) return seg.player;
-    if (seg.type === 'pass' && tau >= seg.end) return seg.to;
+    if ((seg.type === 'pass' || seg.type === 'rebound') && tau >= seg.end) return seg.to;
     return null;
+  };
+
+  // The player whose team has the ball: the holder, the passer or shooter while it's in the air.
+  const possessorOf = (tau: number): string | null => {
+    const found = segmentFor(tau);
+    if (!found) return segments[0]?.type === 'hold' ? segments[0].player : null;
+    const { seg } = found;
+    if (seg.type === 'hold' || seg.type === 'shot') return seg.player;
+    if (seg.type === 'pass') return tau >= seg.end ? seg.to : seg.from;
+    return seg.to;
+  };
+
+  const roleAt = (id: string, tau: number): 'offense' | 'defense' => {
+    const kit = kits.get(id);
+    if (!kit) return teams.get(id) ?? 'offense';
+    const possessor = possessorOf(tau);
+    if (!possessor) return teams.get(id) ?? 'offense';
+    return kits.get(possessor) === kit ? 'offense' : 'defense';
   };
 
   const facing = (id: string, tau: number): Vec => {
@@ -205,7 +230,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     const p = pos(id, tau);
     const holder = holderOf(tau);
     let target: Vec;
-    if (holder === id) target = HOOP;
+    if (holder === id) target = nearestHoop(p);
     else {
       const b = ballFloor(tau);
       target = { x: b.x, y: b.y };
@@ -225,7 +250,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     const p = pos(id, tau);
     const v = vel(id, tau);
     const speed = Math.hypot(v.x, v.y);
-    const forward = speed > 1 ? { x: v.x / speed, y: v.y / speed } : directionTo(p, HOOP);
+    const forward = speed > 1 ? { x: v.x / speed, y: v.y / speed } : directionTo(p, nearestHoop(p));
     const right = { x: -forward.y, y: forward.x };
     const w = mode === 'always' ? 1 : mode === 'never' ? 0 : clamp((speed - 2.5) / 3);
     const bounce = 3.1 * Math.abs(Math.sin(Math.PI * 2.3 * (tau - since)));
@@ -236,13 +261,23 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     };
   };
 
-  function afterShot(u: number): BallState {
+  const hoopOf = (seg: Extract<BallSegment, { type: 'shot' | 'rebound' }>) =>
+    seg.hoop === 'left' ? HOOPS.left : seg.hoop === 'right' ? HOOPS.right : HOOP;
+
+  function afterShot(hoop: Vec, u: number): BallState {
     // Drops through the net, bounces under the rim and rolls toward the baseline.
-    if (u < 0.3) return { x: HOOP.x, y: HOOP.y, h: lerp(RIM_HEIGHT, 3, u / 0.3), holder: null };
+    if (u < 0.3) return { x: hoop.x, y: hoop.y, h: lerp(RIM_HEIGHT, 3, u / 0.3), holder: null };
     const r = u - 0.3;
     const roll = Math.min(r, 2.5);
     const h = 3 * Math.exp(-1.6 * r) * Math.abs(Math.cos(Math.PI * 1.7 * r));
-    return { x: HOOP.x + 1.6 * roll, y: HOOP.y + 0.5 * roll, h, holder: null };
+    const out = hoop.x > 47 ? 1 : -1;
+    return { x: hoop.x + 1.6 * roll * out, y: hoop.y + 0.5 * roll, h, holder: null };
+  }
+
+  // A miss clanks off the front of the rim and pops up before anyone catches it.
+  function offRim(hoop: Vec, u: number): BallState {
+    const out = hoop.x > 47 ? -1 : 1;
+    return { x: hoop.x + out * 1.2 * u, y: hoop.y + 0.8 * u, h: RIM_HEIGHT + 2 * Math.sin(Math.PI * Math.min(u, 1)), holder: null };
   }
 
   const ball = (tau: number): BallState => {
@@ -267,14 +302,23 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       if (seg.style === 'lob') h = lerp(a.h, b.h, p) + 8 * Math.sin(Math.PI * p);
       return { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), h, holder: null };
     }
-    if (tau >= seg.end) return afterShot(tau - seg.end);
+    if (seg.type === 'rebound') {
+      if (tau >= seg.end) return { ...holdPoint(seg.to, tau), holder: seg.to };
+      const hoop = hoopOf(seg);
+      const a = { x: hoop.x + (hoop.x > 47 ? -1.4 : 1.4), y: hoop.y + 1, h: RIM_HEIGHT };
+      const b = holdPoint(seg.to, seg.end);
+      const p = (tau - seg.start) / (seg.end - seg.start);
+      return { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), h: lerp(a.h, b.h, p) + 3 * Math.sin(Math.PI * p), holder: null };
+    }
+    const hoop = hoopOf(seg);
+    if (tau >= seg.end) return seg.make === false ? offRim(hoop, tau - seg.end) : afterShot(hoop, tau - seg.end);
     const a = holdPoint(seg.player, seg.start);
     const p = (tau - seg.start) / (seg.end - seg.start);
-    const reach = Math.hypot(HOOP.x - a.x, HOOP.y - a.y);
+    const reach = Math.hypot(hoop.x - a.x, hoop.y - a.y);
     const arc = clamp(reach / 3, 2, 9);
     return {
-      x: lerp(a.x, HOOP.x, easeOut(p) * 0.4 + p * 0.6),
-      y: lerp(a.y, HOOP.y, easeOut(p) * 0.4 + p * 0.6),
+      x: lerp(a.x, hoop.x, easeOut(p) * 0.4 + p * 0.6),
+      y: lerp(a.y, hoop.y, easeOut(p) * 0.4 + p * 0.6),
       h: lerp(a.h + 2, RIM_HEIGHT, p) + arc * Math.sin(Math.PI * p),
       holder: null,
     };
@@ -286,8 +330,10 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
   }
 
   const scoreAt = (tau: number) => {
-    let last: number | null = null;
-    for (const seg of segments) if (seg.type === 'shot' && tau >= seg.end && tau < seg.end + 1.6) last = seg.end;
+    let last: { at: number; hoop: Vec } | null = null;
+    for (const seg of segments) {
+      if (seg.type === 'shot' && seg.make !== false && tau >= seg.end && tau < seg.end + 1.6) last = { at: seg.end, hoop: hoopOf(seg) };
+    }
     return last;
   };
 
@@ -302,7 +348,8 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       const trimmed = trimStill(samples);
       if (pathLength(trimmed.map((s) => s.p)) < 2.5) continue;
       const held = trimmed.filter((s) => holderOf(s.tau) === id).length / trimmed.length;
-      const kind: ArrowPath['kind'] = teams.get(id) === 'defense' ? 'defense' : held > 0.6 ? 'dribble' : 'cut';
+      const mid = trimmed[Math.floor(trimmed.length / 2)].tau;
+      const kind: ArrowPath['kind'] = roleAt(id, mid) === 'defense' ? 'defense' : held > 0.6 ? 'dribble' : 'cut';
       sources.push({ key: `${si}-${id}`, kind, set, delay: order * 0.22, samples: kind === 'dribble' ? wavy(trimmed) : trimmed });
       order += 1;
     }
@@ -325,6 +372,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
           order += 1;
         } else if (seg.type === 'shot') {
           const a = holdPoint(seg.player, seg.start);
+          const hoop = hoopOf(seg);
           sources.push({
             key: `${si}-s${gi}`,
             kind: 'shot',
@@ -332,7 +380,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
             delay: order * 0.22,
             samples: [
               { tau: seg.start, p: { x: a.x, y: a.y } },
-              { tau: seg.end, p: { x: HOOP.x - 0.9, y: HOOP.y } },
+              { tau: seg.end, p: { x: hoop.x + (hoop.x > 47 ? -0.9 : 0.9), y: hoop.y } },
             ],
           });
           order += 1;
@@ -372,7 +420,35 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     return found;
   };
 
-  return { drill, tauAt, pos, vel, facing, ball, scoreAt, arrows, stepAt };
+  // Camera keys hold a fixed x, or 'ball' to follow a smoothed ball position kept on the court.
+  const followX = (t: number, w: number) => {
+    let sum = 0;
+    const n = 8;
+    for (let i = 0; i < n; i += 1) sum += ball(tauAt(Math.max(0, t - i * 0.12))).x;
+    return clamp(sum / n, w / 2 - 5.8, 99.8 - w / 2);
+  };
+  const cameraAt = (t: number) => {
+    const keys = drill.camera;
+    if (!keys?.length) return null;
+    const value = (key: (typeof keys)[number]) => {
+      const w = key[3];
+      return { x: key[1] === 'ball' ? followX(t, w) : key[1], y: key[2], w };
+    };
+    if (t <= keys[0][0]) return value(keys[0]);
+    for (let i = 0; i < keys.length - 1; i += 1) {
+      if (t >= keys[i][0] && t < keys[i + 1][0]) {
+        const a = value(keys[i]);
+        const b = value(keys[i + 1]);
+        const m = easeInOut((t - keys[i][0]) / (keys[i + 1][0] - keys[i][0]));
+        const w = lerp(a.w, b.w, m);
+        const h = (w * 9) / 16;
+        return { x: clamp(lerp(a.x, b.x, m), w / 2 - 5.8, 99.8 - w / 2), y: clamp(lerp(a.y, b.y, m), h / 2 - 4.7, 54.7 - h / 2), w };
+      }
+    }
+    return value(keys[keys.length - 1]);
+  };
+
+  return { drill, tauAt, pos, vel, facing, ball, scoreAt, roleAt, cameraAt, arrows, stepAt };
 }
 
 // ---------- Path helpers ----------

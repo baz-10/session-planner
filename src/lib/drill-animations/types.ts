@@ -12,6 +12,13 @@ export interface DrillPlayer {
   label: string;
   /** Presentation time the token pops onto the court. Defaults to 0. */
   enterAt?: number;
+  /**
+   * For drills where possession changes hands (e.g. Dark vs Light), the player's team colour.
+   * Attack and defence roles are then worked out from who has the ball.
+   */
+  kit?: 'dark' | 'light';
+  /** Shown in quiz answers. Defaults to e.g. "Light 3" or "Defender 2". */
+  name?: string;
 }
 
 /** [tau, x, y] or [tau, x, y, 'jump'] to teleport (used to reset between reps). */
@@ -22,7 +29,9 @@ export type DrillKeyframe =
 export type BallSegment =
   | { type: 'hold'; player: string; start: number; end: number; dribble?: 'auto' | 'always' | 'never' }
   | { type: 'pass'; from: string; to: string; start: number; end: number; style?: 'chest' | 'bounce' | 'lob' }
-  | { type: 'shot'; player: string; start: number; end: number };
+  | { type: 'shot'; player: string; start: number; end: number; make?: boolean; hoop?: 'left' | 'right' }
+  /** The ball comes off the rim to a rebounder after a missed shot. */
+  | { type: 'rebound'; to: string; start: number; end: number; hoop?: 'left' | 'right' };
 
 /** Coaching-diagram arrows for the movement in [from, to] (tau), drawn on at `show` and gone by `hide` (t). */
 export interface DrillArrowSet {
@@ -44,8 +53,22 @@ export interface DrillStep {
   tone?: DrillTone;
   /** Shows a "Paused" badge: use when the clock holds tau still for a coaching point. */
   freeze?: boolean;
-  /** Steps with a chapter name appear in the step list and can be jumped to. */
+  /** Steps with a chapter name start a new section in the step list. */
   chapter?: string;
+  /** Pins the step's caption on the court next to a player, with a leader line. */
+  callout?: { player: string; text?: string };
+  /** In quiz mode, playback stops here and the coach taps the player they think is right. */
+  quiz?: DrillQuiz;
+}
+
+export interface DrillQuiz {
+  prompt: string;
+  /** Player id of the correct answer. */
+  answer: string;
+  /** Player ids offered as answers. */
+  choices: string[];
+  /** Shown after answering. */
+  explain: string;
 }
 
 export type DrillMark =
@@ -82,6 +105,11 @@ export interface DrillAnimation {
   equipment: string;
   focus: string[];
   court: 'full' | 'half';
+  /**
+   * Full-court camera: [t, x or 'ball', y, width] in feet. 'ball' follows the play.
+   * Without it the whole court is shown.
+   */
+  camera?: Array<[number, number | 'ball', number, number]>;
   /** Presentation length in seconds. */
   length: number;
   /** Presentation time to show before the first play. */

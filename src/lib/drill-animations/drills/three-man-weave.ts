@@ -92,10 +92,27 @@ const steps: DrillStep[] = [
   { at: 2.6, title: 'Pass and go behind', body: 'The middle player passes to a wing, then runs behind the player they passed to.' },
   { at: 5.5, chapter: 'Full speed', title: 'Full speed, no dribbles', body: 'Five passes up the floor. The ball never touches the ground until the layup.' },
   { at: SLOW_FROM - 0.4, chapter: 'Slow motion', title: 'Slow motion', body: 'Follow the passer each time. They always go behind the receiver.' },
-  { at: slowT(passAt(0)), title: 'Pass 1: middle to the right', body: 'Lead the wing with the pass so they catch it on the run.' },
+  {
+    at: slowT(passAt(0)),
+    title: 'Pass 1: middle to the wing',
+    body: 'Lead the wing with the pass so they catch it on the run.',
+    callout: { player: 'O1', text: 'Pass, then go behind' },
+    quiz: {
+      prompt: '1 passes to 2 and runs behind. Who gets the pass after that?',
+      answer: 'O3',
+      choices: ['O1', 'O2', 'O3'],
+      explain: '2 comes to the middle and passes to the other wing, 3. Then 2 runs behind 3.',
+    },
+  },
   { at: slowT(passAt(1)), title: 'Pass 2: the new middle goes left', body: 'The receiver has come to the middle. Now they pass and go behind.' },
   { at: slowT(passAt(3)), title: 'Keep the spacing', body: 'Wings stay wide. Cutting too early squeezes the lanes together.' },
-  { at: slowT(DRIVE_FROM), tone: 'success', title: 'Finish strong', body: 'Last receiver attacks the rim. The others fill the wings for a rebound.' },
+  {
+    at: slowT(DRIVE_FROM),
+    tone: 'success',
+    title: 'Finish strong',
+    body: 'Last receiver attacks the rim. The others fill the wings for a rebound.',
+    callout: { player: finisher, text: 'Layup' },
+  },
 ];
 
 export const threeManWeave: DrillAnimation = {
