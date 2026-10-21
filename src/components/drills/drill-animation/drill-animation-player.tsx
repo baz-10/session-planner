@@ -105,6 +105,8 @@ export function DrillAnimationPlayer({ drill, className }: DrillAnimationPlayerP
   tRef.current = t;
   const quizModeRef = useRef(quizMode);
   quizModeRef.current = quizMode;
+  // The quiz the coach just answered or skipped, so playing on from its exact time doesn't ask again.
+  const doneQuizAt = useRef<number | null>(null);
 
   const quizSteps = useMemo(
     () => drill.steps.map((step, index) => ({ step, index })).filter(({ step }) => step.quiz),
@@ -128,7 +130,10 @@ export function DrillAnimationPlayer({ drill, className }: DrillAnimationPlayerP
       const next = Math.min(drill.length, prev + ((now - last) / 1000) * speed);
       last = now;
       // Quiz mode: stop on the first question this frame crosses and let the coach answer.
-      const due = quizModeRef.current ? quizSteps.find(({ step }) => prev < step.at && step.at <= next) : undefined;
+      // Starting exactly on a question (e.g. after jumping to it) still asks it.
+      const due = quizModeRef.current
+        ? quizSteps.find(({ step }) => (prev < step.at || (prev === step.at && doneQuizAt.current !== step.at)) && step.at <= next)
+        : undefined;
       if (due) {
         setT(due.step.at);
         setPlaying(false);
@@ -154,13 +159,21 @@ export function DrillAnimationPlayer({ drill, className }: DrillAnimationPlayerP
   }, [drill.length]);
 
   const togglePlay = useCallback(() => {
+    // An open question needs an answer (or Skip) before playback carries on.
+    if (quiz && !quiz.picked) return;
     if (playing) setPlaying(false);
     else play();
-  }, [playing, play]);
+  }, [playing, play, quiz]);
+
+  const finishQuiz = () => {
+    if (quiz) doneQuizAt.current = drill.steps[quiz.index].at;
+    play();
+  };
 
   const seek = (value: number) => {
     setStarted(true);
     setQuiz(null);
+    doneQuizAt.current = null;
     setT(clamp(value, 0, drill.length));
   };
 
@@ -252,8 +265,8 @@ export function DrillAnimationPlayer({ drill, className }: DrillAnimationPlayerP
               step={activeQuiz}
               picked={quiz.picked}
               onPick={pick}
-              onSkip={play}
-              onContinue={play}
+              onSkip={finishQuiz}
+              onContinue={finishQuiz}
             />
           )}
         </div>
@@ -331,7 +344,7 @@ export function DrillAnimationPlayer({ drill, className }: DrillAnimationPlayerP
           compiled={compiled}
           t={t}
           onSelect={(at) => {
-            seek(at + 0.01);
+            seek(at);
             setPlaying(true);
           }}
         />
@@ -636,7 +649,7 @@ function CourtScene({
           t={t}
           tau={tau}
           theme={theme}
-          holder={ball.holder === p.id}
+          ball={ball}
           onPick={quiz && !quiz.picked && quiz.choices.includes(p.id) ? onPick : undefined}
         />
       ))}
@@ -775,7 +788,7 @@ function PlayerToken({
   t,
   tau,
   theme,
-  holder,
+  ball,
   onPick,
 }: {
   compiled: CompiledDrill;
@@ -783,7 +796,8 @@ function PlayerToken({
   t: number;
   tau: number;
   theme: PlayEditorTheme;
-  holder: boolean;
+  /** This frame's ball, computed once by the scene. */
+  ball: ReturnType<CompiledDrill['ball']>;
   onPick?: (id: string) => void;
 }) {
   const p = compiled.pos(player.id, tau);
@@ -798,7 +812,7 @@ function PlayerToken({
   const stretch = clamp(speed * 0.007, 0, 0.12); // squash and stretch along the run
   const enter = t - (player.enterAt ?? 0);
   const pop = spring(enter, 2.2, 0.5);
-  const ball = compiled.ball(tau);
+  const holder = ball.holder === player.id;
   const defending = role === 'defense' && !waiting;
   const stance = defending ? clamp((8 - Math.hypot(ball.x - p.x, ball.y - p.y)) / 3) : 0;
   const label = !player.kit && player.team === 'defense' ? player.label.replace(/^X/i, '') || 'X' : player.label;

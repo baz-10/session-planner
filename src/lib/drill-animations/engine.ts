@@ -179,6 +179,15 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     return evalSegment(track[segmentAt(track, tau)], tau);
   };
 
+  // Position at tau2, but never across a jump cut from tau (resets between reps).
+  const posNear = (id: string, tau: number, tau2: number): Vec => {
+    const track = tracks.get(id);
+    if (!track) return { x: 0, y: 0 };
+    const index = segmentAt(track, tau);
+    const end = track[index + 1]?.start ?? Infinity;
+    return evalSegment(track[index], clamp(tau2, track[index].start, end - 1e-4));
+  };
+
   // Velocity never looks across a jump cut, so resets don't smear.
   const vel = (id: string, tau: number): Vec => {
     const track = tracks.get(id);
@@ -195,10 +204,11 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
   };
 
   const segmentFor = (tau: number): { seg: BallSegment; index: number } | null => {
+    // Segments are sorted by start, so stop at the first one that hasn't begun.
     let found: { seg: BallSegment; index: number } | null = null;
-    segments.forEach((seg, index) => {
-      if (tau >= seg.start) found = { seg, index };
-    });
+    for (let index = 0; index < segments.length && tau >= segments[index].start; index += 1) {
+      found = { seg: segments[index], index };
+    }
     return found;
   };
 
@@ -264,7 +274,21 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     const p = pos(id, tau);
     const v = vel(id, tau);
     const speed = Math.hypot(v.x, v.y);
-    const forward = speed > 1 ? { x: v.x / speed, y: v.y / speed } : directionTo(p, nearestHoop(p));
+    // Point the ball where the holder is about to go (looking slightly ahead), or at the hoop when they're
+    // settled. Rotate between the two rather than blending, so the ball swings round instead of jumping.
+    const toHoop = directionTo(p, nearestHoop(p));
+    const ahead = posNear(id, tau, tau + 0.5);
+    const behind = posNear(id, tau, tau - 0.2);
+    const moved = Math.hypot(ahead.x - behind.x, ahead.y - behind.y);
+    const hoopAngle = Math.atan2(toHoop.y, toHoop.x);
+    let turn = Math.atan2(ahead.y - behind.y, ahead.x - behind.x) - hoopAngle;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    // Moving away from the hoop is ambiguous (swing left or right?): always swing the same way, and
+    // ignore small backward drifts entirely.
+    if (turn < -2.6) turn += 2 * Math.PI;
+    const backward = Math.cos(turn) < -0.3;
+    const angle = hoopAngle + turn * clamp(moved / 1.5) * (backward ? clamp((moved - 1.5) / 2) : 1);
+    const forward = { x: Math.cos(angle), y: Math.sin(angle) };
     const right = { x: -forward.y, y: forward.x };
     const w = mode === 'always' ? 1 : mode === 'never' ? 0 : clamp((speed - 2.5) / 3);
     const bounce = 3.1 * Math.abs(Math.sin(Math.PI * 2.3 * (tau - since)));
@@ -301,15 +325,20 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       if (first?.type === 'hold') return { ...holdPoint(first.player, tau, first.dribble, first.start), holder: first.player };
       return { x: 47, y: 25, h: 0, holder: null };
     }
-    const { seg } = found;
+    const { seg, index } = found;
     if (seg.type === 'hold') {
       const at = Math.min(tau, seg.end);
       return { ...holdPoint(seg.player, at, seg.dribble, seg.start), holder: seg.player };
     }
     if (seg.type === 'pass') {
-      if (tau >= seg.end) return { ...holdPoint(seg.to, tau), holder: seg.to };
-      const a = holdPoint(seg.from, seg.start);
-      const b = holdPoint(seg.to, seg.end);
+      // Catch with the same dribble setting as the hold that follows, so the ball lands where it then sits.
+      const next = segments[index + 1];
+      const catchMode = next?.type === 'hold' && next.player === seg.to ? next.dribble : undefined;
+      const prior = segments[index - 1];
+      const throwMode = prior?.type === 'hold' && prior.player === seg.from ? prior.dribble : undefined;
+      if (tau >= seg.end) return { ...holdPoint(seg.to, tau, catchMode, seg.end), holder: seg.to };
+      const a = holdPoint(seg.from, seg.start, throwMode);
+      const b = holdPoint(seg.to, seg.end, catchMode, seg.end);
       const p = (tau - seg.start) / (seg.end - seg.start);
       let h = lerp(a.h, b.h, p) + 1.2 * Math.sin(Math.PI * p);
       if (seg.style === 'bounce') h = p < 0.55 ? lerp(a.h, 0, p / 0.55) : lerp(0, b.h, (p - 0.55) / 0.45);
@@ -319,14 +348,17 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     if (seg.type === 'rebound') {
       if (tau >= seg.end) return { ...holdPoint(seg.to, tau), holder: seg.to };
       const hoop = hoopOf(seg);
-      const a = { x: hoop.x + (hoop.x > 47 ? -1.4 : 1.4), y: hoop.y + 1, h: RIM_HEIGHT };
+      // Start from wherever the miss has carried the ball off the rim, so there's no jump at the handoff.
+      const shot = segments[index - 1];
+      const a = offRim(hoop, shot?.type === 'shot' ? Math.max(0, seg.start - shot.end) : 0);
       const b = holdPoint(seg.to, seg.end);
       const p = (tau - seg.start) / (seg.end - seg.start);
       return { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), h: lerp(a.h, b.h, p) + 3 * Math.sin(Math.PI * p), holder: null };
     }
     const hoop = hoopOf(seg);
     if (tau >= seg.end) return seg.make === false ? offRim(hoop, tau - seg.end) : afterShot(hoop, tau - seg.end);
-    const a = holdPoint(seg.player, seg.start);
+    const before = segments[index - 1];
+    const a = holdPoint(seg.player, seg.start, before?.type === 'hold' && before.player === seg.player ? before.dribble : undefined, before?.start);
     const p = (tau - seg.start) / (seg.end - seg.start);
     const reach = Math.hypot(hoop.x - a.x, hoop.y - a.y);
     const arc = clamp(reach / 3, 2, 9);
@@ -417,13 +449,12 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       if (points.length < 2) continue;
       const a = points[points.length - 2];
       const b = points[points.length - 1];
-      const done = draw >= 1;
       out.push({
         key: src.key,
         kind: src.kind,
         points,
         opacity,
-        head: done || draw > 0.05 ? { at: b, angle: Math.atan2(b.y - a.y, b.x - a.x) } : null,
+        head: draw > 0.05 ? { at: b, angle: Math.atan2(b.y - a.y, b.x - a.x) } : null,
         cap: src.cap,
       });
     }
@@ -452,18 +483,21 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       const w = key[3];
       return { x: key[1] === 'ball' ? followX(t, w) : key[1], y: key[2], w };
     };
-    if (t <= keys[0][0]) return value(keys[0]);
+    // Keep the view on the court whichever branch below produced it.
+    const fit = ({ x, y, w }: { x: number; y: number; w: number }) => {
+      const h = (w * 9) / 16;
+      return { x: clamp(x, w / 2 - 5.8, 99.8 - w / 2), y: clamp(y, h / 2 - 4.7, 54.7 - h / 2), w };
+    };
+    if (t <= keys[0][0]) return fit(value(keys[0]));
     for (let i = 0; i < keys.length - 1; i += 1) {
       if (t >= keys[i][0] && t < keys[i + 1][0]) {
         const a = value(keys[i]);
         const b = value(keys[i + 1]);
         const m = easeInOut((t - keys[i][0]) / (keys[i + 1][0] - keys[i][0]));
-        const w = lerp(a.w, b.w, m);
-        const h = (w * 9) / 16;
-        return { x: clamp(lerp(a.x, b.x, m), w / 2 - 5.8, 99.8 - w / 2), y: clamp(lerp(a.y, b.y, m), h / 2 - 4.7, 54.7 - h / 2), w };
+        return fit({ x: lerp(a.x, b.x, m), y: lerp(a.y, b.y, m), w: lerp(a.w, b.w, m) });
       }
     }
-    return value(keys[keys.length - 1]);
+    return fit(value(keys[keys.length - 1]));
   };
 
   return { drill, tauAt, pos, vel, facing, ball, scoreAt, roleAt, waitingAt, cameraAt, arrows, stepAt };
