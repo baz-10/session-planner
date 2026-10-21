@@ -123,6 +123,8 @@ export interface ArrowPath {
   points: Vec[];
   opacity: number;
   head: { at: Vec; angle: number } | null;
+  /** 'screen' ends the arrow in a T. */
+  cap: 'arrow' | 'screen';
 }
 
 interface ArrowSource {
@@ -130,6 +132,7 @@ interface ArrowSource {
   kind: ArrowPath['kind'];
   set: DrillArrowSet;
   delay: number;
+  cap: ArrowPath['cap'];
   samples: { tau: number; p: Vec }[];
 }
 
@@ -145,6 +148,8 @@ export interface CompiledDrill {
   scoreAt: (tau: number) => { at: number; hoop: Vec } | null;
   /** Whether a player is attacking or defending at tau (kit drills swap roles on every change of possession). */
   roleAt: (id: string, tau: number) => 'offense' | 'defense';
+  /** Players standing in a line or at an outlet spot, waiting for their turn. */
+  waitingAt: (id: string, tau: number) => boolean;
   /** The camera's centre and width in feet at presentation time t. */
   cameraAt: (t: number) => { x: number; y: number; w: number } | null;
   arrows: (t: number, tau: number) => ArrowPath[];
@@ -216,7 +221,16 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     return seg.to;
   };
 
+  const phaseAt = (tau: number) => {
+    let found: NonNullable<typeof drill.phases>[number] | undefined;
+    for (const phase of drill.phases ?? []) if (tau >= phase.at) found = phase;
+    return found ?? drill.phases?.[0];
+  };
+  const waitingAt = (id: string, tau: number) => phaseAt(tau)?.waiting?.includes(id) ?? false;
+
   const roleAt = (id: string, tau: number): 'offense' | 'defense' => {
+    const phase = phaseAt(tau);
+    if (phase) return phase.offense.includes(id) ? 'offense' : 'defense';
     const kit = kits.get(id);
     if (!kit) return teams.get(id) ?? 'offense';
     const possessor = possessorOf(tau);
@@ -350,7 +364,8 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
       const held = trimmed.filter((s) => holderOf(s.tau) === id).length / trimmed.length;
       const mid = trimmed[Math.floor(trimmed.length / 2)].tau;
       const kind: ArrowPath['kind'] = roleAt(id, mid) === 'defense' ? 'defense' : held > 0.6 ? 'dribble' : 'cut';
-      sources.push({ key: `${si}-${id}`, kind, set, delay: order * 0.22, samples: kind === 'dribble' ? wavy(trimmed) : trimmed });
+      const cap = set.screens?.includes(id) ? 'screen' : 'arrow';
+      sources.push({ key: `${si}-${id}`, kind, set, cap, delay: order * 0.22, samples: kind === 'dribble' ? wavy(trimmed) : trimmed });
       order += 1;
     }
     if (set.passes) {
@@ -363,6 +378,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
             key: `${si}-p${gi}`,
             kind: 'pass',
             set,
+            cap: 'arrow',
             delay: order * 0.22,
             samples: [
               { tau: seg.start, p: { x: a.x, y: a.y } },
@@ -377,6 +393,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
             key: `${si}-s${gi}`,
             kind: 'shot',
             set,
+            cap: 'arrow',
             delay: order * 0.22,
             samples: [
               { tau: seg.start, p: { x: a.x, y: a.y } },
@@ -407,6 +424,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
         points,
         opacity,
         head: done || draw > 0.05 ? { at: b, angle: Math.atan2(b.y - a.y, b.x - a.x) } : null,
+        cap: src.cap,
       });
     }
     return out;
@@ -448,7 +466,7 @@ export function compileDrill(drill: DrillAnimation): CompiledDrill {
     return value(keys[keys.length - 1]);
   };
 
-  return { drill, tauAt, pos, vel, facing, ball, scoreAt, roleAt, cameraAt, arrows, stepAt };
+  return { drill, tauAt, pos, vel, facing, ball, scoreAt, roleAt, waitingAt, cameraAt, arrows, stepAt };
 }
 
 // ---------- Path helpers ----------

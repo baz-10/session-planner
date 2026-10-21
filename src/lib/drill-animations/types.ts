@@ -41,6 +41,8 @@ export interface DrillArrowSet {
   to: number;
   players?: string[];
   passes?: boolean;
+  /** Players whose arrow ends in a screen (a T) instead of an arrowhead. */
+  screens?: string[];
 }
 
 export type DrillTone = 'teach' | 'warning' | 'success';
@@ -77,7 +79,16 @@ export type DrillMark =
   | { kind: 'link'; a: string; b: string; text?: string; from: number; to: number; tone?: DrillTone }
   | { kind: 'lane'; y1: number; y2: number; text: string; from: number; to: number }
   | { kind: 'label'; x: number; y: number; text: string; from: number; to: number; tone?: DrillTone }
-  | { kind: 'triangle'; players: [string, string, string]; text?: string; from: number; to: number };
+  | { kind: 'triangle'; players: [string, string, string]; text?: string; from: number; to: number }
+  /** A screen: a bar across the screener, set against the `on` player (usually a defender). */
+  | { kind: 'screen'; player: string; on: string; from: number; to: number };
+
+/** From drill time `at`, these players attack; everyone else defends, and `waiting` players are shown faded. */
+export interface DrillPhase {
+  at: number;
+  offense: string[];
+  waiting?: string[];
+}
 
 /** A countdown in drill time, e.g. the window before the trailing defender arrives. */
 export interface DrillMeter {
@@ -117,6 +128,8 @@ export interface DrillAnimation {
   /** [t, tau] pairs. A repeated t with a new tau is a jump cut. Equal tau over a span is a freeze. */
   clock: Array<[number, number]>;
   players: DrillPlayer[];
+  /** For drills where players change roles without fixed teams (e.g. the 11-man break). */
+  phases?: DrillPhase[];
   tracks: Record<string, DrillKeyframe[]>;
   ball: BallSegment[];
   arrows: DrillArrowSet[];

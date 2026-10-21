@@ -662,7 +662,7 @@ function CourtScene({
         </text>
       )}
 
-      {drill.marks.filter((m) => m.kind === 'tag' || m.kind === 'label').map((m, i) => (
+      {drill.marks.filter((m) => m.kind === 'screen' || m.kind === 'tag' || m.kind === 'label').map((m, i) => (
         <MarkView key={`over-${i}`} mark={m} compiled={compiled} t={t} tau={tau} />
       ))}
 
@@ -709,7 +709,19 @@ function ArrowView({ arrow, theme }: { arrow: ArrowPath; theme: PlayEditorTheme 
         <polyline points={pts(arrow.points)} fill="none" stroke="#0f1f33" strokeOpacity={0.35} strokeWidth={style.width + 0.22} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={style.dash} />
       )}
       <polyline points={pts(arrow.points)} fill="none" stroke={style.stroke} strokeWidth={style.width} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={style.dash} />
-      {head && (
+      {head && arrow.cap === 'screen' && (
+        <line
+          x1={0}
+          y1={-1.1}
+          x2={0}
+          y2={1.1}
+          transform={`translate(${head.at.x.toFixed(2)} ${head.at.y.toFixed(2)}) rotate(${((head.angle * 180) / Math.PI).toFixed(1)})`}
+          stroke={style.stroke}
+          strokeWidth={0.38}
+          strokeLinecap="round"
+        />
+      )}
+      {head && arrow.cap !== 'screen' && (
         <path
           d={`M${s} 0 L${-s * 0.7} ${-s * 0.7} L${-s * 0.35} 0 L${-s * 0.7} ${s * 0.7} Z`}
           transform={`translate(${head.at.x.toFixed(2)} ${head.at.y.toFixed(2)}) rotate(${((head.angle * 180) / Math.PI).toFixed(1)})`}
@@ -723,11 +735,18 @@ function ArrowView({ arrow, theme }: { arrow: ArrowPath; theme: PlayEditorTheme 
 }
 
 // Kit drills colour by team (Dark / Light); the others colour by attack and defence.
-const tokenType = (p: DrillPlayer) =>
-  p.kit ? (p.kit === 'dark' ? 'defense_player' : 'offense_player') : p.team === 'offense' ? 'offense_player' : 'defense_player';
+// Phase drills (no fixed teams) colour by the player's current role.
+const tokenType = (p: DrillPlayer, role?: 'offense' | 'defense') =>
+  p.kit
+    ? p.kit === 'dark'
+      ? 'defense_player'
+      : 'offense_player'
+    : (role ?? p.team) === 'offense'
+      ? 'offense_player'
+      : 'defense_player';
 
-function tokenColors(theme: PlayEditorTheme, player: DrillPlayer) {
-  const type = tokenType(player);
+function tokenColors(theme: PlayEditorTheme, player: DrillPlayer, role?: 'offense' | 'defense') {
+  const type = tokenType(player, role);
   const look = getPlayerTokenAppearance(theme, type);
   // Blueprint defence tokens match the court colour, so give them a light outline here.
   const stroke = theme === 'blueprint' && type === 'defense_player' ? '#ffffff' : look.stroke;
@@ -745,7 +764,7 @@ function Trail({ compiled, player, tau, theme }: { compiled: CompiledDrill; play
   const first = points[0];
   const last = points[points.length - 1];
   if (points.length < 2 || Math.hypot(last.x - first.x, last.y - first.y) < 1) return null;
-  const light = tokenType(player) === 'offense_player';
+  const light = tokenType(player, compiled.drill.phases ? compiled.roleAt(player.id, tau) : undefined) === 'offense_player';
   const color = light ? (theme === 'hardwood' ? '#0f1f33' : '#5eead4') : theme === 'tactical' ? '#f97316' : theme === 'hardwood' ? '#0f1f33' : '#ffffff';
   return <polyline points={pts(points)} fill="none" stroke={color} strokeOpacity={0.16} strokeWidth={TOKEN_R * 1.3} strokeLinecap="round" strokeLinejoin="round" />;
 }
@@ -770,7 +789,9 @@ function PlayerToken({
   const p = compiled.pos(player.id, tau);
   const v = compiled.vel(player.id, tau);
   const f = compiled.facing(player.id, tau);
-  const look = tokenColors(theme, player);
+  const role = compiled.roleAt(player.id, tau);
+  const look = tokenColors(theme, player, compiled.drill.phases ? role : undefined);
+  const waiting = compiled.waitingAt(player.id, tau);
   const speed = Math.hypot(v.x, v.y);
   const moveAngle = (Math.atan2(v.y, v.x) * 180) / Math.PI;
   const faceAngle = (Math.atan2(f.y, f.x) * 180) / Math.PI;
@@ -778,14 +799,14 @@ function PlayerToken({
   const enter = t - (player.enterAt ?? 0);
   const pop = spring(enter, 2.2, 0.5);
   const ball = compiled.ball(tau);
-  const defending = compiled.roleAt(player.id, tau) === 'defense';
+  const defending = role === 'defense' && !waiting;
   const stance = defending ? clamp((8 - Math.hypot(ball.x - p.x, ball.y - p.y)) / 3) : 0;
   const label = !player.kit && player.team === 'defense' ? player.label.replace(/^X/i, '') || 'X' : player.label;
 
   return (
     <g
       transform={`translate(${p.x.toFixed(2)} ${p.y.toFixed(2)}) scale(${pop.toFixed(3)})`}
-      opacity={clamp(enter / 0.12)}
+      opacity={clamp(enter / 0.12) * (waiting ? 0.5 : 1)}
       onClick={onPick ? () => onPick(player.id) : undefined}
       style={onPick ? { cursor: 'pointer' } : undefined}
     >
@@ -915,6 +936,19 @@ function MarkView({ mark, compiled, t, tau }: { mark: DrillMark; compiled: Compi
           </text>
         </g>
       );
+    case 'screen': {
+      // A thick bar across the screener's body, facing the player being screened.
+      const p = compiled.pos(mark.player, tau);
+      const q = compiled.pos(mark.on, tau);
+      const angle = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+      const s = clamp(pop);
+      return (
+        <g opacity={opacity} pointerEvents="none" transform={`translate(${p.x.toFixed(2)} ${p.y.toFixed(2)}) rotate(${angle.toFixed(1)})`}>
+          <line x1={TOKEN_R + 0.35} y1={-1.9 * s} x2={TOKEN_R + 0.35} y2={1.9 * s} stroke="#ffffff" strokeWidth={0.75} strokeLinecap="round" />
+          <line x1={TOKEN_R + 0.35} y1={-1.9 * s} x2={TOKEN_R + 0.35} y2={1.9 * s} stroke="#f97316" strokeWidth={0.45} strokeLinecap="round" />
+        </g>
+      );
+    }
     case 'triangle': {
       const [a, b, c] = mark.players.map((id) => compiled.pos(id, tau));
       // Label sits beside the triangle so it never covers the help defenders inside it.
