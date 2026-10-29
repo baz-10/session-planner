@@ -623,7 +623,7 @@ function CourtScene({
     <g>
       <DrillCourt theme={theme} idPrefix={idPrefix} />
 
-      {drill.marks.filter((m) => m.kind === 'lane').map((m, i) => (
+      {drill.marks.filter((m) => m.kind === 'lane' || m.kind === 'cone').map((m, i) => (
         <MarkView key={`lane-${i}`} mark={m} compiled={compiled} t={t} tau={tau} />
       ))}
 
@@ -950,6 +950,16 @@ function MarkView({ mark, compiled, t, tau }: { mark: DrillMark; compiled: Compi
           </text>
         </g>
       );
+    case 'cone': {
+      const s = clamp(pop);
+      return (
+        <g opacity={opacity} pointerEvents="none" transform={`translate(${mark.x} ${mark.y}) scale(${s.toFixed(3)})`}>
+          <ellipse cx={0.15} cy={0.55} rx={0.85} ry={0.35} fill="#000" opacity={0.18} />
+          <polygon points="0,-0.95 0.75,0.55 -0.75,0.55" fill="#f59e0b" stroke="#7c2d12" strokeWidth={0.1} strokeLinejoin="round" />
+          <line x1={-0.45} y1={0} x2={0.45} y2={0} stroke="#fff8ed" strokeWidth={0.14} />
+        </g>
+      );
+    }
     case 'screen': {
       // A thick bar across the screener's body, facing the player being screened.
       const p = compiled.pos(mark.player, tau);

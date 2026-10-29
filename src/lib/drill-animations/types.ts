@@ -81,7 +81,9 @@ export type DrillMark =
   | { kind: 'label'; x: number; y: number; text: string; from: number; to: number; tone?: DrillTone }
   | { kind: 'triangle'; players: [string, string, string]; text?: string; from: number; to: number }
   /** A screen: a bar across the screener, set against the `on` player (usually a defender). */
-  | { kind: 'screen'; player: string; on: string; from: number; to: number };
+  | { kind: 'screen'; player: string; on: string; from: number; to: number }
+  /** A training cone on the floor, e.g. zig-zag turns or shooting spots. */
+  | { kind: 'cone'; x: number; y: number; from: number; to: number };
 
 /** From drill time `at`, these players attack; everyone else defends, and `waiting` players are shown faded. */
 export interface DrillPhase {
